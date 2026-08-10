@@ -34,11 +34,13 @@ case "${1:-}" in
     ;;
   "")
     [ -f "$HOME/.ssh/config" ] || { echo "db/ssh-tunnel: ~/.ssh/config missing" >&2; exit 1; }
-    if db/ssh-tunnel --check; then
+    if "$0" --check; then
       echo "tunnel already up on ${SRC}"
       exit 0
     fi
     ssh -f -N -M -S "$HOME/.ssh/2dph-tunnel.sock" \
+      -o StrictHostKeyChecking=accept-new \
+      -o BatchMode=yes \
       -L "${SRC}:${DST}" -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" \
       && echo "tunnel up on ${SRC} (-> vm:${DST})"
     exit 0
