@@ -30,11 +30,20 @@ def sha256_b64(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _load_extension(conn: ladybug.Connection, name: str) -> None:
+    """Install (download once) and load a ladybug extension."""
+    try:
+        conn.execute(f"INSTALL {name}")
+    except Exception:
+        pass  # already installed / offline-ok when present
+    conn.execute(f"LOAD EXTENSION {name}")
+
+
 def connect(path: Path | str | None = None, read_only: bool = True) -> tuple[ladybug.Database, ladybug.Connection]:
     db = ladybug.Database(str(path or DB_PATH), read_only=read_only)
     conn = ladybug.Connection(db)
-    conn.execute("LOAD EXTENSION FTS")
-    conn.execute("LOAD EXTENSION VECTOR")
+    _load_extension(conn, "FTS")
+    _load_extension(conn, "VECTOR")
     return db, conn
 
 
