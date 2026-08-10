@@ -1,0 +1,14 @@
+# .dockerignore - keep the build context lean.
+.venv
+var
+.git
+.github
+__pycache__
+*.pyc
+*.lbug
+*.lbug.*
+.cache
+.secrets
+.skills-tmp
+docker/.dockerclean
+docs/.build

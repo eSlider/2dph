@@ -10,17 +10,17 @@ description: >-
 # web-search
 
 ```bash
-bin/web/search "Pflegegrad SGB XI Einstufung"
-bin/web/search "Toureffizienz" --site ticket.curasoft.de
-bin/web/search "sqlite-vec" --category it -n 3 --json | jq -r '.results[].url'
-bin/web/search "Pflegereform" --lang de --fresh year
+bin/web/search "LadybugDB vector index"
+bin/web/search "model2vec multilingual" --category it
+bin/web/search "hypervisor" --site produktor.io --json | jq -r '.results[].url'
+bin/web/search "postgres partial index" --lang en --fresh year
 ```
 
 ## Web or knowledge base
 
-`bin/kb/search` holds our own facts: product docs, CuraSoft business logic, the
+`bin/kb/search` holds our own facts: the ops stack, portfolio, ssh hosts, the
 lexicon. Go there first. Reach for `bin/web/search` when the answer is outside
-our repos: legislation, vendor documentation, upstream library behaviour.
+our repos: upstream library behaviour, vendor documentation, public standards.
 
 Keep the two apart. A finding is stronger when the reader can see that one
 source was ours and one was not.
