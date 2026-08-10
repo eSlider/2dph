@@ -1,1 +1,150 @@
-/mnt/8TB/projects/ai/agent-skills/bin/web/search
+#!/usr/bin/env python3
+"""web/search - web search through the self-hosted SearXNG at search.ops.io.
+
+  bin/web/search "LadybugDB vector search"
+  bin/web/search "model2vec multilingual" --site github.com
+  bin/web/search "uclancy" --category it -n 3 --json | jq -r '.results[].url'
+  bin/web/search "sqlite-vec" --refresh          # ignore the cached answer
+
+This complements bin/kb/search: the knowledge base holds our own facts, this
+reaches the public web. Use it as the second, independent source that the
+detective method asks for.
+
+Exit codes: 0 results, 2 refused as possible PII, 3 throttled (not "nothing
+found" - the instance answers 200 with an empty list when it throttles).
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import json
+import os
+import sys
+import time
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+TOOLS = Path(__file__).resolve().parents[1].parent / "tools"
+sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(TOOLS / "web-search"))
+
+import websearch as ws          # noqa: E402
+from yamlout import to_yaml     # noqa: E402
+
+CONFIG = Path(os.environ.get("BRAIN_SEARCH_ENV", Path.home() / ".config/brain/search.env"))
+CACHE = Path(os.environ.get("BRAIN_SEARCH_CACHE", Path.home() / ".cache/brain/web-search.sqlite"))
+LOCK = CACHE.with_suffix(".lock")
+
+
+def load_config() -> dict:
+    if not CONFIG.exists():
+        sys.exit(f"no credentials at {CONFIG} (mode 600, BRAIN_SEARCH_URL/USER/PASS)")
+    conf = {}
+    for line in CONFIG.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        conf[key.strip()] = value.strip().strip("\"'")
+    missing = {"BRAIN_SEARCH_URL", "BRAIN_SEARCH_USER", "BRAIN_SEARCH_PASS"} - conf.keys()
+    if missing:
+        sys.exit(f"{CONFIG} is missing {', '.join(sorted(missing))}")
+    return conf
+
+
+def fetch(conf: dict, query: str, params: dict, timeout: int) -> dict:
+    args = {"q": query, "format": "json", **params}
+    url = f"{conf['BRAIN_SEARCH_URL'].rstrip('/')}/search?{urllib.parse.urlencode(args)}"
+    request = urllib.request.Request(url)
+    token = f"{conf['BRAIN_SEARCH_USER']}:{conf['BRAIN_SEARCH_PASS']}".encode()
+    import base64
+    request.add_header("Authorization", "Basic " + base64.b64encode(token).decode())
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode())
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="web search via SearXNG")
+    parser.add_argument("query")
+    parser.add_argument("-n", "--limit", type=int, default=ws.DEFAULT_LIMIT)
+    parser.add_argument("--site", help="restrict to one domain")
+    parser.add_argument("--lang", help="language code, e.g. de")
+    parser.add_argument("--fresh", choices=["day", "week", "month", "year"],
+                        help="time range")
+    parser.add_argument("--category", help="SearXNG category, e.g. it, science, news")
+    parser.add_argument("--engines", help="comma separated engine list")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--refresh", action="store_true", help="bypass the cache")
+    parser.add_argument("--ttl", type=float, default=ws.CACHE_TTL)
+    parser.add_argument("--timeout", type=int, default=25)
+    parser.add_argument("--force", action="store_true",
+                        help="send even if the query looks like PII")
+    args = parser.parse_args()
+
+    query = f"site:{args.site} {args.query}" if args.site else args.query
+
+    reason = ws.phi_reason(query)
+    if reason and not args.force:
+        print(f"refused: {reason}. This query would leave the host.", file=sys.stderr)
+        print("Rephrase without identifiers, or pass --force if it is genuinely public.",
+              file=sys.stderr)
+        return 2
+
+    params = {}
+    if args.lang:
+        params["language"] = args.lang
+    if args.fresh:
+        params["time_range"] = args.fresh
+    if args.category:
+        params["categories"] = args.category
+    if args.engines:
+        params["engines"] = args.engines
+
+    key = ws.cache_key(query, params)
+    conn = ws.open_cache(CACHE)
+
+    if not args.refresh:
+        cached = ws.cache_get(conn, key, ttl=args.ttl)
+        if cached is not None:
+            out = ws.project(cached, limit=args.limit)
+            out["cached"] = True
+            sys.stdout.write(json.dumps(out, indent=2, ensure_ascii=False) + "\n"
+                             if args.json else to_yaml(out))
+            return 0
+
+    conf = load_config()
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+
+    # One request at a time across every agent on this host: the instance
+    # suspends engines for minutes when several of us ask at once.
+    with open(LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+
+        payload = None
+        for attempt in range(1 + len(ws.RETRY_BACKOFF)):
+            delay = ws.wait_for(ws.last_call(conn), time.time())
+            if delay:
+                time.sleep(delay)
+            ws.mark_call(conn)
+            try:
+                payload = fetch(conf, query, params, args.timeout)
+            except Exception as error:              # noqa: BLE001 - report, do not crash
+                print(f"request failed: {error}", file=sys.stderr)
+                return 3
+            if ws.classify(payload) == "ok":
+                break
+            if attempt < len(ws.RETRY_BACKOFF):
+                time.sleep(ws.RETRY_BACKOFF[attempt])
+
+    if ws.classify(payload) == "ok":
+        ws.cache_put(conn, key, payload)
+
+    out = ws.project(payload, limit=args.limit)
+    sys.stdout.write(json.dumps(out, indent=2, ensure_ascii=False) + "\n"
+                     if args.json else to_yaml(out))
+    return 0 if out["status"] == "ok" else 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())

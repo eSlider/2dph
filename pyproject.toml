@@ -1,0 +1,15 @@
+[project]
+name = "2dph"
+version = "0.1.0"
+description = "Evidence-first brain: LadybugDB knowledge graph + hybrid RAG over the ops stack. Facts need two sources or they are (not confirmed)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "ladybug==0.19.1",
+    "mistune==3.3.4",
+    "model2vec==0.8.2",
+    "numpy>=2.5.2",
+    "pyyaml>=6.0.3",
+    "requests>=2.34.2",
+]

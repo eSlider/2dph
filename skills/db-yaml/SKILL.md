@@ -8,21 +8,20 @@ description: >-
 
 # db-yaml
 
-`agent-skills/bin/db/psql-yq` talks to Postgres and returns YAML, which is far
-cheaper than a psql ASCII table and easy to slice with `yq`.
+`bin/db/psql-yq` (vendored in this repo) talks to Postgres and returns YAML,
+which is far cheaper than a psql ASCII table and easy to slice with `yq`.
 
 ```bash
-bin/db/offline -s kunde              # column list          (brain-ui wrapper)
-bin/db/offline -t tour -l 20         # 20 sample rows as YAML
-bin/db/offline -c 'SELECT ...'       # query -> YAML
-bin/db/live -c 'SELECT ...'          # live database instead of the snapshot
+bin/db/psql-yq --profile onlyoffice -s document_asset   # column list
+bin/db/psql-yq --profile onlyoffice -t task_result -l 20  # sample rows as YAML
+bin/db/psql-yq --profile onlyoffice -c 'SELECT ...'     # query -> YAML
 ```
 
 Ad-hoc targets without a profile:
 
 ```bash
-agent-skills/bin/db/psql-yq --container my-pg --db app -c 'SELECT 1'
-agent-skills/bin/db/psql-yq --dsn 'postgres://user@host:5432/db' -c 'SELECT 1'
+bin/db/psql-yq --container my-pg --db app -c 'SELECT 1'
+bin/db/psql-yq --dsn 'postgres://user@host:5432/db' -c 'SELECT 1'
 ```
 
 ## Profiles

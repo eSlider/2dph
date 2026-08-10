@@ -1,1 +1,116 @@
-/mnt/8TB/projects/ai/agent-skills/bin/db/psql-yq
+#!/usr/bin/env bash
+# db/psql-yq - read any Postgres as YAML, cheaply and read-only.
+#
+#   db/psql-yq --profile onlyoffice -t document_asset -l 20   # table sample
+#   db/psql-yq --profile onlyoffice -s document_asset         # column list
+#   db/psql-yq --profile onlyoffice -c 'SELECT ...'           # query -> YAML
+#   db/psql-yq --container my-pg --db app -c '...'   # ad-hoc container
+#   db/psql-yq --dsn 'postgres://u@h:5432/db' -c '...'
+#   db/psql-yq -r 'SELECT ...'                       # raw rows, no YAML
+#
+# Profiles live in ~/.config/brain/db-profiles.yml so that credentials and
+# hostnames stay out of every project repo. A profile is:
+#
+#   onlyoffice:
+#     host: 127.0.0.1
+#     port: 5433
+#     user: onlyoffice
+#     db: onlyoffice
+#     password_env_file: /home/ano/.config/ops/onlyoffice.env
+#
+# The onlyoffice Postgres listens inside the QEMU VM (host port 32, SSH only).
+# Credentials come from /etc/onlyoffice/documentserver/local.json inside the
+# VM (dbUser/dbPass), read via db/ssh-tunnel, never committed.
+# db/ssh-tunnel opens 127.0.0.1:5433 -> vm:5432 before querying.
+#
+# Read-only guard: any DML or DDL keyword is rejected, whatever the profile.
+set -euo pipefail
+
+PROFILES="${BRAIN_DB_PROFILES:-$HOME/.config/brain/db-profiles.yml}"
+IMAGE="${BRAIN_PSQL_IMAGE:-postgres:13}"
+LIMIT="${PSQLYQ_LIMIT:-50}"
+MODE=c
+ARG=""
+PROFILE=""
+CONTAINER=""
+DSN=""
+DB=""
+USER_NAME=""
+
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; }
+
+[[ $# -eq 0 ]] && { usage; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile)   PROFILE="$2"; shift 2 ;;
+    --container) CONTAINER="$2"; shift 2 ;;
+    --dsn)       DSN="$2"; shift 2 ;;
+    --db)        DB="$2"; shift 2 ;;
+    --user)      USER_NAME="$2"; shift 2 ;;
+    -c) MODE=c; ARG="$2"; shift 2 ;;
+    -t) MODE=t; ARG="$2"; shift 2 ;;
+    -s) MODE=s; ARG="$2"; shift 2 ;;
+    -r) MODE=r; ARG="$2"; shift 2 ;;
+    -l) LIMIT="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; usage; exit 1 ;;
+  esac
+done
+
+assert_readonly() {
+  local s="${1,,}"
+  if [[ "$s" =~ (^|[^a-z])(insert|update|delete|drop|truncate|alter|create|grant|revoke|vacuum|copy)[[:space:]] ]]; then
+    echo "db/psql-yq: read-only, query rejected" >&2
+    exit 3
+  fi
+}
+
+prof() { yq -r ".\"$PROFILE\".$1 // \"\"" "$PROFILES" 2>/dev/null; }
+
+build_client() {
+  if [[ -n "$DSN" ]]; then
+    PGCLI=(docker run --rm "$IMAGE" psql "$DSN" -X -A -t)
+    return
+  fi
+
+  if [[ -n "$CONTAINER" ]]; then
+    PGCLI=(docker exec "$CONTAINER" psql -U "${USER_NAME:-postgres}" -d "${DB:?--db required with --container}" -X -A -t)
+    return
+  fi
+
+  [[ -n "$PROFILE" ]] || { echo "need --profile, --container or --dsn" >&2; exit 2; }
+  [[ -f "$PROFILES" ]] || { echo "no profiles file: $PROFILES" >&2; exit 2; }
+  [[ "$(yq -r "has(\"$PROFILE\")" "$PROFILES")" == "true" ]] \
+    || { echo "unknown profile '$PROFILE' in $PROFILES" >&2; exit 2; }
+
+  local container host port user db network envfile
+  container="$(prof container)"; host="$(prof host)"; port="$(prof port)"
+  user="$(prof user)"; db="$(prof db)"; network="$(prof network)"
+  envfile="$(prof password_env_file)"
+
+  if [[ -n "$container" ]]; then
+    PGCLI=(docker exec "$container" psql -U "${user:-postgres}" -d "$db" -X -A -t)
+  else
+    if [[ -n "$envfile" ]]; then
+      [[ -f "$envfile" ]] || { echo "password_env_file missing: $envfile" >&2; exit 2; }
+      # shellcheck disable=SC1090
+      set -a; . "$envfile"; set +a
+    fi
+    local net=()
+    [[ -n "$network" ]] && net=(--network "$network")
+    PGCLI=(docker run --rm "${net[@]}" -e PGPASSWORD="${PGPASSWORD:?password unset for profile $PROFILE}" \
+      "$IMAGE" psql -h "$host" -p "${port:-5432}" -U "$user" -d "$db" -X -A -t)
+  fi
+}
+
+build_client
+
+case "$MODE" in
+  r) assert_readonly "$ARG"; "${PGCLI[@]}" -c "$ARG" ;;
+  t) assert_readonly "SELECT * FROM $ARG"
+     "${PGCLI[@]}" -c "SELECT json_agg(row_to_json(t)) FROM (SELECT * FROM $ARG LIMIT $LIMIT) t" | yq -P . ;;
+  s) "${PGCLI[@]}" -c "SELECT column_name || ':' || data_type FROM information_schema.columns WHERE table_name='$ARG' ORDER BY ordinal_position" ;;
+  c) assert_readonly "$ARG"
+     "${PGCLI[@]}" -c "SELECT json_agg(row_to_json(t)) FROM ($ARG) t" | yq -P . ;;
+esac

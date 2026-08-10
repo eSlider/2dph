@@ -34,8 +34,9 @@ Read first: [PLAN](PLAN.md) → [docs](docs/).
 ```
 PLAN.md       decisions + execution + open questions
 docs/         published docs
-skills/       in-project agent skills (this is the integration target)
+skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}
+tools/        vendored python libs behind bin/* (yamlout, websearch)
 var/          kb.lbug, caches (gitignored)
 .venv/        ladybug + model2vec + mistune
 ```
