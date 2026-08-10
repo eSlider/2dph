@@ -41,7 +41,8 @@ jobs:
       - name: Go serve tests (async, goroutine-bounded)
         run: |
           go vet ./...
-          go test ./serve/... -count=1
+          go test ./... -count=1
+        working-directory: serve
 
       - name: facts/audit self (lexicon consistency, no network)
         run: |
