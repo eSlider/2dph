@@ -1,0 +1,8 @@
+.venv/
+var/
+node_modules/
+data/
+*.pdf
+*.lbug
+*.lbug.*
+.secrets/
