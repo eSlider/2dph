@@ -50,6 +50,7 @@ var/          kb.lbug, caches (gitignored)
 
 ```bash
 bin/facts/audit ["self"|"facts"|"info"|"stale"]   # 2-source + staleness gate
+bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--hop N] [--repo X]        # deduction search → YAML
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper

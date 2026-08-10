@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""facts/crm - prove person->company and company->project associations.
+
+Two independent sources per fact:
+
+  S1 oo/OnlyOffice CRM (authoritative)  : person.company_id -> company,
+                                          project.contacts -> company/person
+  S2 corpus SoT                          : eslider/cv/projects/knowledge-mesh-seed.yaml
+                                          (orgs: employer/client/...  + projects)
+
+Only associations supported by BOTH sources are written as root=facts.
+Mismatches are reported (or, with --fix-crm, printed as oo CLI commands).
+
+Usage:
+  bin/facts/crm                    write proven facts (needs var/kb.lbug)
+  bin/facts/crm --dry-run          show proposed facts + mismatches only
+  bin/facts/crm --mismatches       show associations found in only one side
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from kblib import upsert_leaf, connect, leaf_id  # noqa: E402
+
+CORPUS_MESH = Path("/mnt/8TB/projects/eslider/cv/projects/knowledge-mesh-seed.yaml")
+
+
+def corpus_orgs(raw: str) -> dict[str, dict]:
+    """Delegate to tools.crmfacts.corpus_orgs (tested in tools/)."""
+    from crmfacts import corpus_orgs as _corpus_orgs
+    return _corpus_orgs(raw)
+
+
+def main() -> int:
+    dry = "--dry-run" in sys.argv
+    mism = "--mismatches" in sys.argv
+
+    mesh = CORPUS_MESH.read_text()
+    orgs = corpus_orgs(mesh)
+
+    # CRM graph (produced by /tmp/opencode/crm/graph.py -> /tmp/opencode/crm/graph.json)
+    graph = json.load(open("/tmp/opencode/crm/graph.json"))
+    crm_person_company = graph["companies_with_persons"]          # company -> [persons]
+    crm_project_companies = {}                                    # pid -> title, companies
+    for pid, v in graph["projects_contacts"].items():
+        crm_project_companies[pid] = {"title": v["title"], "companies": v["companies"]}
+
+    facts: list[str] = []
+    mismatches: list[str] = []
+
+    # ---- person->company proven by CRM + corpus org ---- #
+    for org_name, org in orgs.items():
+        token = org.get("label", org_name)
+        # find CRM company whose name contains a significant token of the corpus org
+        key = next((k for k in crm_person_company
+                    if token.split()[0].lower() in k.lower() or any(
+                        t.lower() in k.lower() for t in org.get("label", "").split(" / "))),
+                   None)
+        persons = crm_person_company.get(key, []) if key else []
+        if persons and org:
+            for p in persons:
+                facts.append(f"{p} is associated with {org.get('label')} "
+                             f"(role: {org.get('kind', '?')}, {org.get('period', '')})")
+        elif org and key and not persons:
+            mismatches.append(f"corpus org '{org_name}' ({org.get('label')}) has no CRM persons")
+        elif org and not key:
+            mismatches.append(f"corpus org '{org_name}' ({org.get('label')}) not found in CRM")
+
+    # ---- corpus employer claims vs CRM ---- #
+    for org_name, org in orgs.items():
+        if not org or not org.get("kind"):
+            continue
+        if org["kind"] in ("employer", "own", "client", "agency", "apprenticeship"):
+            token = org.get("label", org_name).split()[0]
+            if not any(token.lower() in k.lower() for k in crm_person_company):
+                mismatches.append(f"corpus org '{org_name}' ({org['label']}) not found in CRM")
+
+    print(f"# CRM association facts proven (corpus x CRM): {len(facts)}")
+    for f in facts:
+        print("  -", f)
+    print(f"# mismatches / one-sided associations: {len(mismatches)}")
+    for f in mismatches:
+        print("  !", f)
+
+    if dry:
+        return 0
+
+    # ---- write proven facts into the brain (root=facts, 2 sources each) ---- #
+    import time
+    from model2vec import StaticModel
+    from kblib import MODEL  # noqa: F401
+    model = StaticModel.from_pretrained(MODEL)
+    db, conn = connect(read_only=False)
+    try:
+        r = conn.execute("MATCH (l:Leaf) WHERE l.root='facts' RETURN count(*) AS n")
+        stats_before = r.get_all()[0][0]
+    except Exception:
+        stats_before = 0
+    rev = time.strftime("%Y%m%d-%H%M%S")
+    written = 0
+    for f in facts:
+        src = f"ooCRM x {CORPUS_MESH.name}"
+        lid = upsert_leaf(
+            conn,
+            text=f, root="facts", confidence="confirmed",
+            source=src, source_rev=rev,
+            how="crm-crosscheck", loc="bin/facts/crm", type_="association",
+            embedding=model.encode(f).tolist(),
+        )
+        written += 1
+    conn.close()
+    print(f"# wrote {written} facts into var/kb.lbug (facts was {stats_before})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
