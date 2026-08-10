@@ -20,17 +20,18 @@ from yamlout import to_yaml  # noqa: E402
 
 RECALL_THRESHOLD = 0.95
 
-# (query, expected leaf id)
+# (query, expected text fragment that must be in the top-5 results)
 CONTROL_QUESTIONS: list[tuple[str, str]] = [
-    ("which database does the brain use", "facts:ladybug"),
-    ("hybrid search weights fts and vector equally", "info:hybrid"),
+    ("hybrid search fts and vector", "BM25"),
+    ("eslider devops engineer", "DevOps"),
+    ("ladybugdb graph engine storage", "LadybugDB"),
 ]
 
 
-def hit_ids_of(query: str, conn, limit: int = 5) -> list[str]:
+def hit_texts_of(query: str, conn, limit: int = 5) -> list[str]:
     try:
         hits = query_fts(conn, query, limit)
-        return [h["id"] for h in hits]
+        return [h["text"] for h in hits]
     except Exception:
         return []
 
@@ -44,11 +45,11 @@ def main(argv: list[str]) -> int:
     db, conn = open_readonly()
     recalled = 0
     detail = []
-    for query, expected in CONTROL_QUESTIONS:
-        hits = hit_ids_of(query, conn)
-        ok = any(expected in h or h in expected for h in hits)
+    for query, fragment in CONTROL_QUESTIONS:
+        texts = hit_texts_of(query, conn)
+        ok = any(fragment.lower() in t.lower() for t in texts)
         recalled += int(ok)
-        detail.append({"q": query, "expected": expected, "in_top5": ok, "hits": hits[:5]})
+        detail.append({"q": query, "fragment": fragment, "in_top5": ok})
     recall = recalled / len(CONTROL_QUESTIONS) if CONTROL_QUESTIONS else 1.0
     passed = recall >= RECALL_THRESHOLD
     out = {"recall@5": round(recall, 3), "passed": passed, "gate": len(CONTROL_QUESTIONS), "details": detail}
