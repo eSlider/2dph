@@ -1,0 +1,11 @@
+.venv/
+var/
+__pycache__/
+*.pyc
+*.lbug
+*.lbug.*
+.cache/
+.DS_Store
+*.env
+.env
+.secrets/
