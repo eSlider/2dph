@@ -1,7 +1,8 @@
-# 2dph — best-practice docker composition
+# 2dph — docker composition
 #
 #   docker compose run --rm brain index                     # rebuild graph
 #   docker compose run --rm brain search "Matrix fed"       # one-shot query
+#   docker compose run --rm brain serve                     # async Go server
 #   docker compose up brain-watch                           # auto re-index
 #
 # Caching: the 128M model (HF_HOME) and kb.lbug (VAR_DIR) live in named
@@ -15,8 +16,8 @@ services:
   brain:
     image: ghcr.io/eslider/2dph:latest
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: .
+      dockerfile: Dockerfile
       cache_from:
         - ghcr.io/eslider/2dph:cache
     command: ["brain", "search", "help"]
@@ -25,11 +26,13 @@ services:
       BRAIN_SEARCH_CACHE: /data/cache/web-search.sqlite
       BRAIN_DB_PROFILES: /secret/db-profiles.yml
       BRAIN_SEARCH_ENV: /secret/search.env
+      KB_SEARCH_CMD: /app/bin/kb/search
+      KB_WORKERS: "4"
     volumes:
       - kb-model:/data/hf
       - kb-var:/data
       # corpus is read-only on the host, never written from the container
-      - ../..:/corpus:ro
+      - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     read_only: true
     tmpfs:
@@ -42,14 +45,14 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
-  # watcher: re-index on corpus file change (inotify via watchdog script)
+  # watcher: re-index on corpus file change (watchdog script)
   brain-watch:
     image: ghcr.io/eslider/2dph:latest
     environment: *env
     volumes:
       - kb-model:/data/hf
       - kb-var:/data
-      - ../..:/corpus:ro
+      - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["brain", "watch", "/corpus"]
     read_only: true

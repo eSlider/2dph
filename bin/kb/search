@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""kb/search - deduction search over the 2dph brain.
+
+  bin/kb/search "query"                    # hybrid facts+info, YAML out
+  bin/kb/search "query" --root facts       # confirmed facts only
+  bin/kb/search "query" --hop 1            # follow graph edges after hitting
+  bin/kb/search "query" --json | yq '.'
+  bin/kb/search "query" -n 5               # more results
+
+Deduction order: facts root first (confirmed answers with evidence links),
+then info root (marked `(not confirmed)`). --root restricts to one root.
+--hop N walks FROM_FILE edges (sibling leafs in the same source file).
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from kblib import connect, hybrid_search, init_schema, open_readonly, query_fts  # noqa: E402
+from yamlout import to_yaml  # noqa: E402
+import ladybug  # noqa: E402
+
+
+def main(argv: list[str]) -> int:
+    import argparse
+    p = argparse.ArgumentParser(description="deduction search over the brain")
+    p.add_argument("query")
+    p.add_argument("--root", choices=("facts", "info", None), default=None)
+    p.add_argument("--hop", type=int, default=0)
+    p.add_argument("-n", "--limit", type=int, default=10)
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args(argv)
+
+    try:
+        db, conn = open_readonly()
+    except FileNotFoundError as e:
+        print(e, file=sys.stderr)
+        return 1
+
+    from model2vec import StaticModel
+    model = StaticModel.from_pretrained("minishlab/potion-multilingual-128M")
+    emb = model.encode([a.query])[0].astype(float).tolist()
+
+    rhs: list[dict] = []
+    try:
+        rhs = query_fts(conn, a.query, a.limit * 2)
+    except Exception:
+        rhs = []
+
+    results = hybrid_search(conn, emb, rhs, a.limit)
+    if a.root:
+        results = [h for h in results if h["root"] == a.root]
+
+    for hit in results:
+        hit.pop("rrf", None)
+        if hit.get("text"):
+            hit["snippet"] = hit["text"][:280]
+
+    out = {"query": a.query, "root_filter": a.root or "facts+info",
+           "count": len(results), "results": results}
+    print(json.dumps(out, indent=2, ensure_ascii=False) if a.json else to_yaml(out))
+    conn.close()
+    db.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -12,7 +12,7 @@ DIRS=("$@")
 [[ ${#DIRS[@]} -eq 0 ]] && DIRS=(${DEFAULT_DIRS})
 INTERVAL="${KB_WATCH_INTERVAL:-30}"
 
-index() { python3 /app/bin/kb/index; }
+index() { "${KB_PY:-python3}" /app/bin/kb/index; }
 
 LAST_STAMP=""
 while true; do

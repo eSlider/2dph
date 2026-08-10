@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""kb/index - build the 2dph brain from markdown + factual leafs.
+
+  bin/kb/index [--corpus DIR] [--rebuild] [--limit N]
+  bin/kb/index --json                 # emit stats as JSON
+
+Reads every .md under the corpus (default: repo root docs, skills, READMEs)
+as `info` leafs, embeds them with model2vec (potion-multilingual-128M), and
+writes them into var/kb.lbug with FTS + HNSW indexes. `facts` leafs come
+from bin/facts/extract (docker x compose x ssh-config pairing).
+
+--rebuild drops the database file and indexes from scratch. Without it a run
+is idempotent (MERGE by (source,text) id).
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from kblib import (  # noqa: E402
+    connect, create_fts_and_vector, init_schema, upsert_leaf,
+    open_readonly, stats,
+)
+from mdleaves import read_markdown, to_all, walk_markdown  # noqa: E402
+
+CORPUS_DEFAULTS = ["README.md", "PLAN.md", "AGENTS.md", "docs", "skills"]
+
+
+def load_corpus(root: Path) -> list[dict]:
+    files: list[Path] = []
+    for entry in CORPUS_DEFAULTS:
+        p = root / entry
+        if p.is_file():
+            files.append(p)
+        elif p.is_dir():
+            files.extend(walk_markdown(p))
+    leafs: list[dict] = []
+    for path in files:
+        try:
+            leafs.extend(to_all(read_markdown(path), path, repo="eSlider/2dph"))
+        except OSError as e:
+            print(f"kb/index: skip {path}: {e}", file=sys.stderr)
+    return leafs
+
+
+def load_corpus_glob(source: str) -> list[dict]:
+    """Add arbitrary markdown dirs/files as corpus roots (repo=dirname)."""
+    root = Path(source)
+    if not root.exists():
+        print(f"kb/index: skip missing corpus {source}", file=sys.stderr)
+        return []
+    files = [root] if root.is_file() else walk_markdown(root)
+    repo = root.name if root.is_dir() else root.parent.name
+    leafs: list[dict] = []
+    for path in files:
+        try:
+            leafs.extend(to_all(read_markdown(path), path, repo=repo))
+        except OSError as e:
+            print(f"kb/index: skip {path}: {e}", file=sys.stderr)
+    return leafs
+
+
+def index_leafs(conn, leafs: list[dict], embed_fn, limit: int) -> tuple[int, int]:
+    count = 0
+    for lf in leafs[:limit] if limit else leafs:
+        query = f"{lf['heading']}\n\n{lf['text']}"
+        emb = embed_fn(lf["text"]) if lf["text"] else None
+        upsert_leaf(conn, text=query, root="info", confidence="confirmed",
+                    source=lf["source"], source_rev="working-tree",
+                    how="kb/index", loc=lf["source"], type_=lf.get("type", "reference"),
+                    embedding=emb)
+        count += 1
+    return count, len(leafs)
+
+
+def embedder():
+    from model2vec import StaticModel
+    model = StaticModel.from_pretrained("minishlab/potion-multilingual-128M")
+    return lambda text: model.encode([text])[0].astype(float).tolist()
+
+
+def main(argv: list[str]) -> int:
+    import argparse
+    p = argparse.ArgumentParser(description="build the 2dph brain index")
+    p.add_argument("--corpus", action="append", help="extra markdown dir/file to index (may repeat)")
+    p.add_argument("--rebuild", action="store_true", help="fresh db + indexes")
+    p.add_argument("--limit", type=int, default=0, help="max leafs to embed")
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args(argv)
+
+    from kblib import DB_PATH, VAR
+    VAR.mkdir(exist_ok=True)
+    if a.rebuild and DB_PATH.exists():
+        DB_PATH.unlink()
+
+    leafs = load_corpus(ROOT)
+    if a.corpus:
+        for source in a.corpus:
+            leafs.extend(load_corpus_glob(source))
+
+    db, conn = connect(DB_PATH, read_only=False)
+    init_schema(conn)
+
+    if not (a.rebuild or _already_indexed(conn)):
+        create_fts_and_vector(conn, force=True)
+    embed = embedder()
+    done, total = index_leafs(conn, leafs, embed, a.limit)
+    create_fts_and_vector(conn, force=(done > 0 or a.rebuild))
+    s = stats(conn)
+    conn.close()
+    db.close()
+
+    result = {"indexed": done, "corpus_total": total, **{k: v for k, v in s.items() if k in ("total", "by_root")}}
+    print(json.dumps(result, indent=2) if a.json else f"indexed {done}/{total} leafs; db total {s['total']}")
+    return 0
+
+
+def _already_indexed(conn) -> bool:
+    try:
+        return conn.execute("MATCH (l:Leaf) RETURN count(*)").get_all()[0][0] > 0
+    except Exception:
+        return False
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

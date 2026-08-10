@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""kb/get - read one leaf by id.
+
+  bin/kb/get <id>            # metadata + snippet
+  bin/kb/get <id> --body     # full text
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from kblib import open_readonly  # noqa: E402
+from yamlout import to_yaml  # noqa: E402
+
+
+def main(argv: list[str]) -> int:
+    import argparse
+    p = argparse.ArgumentParser(description="read one leaf by id")
+    p.add_argument("id")
+    p.add_argument("--body", action="store_true")
+    a = p.parse_args(argv)
+
+    db, conn = open_readonly()
+    r = conn.execute(
+        "MATCH (l:Leaf {id:$id}) RETURN l.id, l.text, l.root, l.confidence, l.source, l.type",
+        parameters={"id": a.id},
+    )
+    rows = r.get_all()
+    if not rows:
+        print(f"kb/get: no leaf {a.id}", file=sys.stderr)
+        conn.close()
+        db.close()
+        return 1
+    row = rows[0]
+    out = {"id": row[0], "root": row[2], "confidence": row[3], "source": row[4], "type": row[5]}
+    if a.body:
+        out["text"] = row[1]
+    else:
+        out["snippet"] = row[1][:280]
+    print(to_yaml(out))
+    conn.close()
+    db.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
