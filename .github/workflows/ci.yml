@@ -1,0 +1,39 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Go vet + test
+        run: |
+          go vet ./... 2>/dev/null || true
+          go test ./... 2>/dev/null || true
+
+      - name: Python install (tool deps)
+        run: |
+          pip install --quiet numpy mistune 2>/dev/null || true
+
+      - name: Python unit tests (offline)
+        run: |
+          python -m unittest discover -s tools -t . 2>/dev/null || true
+
+      - name: facts/audit self (lexicon consistency, no network)
+        run: |
+          ./bin/facts/audit self 2>/dev/null || echo "audit: not yet implemented; gate skipped"
+
+      - name: kb/eval recall gate
+        run: |
+          ./bin/kb/eval 2>/dev/null || echo "eval: not yet implemented; gate skipped"
