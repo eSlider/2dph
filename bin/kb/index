@@ -61,6 +61,17 @@ def load_corpus_glob(source: str) -> list[dict]:
             leafs.extend(to_all(read_markdown(path), path, repo=repo))
         except OSError as e:
             print(f"kb/index: skip {path}: {e}", file=sys.stderr)
+    # yaml seeds (knowledge-mesh, workspace catalogs) as plain info leafs
+    if root.is_dir():
+        for path in sorted(root.rglob("*.y*ml")):
+            try:
+                leafs.append({
+                    "source": str(path), "repo": repo, "heading": path.stem,
+                    "text": path.read_text(encoding="utf-8", errors="replace")[:20000],
+                    "type": "seed", "status": "current", "related": "",
+                })
+            except OSError:
+                continue
     return leafs
 
 

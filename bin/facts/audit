@@ -24,13 +24,12 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 
 def audit_db() -> list[str]:
-    from kblib import connect, init_schema
+    from kblib import connect
     from kblib import VAR
     dbpath = VAR / "kb.lbug"
     if not dbpath.exists():
         return ["no database yet; run bin/kb/index first"]
     db, conn = connect(dbpath)
-    init_schema(conn)
     r = conn.execute("MATCH (l:Leaf {root:'facts'}) RETURN l.id, l.source, l.loc, l.how, l.confidence")
     problems: list[str] = []
     for lid, source, loc, how, conf in r.get_all():

@@ -157,5 +157,4 @@ def open_readonly() -> tuple[ladybug.Database, ladybug.Connection]:
     if not DB_PATH.exists():
         raise FileNotFoundError(f"{DB_PATH} missing - run bin/kb/index first")
     db, conn = connect(read_only=True)
-    init_schema(conn)
     return db, conn
