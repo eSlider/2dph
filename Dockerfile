@@ -14,17 +14,24 @@ COPY requirements.lock.txt /tmp/requirements.lock.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.lock.txt \
     && rm /tmp/requirements.lock.txt
 
-COPY . .
+# Go serve: static binary, no interpreter at runtime
+FROM golang:1.25 AS serve-build
+WORKDIR /src/serve
+COPY serve/go.mod serve/go.sum* ./
+COPY serve .
+RUN CGO_ENABLED=0 go build -o /serve -ldflags="-s -w" .
 
-# wait for the actual tools (bin/*) to exist before wiring docker helpers
-COPY docker/kb-watch /app/.dockerbin/kb-watch
-COPY docker/serve /app/.dockerbin/serve
-RUN chmod +x /app/.dockerbin/kb-watch /app/.dockerbin/serve \
+# runtime: python toolchain + Go server
+FROM base
+COPY . .
+COPY --from=serve-build /serve /app/serve/serve
+RUN chmod +x /app/bin/kb-watch /app/bin/docker-entrypoint \
     && chown -R 2dph:2dph /app
 USER 2dph
 
-ENV PATH="/app/.dockerbin:${PATH}"
+ENV PATH="/app/bin:${PATH}" \
+    KB_PY=python3
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import model2vec, ladybug, mistune; print('ok')" || exit 1
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+ENTRYPOINT ["/app/bin/docker-entrypoint"]

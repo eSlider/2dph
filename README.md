@@ -124,6 +124,7 @@ Docker (optional, cached model + var volumes):
 ```bash
 docker compose run --rm brain index            # (re)index corpus
 docker compose run --rm brain search "query"   # one-shot query
+docker compose run --rm brain serve            # async Go HTTP server
 docker compose up brain-watch                  # auto re-index on change
 ```
 

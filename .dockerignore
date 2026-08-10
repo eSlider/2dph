@@ -10,5 +10,5 @@ __pycache__
 .cache
 .secrets
 .skills-tmp
-docker/.dockerclean
+serve/serve
 docs/.build

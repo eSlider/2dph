@@ -30,10 +30,18 @@ jobs:
       - name: Shell syntax check
         run: |
           bash -n bin/db/psql-yq
+          bash -n bin/db/ssh-tunnel
+          bash -n bin/kb-watch
+          bash -n bin/docker-entrypoint
 
       - name: Python unit tests (offline, vendored tools)
         run: |
           uv run python -m unittest discover -s tools -t .
+
+      - name: Go serve tests (async, goroutine-bounded)
+        run: |
+          go vet ./...
+          go test ./serve/... -count=1
 
       - name: facts/audit self (lexicon consistency, no network)
         run: |
@@ -42,3 +50,40 @@ jobs:
       - name: kb/eval recall gate
         run: |
           ./bin/kb/eval 2>/dev/null || echo "eval: not yet implemented; gate skipped"
+
+  release:
+    name: Release (semver)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute next semver from conventional commits
+        id: semver
+        run: |
+          bin/ci/semver > /tmp/next
+          echo "next=$(cat /tmp/next)" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag + GitHub Release
+        if: steps.semver.outputs.next != 'none'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.semver.outputs.next }}
+        run: |
+          set -euo pipefail
+          PREV=$(git tag --sort=-v:refname | grep -v "^$TAG$" | head -1 || true)
+          RANGE=""
+          [ -n "$PREV" ] && RANGE="$PREV..HEAD"
+          { echo "2dph $TAG — changes from conventional commits";
+            git log --format='- %s' $RANGE | head -40; } > /tmp/notes
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file /tmp/notes

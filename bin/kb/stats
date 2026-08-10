@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""kb/stats - index health for the 2dph brain.
+
+  bin/kb/stats            # leaf counts by root, db size, model
+  bin/kb/stats --json     # machine-readable
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "tools"))
+
+from kblib import open_readonly, stats  # noqa: E402
+from yamlout import to_yaml  # noqa: E402
+
+
+def main(argv: list[str]) -> int:
+    import argparse
+    p = argparse.ArgumentParser(description="brain index health")
+    p.add_argument("--json", action="store_true")
+    a = p.parse_args(argv)
+
+    try:
+        db, conn = open_readonly()
+    except FileNotFoundError as e:
+        print(e, file=sys.stderr)
+        return 1
+
+    s = stats(conn)
+    conn.close()
+    db.close()
+    print(json.dumps(s, indent=2) if a.json else to_yaml(s))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
