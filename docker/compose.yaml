@@ -1,0 +1,63 @@
+# 2dph — best-practice docker composition
+#
+#   docker compose run --rm brain index                     # rebuild graph
+#   docker compose run --rm brain search "Matrix fed"       # one-shot query
+#   docker compose up brain-watch                           # auto re-index
+#
+# Caching: the 128M model (HF_HOME) and kb.lbug (VAR_DIR) live in named
+# volumes, so rebuilds never redownload the model or re-derive the graph.
+# Secrets are never baked into the image: search.env + db-profiles.yml mount
+# read-only from ~/.config/brain.
+
+name: 2dph
+
+services:
+  brain:
+    image: ghcr.io/eslider/2dph:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      cache_from:
+        - ghcr.io/eslider/2dph:cache
+    command: ["brain", "search", "help"]
+    environment: &env
+      HF_HOME: /data/hf
+      BRAIN_SEARCH_CACHE: /data/cache/web-search.sqlite
+      BRAIN_DB_PROFILES: /secret/db-profiles.yml
+      BRAIN_SEARCH_ENV: /secret/search.env
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/data
+      # corpus is read-only on the host, never written from the container
+      - ../..:/corpus:ro
+      - ~/.config/brain:/secret:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import ladybug, model2vec, mistune; print('ok')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  # watcher: re-index on corpus file change (inotify via watchdog script)
+  brain-watch:
+    image: ghcr.io/eslider/2dph:latest
+    environment: *env
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/data
+      - ../..:/corpus:ro
+      - ~/.config/brain:/secret:ro
+    command: ["brain", "watch", "/corpus"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+volumes:
+  kb-model:
+  kb-var:

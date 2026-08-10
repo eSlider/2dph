@@ -26,7 +26,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 |---|----------|--------|
 | D1 | RAG corpus | ops stack (chat, onlyoffice, gitea/NPM, searchxng, observability, ai-bot, mcp-servers, `~/.ssh/config`) + portfolio. Exclude `office.dev` + jobs/applications. |
 | D2 | skill merging | integrate skills **in this project** `skills/`; skip gitea / brain-detective-depe ndent skills. |
-| D3 | web search | import `web-search` (agent-skills), retire local `searxng-ops`. |
+| D3 | web search | import `web-search`, retire local `searxng-ops`. Vendored here, no remote link. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
 | D6 | graph engine | **LadybugDB** (Kuzu successor, MIT, embedded, native FTS+vector+Cypher). Python binding for `bin/*`; Go shebang for golang tools. |
@@ -56,8 +56,8 @@ detective method: **a fact needs ≥2 independent sources or it is
     kb/get  kb/stats  kb/eval
     md/import  md/select  md/tables  md/gaps     (mistune)
     brain/extract  brain/audit   brain/deduce    (thinking wrapper)
-    web/search               (symlink into agent-skills web-search)
-    db/psql-yq               (symlink into agent-skills)
+    web/search               (vendored)
+    db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
   var/kb.lbug               single embedded store (gitignored)
   .venv/                    ladybug + model2vec + mistune + numpy
@@ -113,7 +113,7 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 
 1. scaffold repo (:done after this file + AGENTS.md + .gitignore + ci)
 2. gh repo create eSlider/2dph --private + initial commit + CI
-3. agent-skills clone + skill integration (web-search, db-yaml, kb-search, agent-cost, diataxis-docs)
+3. vendored skill integration (web-search, db-yaml, kb-search, agent-cost, diataxis-docs) — no remote links
 4. .venv: ladybug + model2vec + mistune
 5. schema + tools with TDD (kb + md + facts + brain)
 6. ~/.config/brain config

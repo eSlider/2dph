@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# db/ssh-tunnel - open 127.0.0.1:5433 -> onlyoffice VM Postgres (host port 32).
+#
+#   db/ssh-tunnel            # background tunnel, ready for db/psql-yq
+#   db/ssh-tunnel --check    # exit 0 if a tunnel is already up
+#   db/ssh-tunnel --stop     # kill any tunnel owned by this tool
+#
+# OnlyOffice runs as a QEMU VM (docker network office_default), SSH on host
+# port 32. Its Postgres listens on 127.0.0.1:5432 inside the VM and is not
+# exposed. This forwards localhost:5433 to it so db/psql-yq can query with
+# the onlyoffice profile. Credentials are never part of the tunnel.
+set -euo pipefail
+
+SRC="${BRAIN_TUNNEL_LOCAL:-127.0.0.1:5433}"
+DST="${BRAIN_TUNNEL_REMOTE:-127.0.0.1:5432}"
+SSH_PORT="${BRAIN_TUNNEL_SSH_PORT:-32}"
+SSH_USER="${BRAIN_TUNNEL_SSH_USER:-root}"
+SSH_HOST="${BRAIN_TUNNEL_SSH_HOST:-127.0.0.1}"
+MARKER="2dph-ssh-tunnel"
+
+case "${1:-}" in
+  --check)
+    ss -tln 2>/dev/null | grep -q "${SRC%:*}:${SRC#*:}" && exit 0
+    pgrep -f "${MARKER}" >/dev/null && exit 0
+    exit 1
+    ;;
+  --stop)
+    pkill -f "${MARKER}" && echo "tunnel stopped" || echo "no tunnel running"
+    exit 0
+    ;;
+  -h|--help)
+    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
+    exit 0
+    ;;
+  "")
+    [ -f "$HOME/.ssh/config" ] || { echo "db/ssh-tunnel: ~/.ssh/config missing" >&2; exit 1; }
+    if db/ssh-tunnel --check; then
+      echo "tunnel already up on ${SRC}"
+      exit 0
+    fi
+    ssh -f -N -M -S "$HOME/.ssh/2dph-tunnel.sock" \
+      -L "${SRC}:${DST}" -p "$SSH_PORT" "${SSH_USER}@${SSH_HOST}" \
+      && echo "tunnel up on ${SRC} (-> vm:${DST})"
+    exit 0
+    ;;
+  *)
+    echo "unknown arg: $1" >&2
+    exit 1
+    ;;
+esac

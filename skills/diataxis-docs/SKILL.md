@@ -34,8 +34,8 @@ related:
 becomes a graph edge:
 
 ```bash
-bin/kb/search search "deploy" --type howto
-bin/kb/search search "Stecktafel" --hop 1     # follow links and related
+bin/kb/search "deploy" --type howto
+bin/kb/search "Stecktafel" --hop 1     # follow links and related
 ```
 
 ## Audit checklist

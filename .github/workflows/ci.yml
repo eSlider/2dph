@@ -1,34 +1,39 @@
-name: ci
+name: Tests
+
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: Test
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
 
-      - name: Go vet + test
-        run: |
-          go vet ./... 2>/dev/null || true
-          go test ./... 2>/dev/null || true
+      - name: Sync toolchain (ladybug, model2vec, mistune)
+        run: uv sync --frozen
 
-      - name: Python install (tool deps)
+      - name: Shell syntax check
         run: |
-          pip install --quiet numpy mistune 2>/dev/null || true
+          bash -n bin/db/psql-yq
 
-      - name: Python unit tests (offline)
+      - name: Python unit tests (offline, vendored tools)
         run: |
-          python -m unittest discover -s tools -t . 2>/dev/null || true
+          uv run python -m unittest discover -s tools -t .
 
       - name: facts/audit self (lexicon consistency, no network)
         run: |
