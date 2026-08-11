@@ -9,3 +9,4 @@ __pycache__/
 *.env
 .env
 .secrets/
+lib-ladybug/
