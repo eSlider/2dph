@@ -39,13 +39,34 @@ bin/          self-describing tools bin/{subject}/{method} (shebang)
 bin/serve.go  async Go HTTP server entry (self-executing go run shebang)
 bin/watch/    corpus watcher Go package (mtimes, no inotify deps)
 bin/server/   async Go HTTP server (goroutines, bounded worker pool)
+bin/mail/     mail pipeline: sync (Go), import (md), index_mail (rebuild)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/docker-entrypoint  container entrypoint (brain index|search|serve|watch)
 compose.yaml  docker composition (root level, not docker/)
 Dockerfile    multi-stage: python deps + static Go binaries
-var/          kb.lbug, caches (gitignored)
+var/          kb.lbug, var/mail/*, caches (gitignored)
 .venv/        ladybug + model2vec + mistune
 ```
+
+## Mail pipeline
+
+```bash
+bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail   # raw message.json + attachments
+bin/mail/import --from-raw var/mail                                     # message.json → message.md (convert only)
+bin/mail/index_mail                                                     # rebuild brain incl. all mail (fresh DB)
+```
+
+- `sync` (Go) downloads messages + attachments; Gmail uses paginated list +
+  `body.attachmentId` (not partId) for attachments.
+- `import` converts body + attachments to markdown. PDFs use poppler
+  `pdftotext -layout` fast path (~15ms); textless/scanned PDFs fall back to
+  docling (isolated subprocess — its native onnx can segfault the parent).
+  Conversion never touches the brain DB (crash safety).
+- `index_mail` always rebuilds from scratch (repo corpus + mail). Ladybug
+  corrupts its WAL when brand-new leafs are bulk-inserted while FTS/vector
+  indexes exist; a fresh DB with indexes created last is the only safe path.
+  Keep conversion + indexing separate so a conversion crash can't leave the
+  DB mid-transaction.
 
 ## Tools
 

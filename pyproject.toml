@@ -6,7 +6,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
+    "docling>=2.119.0",
     "ladybug==0.19.1",
+    "markitdown[docx,epub,html,image-exif,pdf,pptx,xlsx,zip]>=0.1.7",
     "mistune==3.3.4",
     "model2vec==0.8.2",
     "numpy>=2.5.2",
