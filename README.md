@@ -93,6 +93,15 @@ bin/kb/stats                                      # index health
 bin/kb/eval                                       # recall@5 gate
 ```
 
+Mail is a first-class corpus (retrievable through the same search):
+
+```bash
+bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
+bin/mail/import --from-raw var/mail                                     # JSON → markdown
+bin/mail/index_mail                                                     # rebuild brain incl. mail
+bin/kb/search "Mietwagen Nürnberg invoice"                              # now answers from mail
+```
+
 ## Storage
 
 - **LadybugDB** — single `var/kb.lbug`, Cypher property graph, HNSW + BM25
