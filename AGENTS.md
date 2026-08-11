@@ -36,12 +36,13 @@ PLAN.md       decisions + execution + open questions
 docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method} (shebang)
-bin/kb-watch  corpus watcher (mtimes, no inotify deps)
+bin/serve.go  async Go HTTP server entry (self-executing go run shebang)
+bin/watch/    corpus watcher Go package (mtimes, no inotify deps)
+bin/server/   async Go HTTP server (goroutines, bounded worker pool)
+bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/docker-entrypoint  container entrypoint (brain index|search|serve|watch)
-serve/        async Go HTTP server (goroutines, bounded worker pool)
-tools/        vendored python libs behind bin/* (yamlout, websearch)
 compose.yaml  docker composition (root level, not docker/)
-Dockerfile    multi-stage: python deps + static Go serve
+Dockerfile    multi-stage: python deps + static Go binaries
 var/          kb.lbug, caches (gitignored)
 .venv/        ladybug + model2vec + mistune
 ```

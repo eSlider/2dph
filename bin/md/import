@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-import lib
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
 from mdleaves import leaves_to_json, read_markdown, to_all, walk_markdown  # noqa: E402
 from yamlout import to_yaml  # noqa: E402

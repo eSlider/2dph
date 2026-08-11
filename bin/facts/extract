@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 COMPOSE_FILES = [ROOT / "docker" / "compose.yaml", ROOT / "compose.yaml"]
 DOC_MARKERS = ["README.md", "PLAN.md", "AGENTS.md"]
