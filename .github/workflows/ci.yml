@@ -31,18 +31,16 @@ jobs:
         run: |
           bash -n bin/db/psql-yq
           bash -n bin/db/ssh-tunnel
-          bash -n bin/kb-watch
           bash -n bin/docker-entrypoint
 
       - name: Python unit tests (offline, vendored tools)
         run: |
-          uv run python -m unittest discover -s tools -t .
+          uv run python -m unittest discover -s bin/tools -t .
 
-      - name: Go serve tests (async, goroutine-bounded)
+      - name: Go tests (server + watch packages)
         run: |
           go vet ./...
           go test ./... -count=1
-        working-directory: serve
 
       - name: facts/audit self (lexicon consistency, no network)
         run: |

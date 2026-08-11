@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 from kblib import connect, hybrid_search, init_schema, open_readonly, query_fts  # noqa: E402
 from yamlout import to_yaml  # noqa: E402
@@ -30,6 +30,7 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description="deduction search over the brain")
     p.add_argument("query")
     p.add_argument("--root", choices=("facts", "info", None), default=None)
+    p.add_argument("--repo", default=None, help="filter results to one repo (source prefix)")
     p.add_argument("--hop", type=int, default=0)
     p.add_argument("-n", "--limit", type=int, default=10)
     p.add_argument("--json", action="store_true")
@@ -54,6 +55,9 @@ def main(argv: list[str]) -> int:
     results = hybrid_search(conn, emb, rhs, a.limit)
     if a.root:
         results = [h for h in results if h["root"] == a.root]
+    if a.repo:
+        repo = a.repo
+        results = [h for h in results if repo in (h.get("source") or "")]
 
     for hit in results:
         hit.pop("rrf", None)

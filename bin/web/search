@@ -25,7 +25,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-TOOLS = Path(__file__).resolve().parents[1].parent / "tools"
+TOOLS = Path(__file__).resolve().parents[1] / "tools"
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "web-search"))
 

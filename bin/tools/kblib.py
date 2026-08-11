@@ -22,7 +22,17 @@ ROOT_FACTS = "facts"
 ROOT_INFO = "info"
 CONF_CONFIRMED = "confirmed"
 
-VAR = Path(__file__).resolve().parents[1] / "var"
+def _repo_root() -> Path:
+    p = Path(__file__).resolve().parent
+    while True:
+        if (p / "var").is_dir() or (p / ".git").is_dir() or (p / "pyproject.toml").is_file():
+            return p
+        if p.parent == p:
+            return Path(__file__).resolve().parents[2]
+        p = p.parent
+
+
+VAR = _repo_root() / "var"
 DB_PATH = VAR / "kb.lbug"
 
 
@@ -68,6 +78,19 @@ def init_schema(conn: ladybug.Connection) -> None:
     conn.execute(
         "CREATE REL TABLE IF NOT EXISTS RUNS_ON (FROM Leaf TO Host)"
     )
+    conn.execute(
+        "CREATE NODE TABLE IF NOT EXISTS Commit (id STRING, repo STRING, subject STRING, "
+        "author STRING, email STRING, date STRING, PRIMARY KEY(id))"
+    )
+    conn.execute(
+        "CREATE NODE TABLE IF NOT EXISTS Person (id STRING, name STRING, email STRING, PRIMARY KEY(id))"
+    )
+    conn.execute(
+        "CREATE REL TABLE IF NOT EXISTS HAS_VERSION (FROM File TO Commit)"
+    )
+    conn.execute(
+        "CREATE REL TABLE IF NOT EXISTS AUTHORED (FROM Commit TO Person)"
+    )
 
 
 def leaf_id(text: str, source: str) -> str:
@@ -107,6 +130,18 @@ def create_fts_and_vector(conn: ladybug.Connection, force: bool = False) -> None
         conn.execute("CALL CREATE_VECTOR_INDEX('Leaf', 'Leaf_vec', 'embedding', metric := 'cosine')")
     except Exception:
         pass
+
+
+def drop_indexes(conn: ladybug.Connection) -> None:
+    """Drop FTS + vector indexes so bulk MERGEs don't corrupt them.
+
+    Ladybug's FTS index goes inconsistent when rows are inserted while the
+    index exists ("document for node offset N is missing during delete").
+    Importers that add many leafs must drop indexes first, write, then
+    recreate via create_fts_and_vector().
+    """
+    conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_fts")
+    conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_vec")
 
 
 def query_fts(conn: ladybug.Connection, text: str, limit: int = 10) -> list[dict]:

@@ -4,8 +4,8 @@
 #   brain                 shell (default)
 #   brain search <q>      bin/kb/search
 #   brain index           bin/kb/index
-#   brain watch <dir>     watchdog re-indexer
-#   brain serve           async Go HTTP server (serve/)
+#   brain watch <dir>     watchdog re-indexer (bin/kb/watch)
+#   brain serve           async Go HTTP server (bin/serve)
 #
 # Usage comment starts at line 2 (self-describing convention).
 set -euo pipefail
@@ -17,7 +17,7 @@ case "$CMD" in
   shell) exec bash ;;
   search) exec "$KB_PY" /app/bin/kb/search "$@" ;;
   index) exec "$KB_PY" /app/bin/kb/index "$@" ;;
-  watch) exec bash /app/bin/kb-watch "$@" ;;
-  serve) exec /app/serve/serve "$@" ;;
+  watch) exec /app/bin/watch "$@" ;;
+  serve) exec /app/bin/serve "$@" ;;
   *) echo "unknown command: $CMD" >&2; exit 2 ;;
 esac

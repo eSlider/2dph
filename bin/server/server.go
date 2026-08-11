@@ -1,9 +1,16 @@
-// Package main serves the 2dph brain over HTTP.
+// Package server serves the 2dph brain over HTTP.
 //
 // Async by design: every request runs on its own goroutine, and CPU-heavy
 // searches are serialized through a bounded worker pool (a counting
 // semaphore) so N requests can't spawn N Python interpreters at once.
-package main
+//
+// Used by bin/serve.go which is a self-executing shebang script:
+//
+//	///usr/bin/env go run "$0" "$@"; exit
+//	package main
+//	import "github.com/eSlider/2dph/bin/server"
+//	func main() { server.Run() }
+package server
 
 import (
 	"context"
@@ -115,10 +122,14 @@ func (b *brainSearcher) Search(ctx context.Context, query string, limit int) ([]
 	return out, nil
 }
 
-func main() {
+// Run starts the HTTP server. Reads env: KB_SEARCH_CMD (default bin/kb/search,
+// relative to the repo root given by KB_ROOT), KB_WORKERS (default 4), KB_PORT
+// (default 8630).
+func Run() {
+	root := os.Getenv("KB_ROOT")
 	searchPath := os.Getenv("KB_SEARCH_CMD")
 	if searchPath == "" {
-		searchPath = filepath.Join("bin", "kb", "search")
+		searchPath = filepath.Join(root, "bin", "kb", "search")
 	}
 	workers := 4
 	if raw := os.Getenv("KB_WORKERS"); raw != "" {
