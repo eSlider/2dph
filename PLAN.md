@@ -93,8 +93,24 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 - OQ1: mutually-contradicting evidence — how to resolve (authority weighting,
   temporal freshness, audit adjudication).
-- OQ2: OCR pipeline for pdfs/images/docs (late phase).
+- OQ2: OCR pipeline for pdfs/images/docs — mostly solved: poppler pdftotext
+  fast-path for born-digital PDFs, docling fallback for the ~5% textless ones.
 - OQ3: optional duckdb-md layer for `SELECT … FORMAT MARKDOWN` export/write-back.
+- OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
+  serialize and unambiguous; YAML only where humans edit files.
+
+## Mail pipeline (done)
+
+1. `bin/mail/sync.go` (Go, 8 workers) — paginated Gmail/OnlyOffice download.
+   Gmail attachments key off `body.attachmentId`, not MIME `partId`.
+2. `bin/mail/import --from-raw` — message.json → message.md; PDFs via
+   `pdftotext -layout` (~15ms) with docling subprocess fallback; ICS sidecars
+   Latin-1→UTF-8 normalized.
+3. `bin/mail/index_mail` — fresh rebuild (repo corpus + mail) because ladybug
+   corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
+   indexing stay separate for crash safety.
+4. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
+   via `bin/kb/search`.
 
 ## CI/CD pipeline (D15)
 

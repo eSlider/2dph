@@ -116,11 +116,13 @@ def main(argv: list[str]) -> int:
     db, conn = connect(DB_PATH, read_only=False)
     init_schema(conn)
 
-    if not (a.rebuild or _already_indexed(conn)):
-        create_fts_and_vector(conn, force=True)
+    # Keep the FTS/VECTOR indexes in place across incremental runs: ladybug's
+    # DROP INDEX leaves the backing tables registered on migrated DBs, so a
+    # drop+recreate silently kills the vector index. Only create when missing.
     embed = embedder()
     done, total = index_leafs(conn, leafs, embed, a.limit)
-    create_fts_and_vector(conn, force=(done > 0 or a.rebuild))
+    if a.rebuild or not _has_indexes(conn):
+        create_fts_and_vector(conn, force=True)
     s = stats(conn)
     conn.close()
     db.close()
@@ -130,9 +132,11 @@ def main(argv: list[str]) -> int:
     return 0
 
 
-def _already_indexed(conn) -> bool:
+def _has_indexes(conn) -> bool:
     try:
-        return conn.execute("MATCH (l:Leaf) RETURN count(*)").get_all()[0][0] > 0
+        rows = conn.execute("CALL SHOW_INDEXES() RETURN *").get_all()
+        names = {row[1] for row in rows if row[0] == "Leaf"}
+        return "id" in names and "Leaf_vec" in names
     except Exception:
         return False
 
