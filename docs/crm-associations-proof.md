@@ -27,7 +27,7 @@ written to the brain under `root=facts` by `bin/facts/crm`.
 
 ## Gates after fix
 
-- `uv run python -m unittest discover -s tools -t .` → 26 tests OK
+- `uv run python -m unittest discover -s bin/tools -t .` → 26 tests OK
 - `bin/facts/audit self` + `bin/facts/audit db` → ok
 - `bin/kb/eval` → recall@5 = 1.0
-- `go test ./...` (serve/) → ok
+- `go test ./...` (bin/server + bin/watch) → ok

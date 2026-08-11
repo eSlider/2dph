@@ -116,7 +116,7 @@ touches network/db is read-only, throttled, cached. Tests gate every commit.
 uv venv .venv                                  # Python 3.12, uv-managed
 uv pip install -r requirements.lock.txt        # pinned toolchain
 bin/facts/audit self                           # lexicon consistency gate
-go test ./... && python -m unittest discover -s tools -t .
+go test ./... && python -m unittest discover -s bin/tools -t .
 ```
 
 Docker (optional, cached model + var volumes):

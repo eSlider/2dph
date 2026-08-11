@@ -14,23 +14,27 @@ COPY requirements.lock.txt /tmp/requirements.lock.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.lock.txt \
     && rm /tmp/requirements.lock.txt
 
-# Go serve: static binary, no interpreter at runtime
-FROM golang:1.25 AS serve-build
-WORKDIR /src/serve
-COPY serve/go.mod serve/go.sum* ./
-COPY serve .
-RUN CGO_ENABLED=0 go build -o /serve -ldflags="-s -w" .
+# Go services: static binaries, no interpreter at runtime
+FROM golang:1.25 AS go-build
+WORKDIR /src
+COPY go.mod ./
+COPY bin/server ./bin/server
+COPY bin/watch ./bin/watch
+RUN CGO_ENABLED=0 go build -o /serve ./bin/server \
+    && CGO_ENABLED=0 go build -o /watch ./bin/watch
 
-# runtime: python toolchain + Go server
+# runtime: python toolchain + Go services
 FROM base
 COPY . .
-COPY --from=serve-build /serve /app/serve/serve
-RUN chmod +x /app/bin/kb-watch /app/bin/docker-entrypoint \
+COPY --from=go-build /serve /app/bin/serve
+COPY --from=go-build /watch /app/bin/watch
+RUN chmod +x /app/bin/docker-entrypoint \
     && chown -R 2dph:2dph /app
 USER 2dph
 
 ENV PATH="/app/bin:${PATH}" \
-    KB_PY=python3
+    KB_PY=python3 \
+    KB_ROOT=/app
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import model2vec, ladybug, mistune; print('ok')" || exit 1
 

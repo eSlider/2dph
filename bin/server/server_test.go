@@ -1,11 +1,8 @@
-package main
+package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -55,10 +52,6 @@ func (f *fakeSearcher) count() int {
 	return f.calls
 }
 
-func newTestServer(s Searcher, workers int) http.Handler {
-	return NewServer(s, workers)
-}
-
 func get(t *testing.T, h http.Handler, path string) (int, []byte) {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -68,7 +61,7 @@ func get(t *testing.T, h http.Handler, path string) (int, []byte) {
 }
 
 func TestHealth(t *testing.T) {
-	h := newTestServer(&fakeSearcher{}, 1)
+	h := NewServer(&fakeSearcher{}, 1)
 	code, body := get(t, h, "/health")
 	if code != http.StatusOK {
 		t.Fatalf("health code = %d, want 200", code)
@@ -83,7 +76,7 @@ func TestHealth(t *testing.T) {
 }
 
 func TestSearchMissingQuery(t *testing.T) {
-	h := newTestServer(&fakeSearcher{}, 1)
+	h := NewServer(&fakeSearcher{}, 1)
 	if code, _ := get(t, h, "/search"); code != http.StatusBadRequest {
 		t.Fatalf("code = %d, want 400", code)
 	}
@@ -93,7 +86,7 @@ func TestSearchReturnsSearcherResult(t *testing.T) {
 	fs := &fakeSearcher{callback: func(q string, limit int) ([]byte, error) {
 		return []byte(`{"query":"` + q + `","count":1,"results":[{"id":"x"}]}`), nil
 	}}
-	h := newTestServer(fs, 1)
+	h := NewServer(fs, 1)
 	code, body := get(t, h, "/search?q=matrix")
 	if code != http.StatusOK {
 		t.Fatalf("code = %d, want 200", code)
@@ -113,7 +106,7 @@ func TestSearchReturnsSearcherResult(t *testing.T) {
 func TestSearchConcurrencyBounded(t *testing.T) {
 	// 8 parallel requests on a 3-worker pool: at most 3 concurrent searches.
 	fs := &fakeSearcher{delay: 20 * time.Millisecond}
-	h := newTestServer(fs, 3)
+	h := NewServer(fs, 3)
 
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {
@@ -142,7 +135,7 @@ func TestSearchConcurrencyBounded(t *testing.T) {
 }
 
 func TestSearchRejectsBadLimit(t *testing.T) {
-	h := newTestServer(&fakeSearcher{}, 1)
+	h := NewServer(&fakeSearcher{}, 1)
 	if code, _ := get(t, h, "/search?q=x&n=hundred"); code != http.StatusBadRequest {
 		t.Fatalf("code = %d, want 400", code)
 	}
@@ -171,7 +164,4 @@ func TestSearchTimeout(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("request hung after context cancellation")
 	}
-	_ = io.Discard
-	_ = bytes.MinRead
-	_ = fmt.Sprintf
 }
