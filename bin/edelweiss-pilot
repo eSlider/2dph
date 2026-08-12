@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# bin/edelweiss-pilot — Edelweiss-only 2dph brain (facts/info)
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+export HF_HOME="${HF_HOME:-$ROOT/var/hf}"
+export PATH="$ROOT/.venv/bin:$PATH"
+mkdir -p "$HF_HOME" "$ROOT/var"
+# Corpus policy (Andriy 2026-08-12):
+# 1 cs-lexicon, 2 vendor kbs, 3 reports only (not raw STT),
+# 4/5/6 seeded via pairing (seed-edelweiss-facts.py),
+# 7 SCHEMA/ARCHITECTURE churn — do not promote to facts,
+# 9 glossary+subjects via docs/docs
+DOCS=(
+  --corpus /home/devops/projects/docs/docs
+  --corpus /home/devops/projects/edelweiss-curasoft/docs
+  --corpus /home/devops/projects/edelweiss-ui/docs
+  --corpus /home/devops/projects/edelweiss-curasoft/docs/lexicon
+  --corpus /home/devops/projects/curasoft/docs/lexicon
+  --corpus /home/devops/projects/curasoft/docs/curasoft-de/kbs
+  --corpus /home/devops/projects/docs/docs/reports
+)
+cmd="${1:-stats}"; shift || true
+case "$cmd" in
+  # Write leafs without indexes → seed facts → ensure_indexes (FTS+HNSW).
+  # Never upsert under live FTS; never DROP INDEX (ghost catalog).
+  index)
+    bin/kb/index --rebuild --skip-indexes "${DOCS[@]}" "$@"
+    .venv/bin/python bin/seed-edelweiss-facts.py
+    ;;
+  search) exec bin/edelweiss-search "$@" ;;
+  search-go) exec bin/kb/search "$@" ;;
+  stats)  exec bin/kb/stats "$@" ;;
+  audit)  exec bin/facts/audit "${1:-db}" "${@:2}" ;;
+  seed)   exec .venv/bin/python bin/seed-edelweiss-facts.py "$@" ;;
+  *) echo "usage: $0 index|search|search-go|stats|audit|seed ..." >&2; exit 2 ;;
+esac
