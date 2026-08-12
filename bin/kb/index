@@ -99,6 +99,11 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description="build the 2dph brain index")
     p.add_argument("--corpus", action="append", help="extra markdown dir/file to index (may repeat)")
     p.add_argument("--rebuild", action="store_true", help="fresh db + indexes")
+    p.add_argument(
+        "--skip-indexes",
+        action="store_true",
+        help="write leafs only; caller runs ensure_indexes after seeding facts",
+    )
     p.add_argument("--limit", type=int, default=0, help="max leafs to embed")
     p.add_argument("--json", action="store_true")
     a = p.parse_args(argv)
@@ -116,16 +121,20 @@ def main(argv: list[str]) -> int:
     db, conn = connect(DB_PATH, read_only=False)
     init_schema(conn)
 
-    # Never DROP FTS/VECTOR (ghost catalog). Write leafs, then ensure indexes.
+    # Never DROP FTS/VECTOR (ghost catalog). Write leafs, then ensure indexes
+    # unless --skip-indexes (seed facts first — MERGE under live FTS corrupts it).
     # --rebuild already deleted kb.lbug above, so CREATE runs on a clean DB.
     embed = embedder()
     done, total = index_leafs(conn, leafs, embed, a.limit)
-    ensure_indexes(conn)
+    if not a.skip_indexes:
+        ensure_indexes(conn)
     s = stats(conn)
     conn.close()
     db.close()
 
     result = {"indexed": done, "corpus_total": total, **{k: v for k, v in s.items() if k in ("total", "by_root")}}
+    if a.skip_indexes:
+        result["indexes"] = "skipped"
     print(json.dumps(result, indent=2) if a.json else f"indexed {done}/{total} leafs; db total {s['total']}")
     return 0
 
