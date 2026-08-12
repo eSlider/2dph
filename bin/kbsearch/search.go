@@ -13,7 +13,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -111,17 +110,7 @@ func runSearch(args []string) int {
 		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
 	}
 
-	results := hybrid(fts, vec, limit)
-
-	if root != "" {
-		results = filterRoot(results, root)
-	}
-	if repo != "" {
-		results = filterRepo(results, repo)
-	}
-	if len(results) > limit {
-		results = results[:limit]
-	}
+	results := rankAndFilter(fts, vec, root, repo, limit)
 
 	for i := range results {
 		if results[i].Text != "" {
@@ -248,70 +237,6 @@ func toJSONOut(hits []Hit, query, rootFilter string) *jsonOut {
 		Count:      len(hits),
 		Results:    out,
 	}
-}
-
-func hybrid(fts, vec []Hit, limit int) []Hit {
-	byID := make(map[string]Hit)
-	rrf := make(map[string]float64)
-
-	for rank, h := range fts {
-		byID[h.ID] = h
-		rrf[h.ID] += 1.0 / (60 + float64(rank+1))
-	}
-	for rank, h := range vec {
-		if _, ok := byID[h.ID]; !ok {
-			byID[h.ID] = h
-		} else {
-			existing := byID[h.ID]
-			if existing.Score == 0 {
-				existing.Score = h.Score
-				byID[h.ID] = existing
-			}
-		}
-		rrf[h.ID] += 1.0 / (60 + float64(rank+1))
-	}
-
-	type scored struct {
-		id  string
-		rrf float64
-	}
-	var scoredList []scored
-	for id, v := range rrf {
-		scoredList = append(scoredList, scored{id, v})
-	}
-	sort.Slice(scoredList, func(i, j int) bool {
-		return scoredList[i].rrf > scoredList[j].rrf
-	})
-
-	var out []Hit
-	for i, s := range scoredList {
-		if i >= limit {
-			break
-		}
-		h := byID[s.id]
-		out = append(out, h)
-	}
-	return out
-}
-
-func filterRoot(hits []Hit, root string) []Hit {
-	var out []Hit
-	for _, h := range hits {
-		if h.Root == root {
-			out = append(out, h)
-		}
-	}
-	return out
-}
-
-func filterRepo(hits []Hit, repo string) []Hit {
-	var out []Hit
-	for _, h := range hits {
-		if strings.Contains(h.Source, repo) {
-			out = append(out, h)
-		}
-	}
-	return out
 }
 
 func resultsToDicts(hits []Hit) []any {
