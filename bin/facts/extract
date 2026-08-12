@@ -176,8 +176,7 @@ def dedupe(facts: list[dict]) -> list[dict]:
 
 
 def write_facts(facts: list[dict]) -> None:
-    from kblib import connect, init_schema, upsert_leaf
-    from kblib import VAR
+    from kblib import VAR, connect, ensure_indexes, init_schema, upsert_leaf
     VAR.mkdir(exist_ok=True)
     db, conn = connect(VAR / "kb.lbug", read_only=False)
     init_schema(conn)
@@ -188,6 +187,8 @@ def write_facts(facts: list[dict]) -> None:
         upsert_leaf(conn, text=f["text"], root="facts", confidence="confirmed",
                     source=f["source"], source_rev=REPO, how=f["how"],
                     loc=f["loc"], type_="fact", embedding=emb)
+    # Upsert-with-index is safe; never DROP+recreate (ghost catalog kills HNSW).
+    ensure_indexes(conn)
     conn.close()
     db.close()
 

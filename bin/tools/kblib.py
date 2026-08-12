@@ -118,30 +118,71 @@ def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: s
     return lid
 
 
+def leaf_index_names(conn: ladybug.Connection) -> set[str]:
+    """Return index names on the Leaf table (e.g. {'id', 'Leaf_vec', '_PK'})."""
+    rows = conn.execute("CALL SHOW_INDEXES() RETURN *").get_all()
+    return {row[1] for row in rows if row[0] == "Leaf"}
+
+
 def create_fts_and_vector(conn: ladybug.Connection, force: bool = False) -> None:
-    if force:
-        conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_fts")
-        conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_vec")
-    try:
-        conn.execute("CALL CREATE_FTS_INDEX('Leaf', 'id', ['text'])")
-    except Exception:
-        pass
-    try:
-        conn.execute("CALL CREATE_VECTOR_INDEX('Leaf', 'Leaf_vec', 'embedding', metric := 'cosine')")
-    except Exception:
-        pass
+    """Create FTS (BM25) + HNSW vector indexes if missing.
+
+    Never DROP INDEX for FTS/VECTOR. Ladybug 0.19 leaves ghost catalog
+    entries after DROP (`_0_Leaf_vec_UPPER`, `0_id_docs`), so a later
+    CREATE fails with "already exists in catalog" while SHOW_INDEXES
+    still omits the index. Swallowing that error made HNSW look "OK"
+    until the first QUERY_VECTOR_INDEX.
+
+    `force=True` is accepted for API compatibility but does **not** drop.
+    Fresh indexes require deleting `var/kb.lbug` and rebuilding
+    (`bin/kb/index --rebuild`).
+    """
+    del force  # API compat; DROP is unsafe — see docstring
+    names = leaf_index_names(conn)
+    if "id" not in names:
+        try:
+            conn.execute("CALL CREATE_FTS_INDEX('Leaf', 'id', ['text'])")
+        except Exception as e:
+            raise RuntimeError(
+                "CREATE_FTS_INDEX failed (often ghost catalog after DROP INDEX). "
+                "Delete var/kb.lbug and run bin/kb/index --rebuild. "
+                f"Cause: {e}"
+            ) from e
+    if "Leaf_vec" not in names:
+        try:
+            conn.execute(
+                "CALL CREATE_VECTOR_INDEX('Leaf', 'Leaf_vec', 'embedding', "
+                "metric := 'cosine')"
+            )
+        except Exception as e:
+            raise RuntimeError(
+                "CREATE_VECTOR_INDEX failed (often ghost catalog after DROP INDEX "
+                "Leaf.Leaf_vec → `_0_Leaf_vec_UPPER already exists in catalog`). "
+                "Delete var/kb.lbug and run bin/kb/index --rebuild. "
+                f"Cause: {e}"
+            ) from e
+    names = leaf_index_names(conn)
+    missing = {"id", "Leaf_vec"} - names
+    if missing:
+        raise RuntimeError(
+            f"Leaf indexes incomplete after create: missing {sorted(missing)}; "
+            f"have {sorted(names)}. Delete var/kb.lbug and --rebuild."
+        )
+
+
+def ensure_indexes(conn: ladybug.Connection) -> None:
+    """Idempotent: create FTS + HNSW only when missing. Safe after upserts."""
+    create_fts_and_vector(conn, force=False)
 
 
 def drop_indexes(conn: ladybug.Connection) -> None:
-    """Drop FTS + vector indexes so bulk MERGEs don't corrupt them.
+    """No-op. Kept for callers; DROP INDEX is fatal on Ladybug 0.19.
 
-    Ladybug's FTS index goes inconsistent when rows are inserted while the
-    index exists ("document for node offset N is missing during delete").
-    Importers that add many leafs must drop indexes first, write, then
-    recreate via create_fts_and_vector().
+    Historical note claimed "drop before bulk MERGE". Measured: upsert while
+    indexes exist keeps HNSW queryable; DROP leaves ghost catalog tables that
+    block recreate. Bulk rebuilders must delete `var/kb.lbug` instead.
     """
-    conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_fts")
-    conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_vec")
+    return
 
 
 def query_fts(conn: ladybug.Connection, text: str, limit: int = 10) -> list[dict]:

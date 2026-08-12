@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 from kblib import (  # noqa: E402
-    connect, create_fts_and_vector, drop_indexes, init_schema, upsert_leaf,
+    connect, ensure_indexes, init_schema, upsert_leaf,
 )
 from gitimport import commits_to_leafs, ensure_git_schema, index_commits, parse_log  # noqa: E402
 
@@ -125,9 +125,10 @@ def main(argv: list[str]) -> int:
                 print(f"{r['repo']:<24} {r['commits']:>5} commits -> {r['leafs']} leafs  {r['path']}")
         return 0
 
+    # Never DROP FTS/VECTOR (ghost catalog). Upsert while indexes exist is OK;
+    # ensure_indexes only CREATEs when missing.
     db, conn = connect(ROOT / "var" / "kb.lbug", read_only=False)
     init_schema(conn)
-    drop_indexes(conn)
     embed = embedder()
     rows: list[dict] = []
     for repo in repos:
@@ -136,7 +137,7 @@ def main(argv: list[str]) -> int:
         reached, written = import_repo(conn, repo, embed, a.limit, a.since)
         total_commits += reached
         rows.append({"repo": repo_name(repo), "commits": reached, "written": written})
-    create_fts_and_vector(conn, force=True)
+    ensure_indexes(conn)
     conn.close()
     db.close()
 

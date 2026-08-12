@@ -35,7 +35,7 @@ class KblibTest(unittest.TestCase):
                           confidence="confirmed", source="s", source_rev="r1",
                           how="test", loc="/tmp", type_="reference",
                           embedding=make_emb(1.0))
-        kblib.create_fts_and_vector(self.conn, force=True)
+        kblib.ensure_indexes(self.conn)
         hits = kblib.query_fts(self.conn, "fox", 5)
         self.assertEqual(len(hits), 1)
         self.assertEqual(hits[0]["root"], "info")
@@ -49,11 +49,41 @@ class KblibTest(unittest.TestCase):
                           confidence="confirmed", source="s", source_rev="r1",
                           how="test", loc="/tmp", type_="reference",
                           embedding=make_emb(0.0))
-        kblib.create_fts_and_vector(self.conn, force=True)
+        kblib.ensure_indexes(self.conn)
         result = kblib.hybrid_search(self.conn, make_emb(1.0), [], 5)
         self.assertTrue(result)
         self.assertIn("rrf", result[0])
         self.assertEqual(result[0]["text"], "the quick brown fox")
+
+    def test_upsert_keeps_hnsw_queryable(self):
+        """Upsert while HNSW exists must not kill vector search."""
+        kblib.upsert_leaf(self.conn, text="seed leaf", root="info",
+                          confidence="confirmed", source="s", source_rev="r1",
+                          how="test", loc="/tmp", type_="reference",
+                          embedding=make_emb(0.2))
+        kblib.ensure_indexes(self.conn)
+        self.assertIn("Leaf_vec", kblib.leaf_index_names(self.conn))
+        kblib.upsert_leaf(self.conn, text="added after index", root="facts",
+                          confidence="confirmed", source="a.md x b.md",
+                          source_rev="r1", how="test", loc="/tmp", type_="fact",
+                          embedding=make_emb(0.9))
+        hits = kblib.query_vector(self.conn, make_emb(0.9), 5)
+        self.assertTrue(hits)
+        self.assertIn("Leaf_vec", kblib.leaf_index_names(self.conn))
+
+    def test_drop_vector_then_create_raises_clear_error(self):
+        """DROP INDEX leaves ghost catalog; create_fts_and_vector must raise."""
+        kblib.upsert_leaf(self.conn, text="seed", root="info",
+                          confidence="confirmed", source="s", source_rev="r1",
+                          how="test", loc="/tmp", type_="reference",
+                          embedding=make_emb(0.1))
+        kblib.ensure_indexes(self.conn)
+        self.conn.execute("DROP INDEX IF EXISTS Leaf.Leaf_vec")
+        with self.assertRaises(RuntimeError) as ctx:
+            kblib.create_fts_and_vector(self.conn, force=True)
+        msg = str(ctx.exception)
+        self.assertIn("CREATE_VECTOR_INDEX failed", msg)
+        self.assertIn("--rebuild", msg)
 
     def test_stats_counts_roots(self):
         kblib.upsert_leaf(self.conn, text="a fact leaf", root="facts",
