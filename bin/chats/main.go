@@ -40,8 +40,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "chats: WhatsApp not implemented yet\n")
 			os.Exit(1)
 		case "linkedin":
-			fmt.Fprintf(os.Stderr, "chats: LinkedIn not implemented yet\n")
-			os.Exit(1)
+			os.Exit(runSyncLinkedIn(platformArgs))
 		default:
 			fmt.Fprintf(os.Stderr, "chats: unknown platform %q\n", platform)
 			os.Exit(2)
