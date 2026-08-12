@@ -106,7 +106,10 @@ bin/kb/search "Mietwagen Nürnberg invoice"                              # now a
 
 - **LadybugDB** — single `var/kb.lbug`, Cypher property graph, HNSW + BM25
   in one engine, embedded (no server), ACID, read-only-safe for concurrent
-  readers.
+  readers. **Never `DROP INDEX` FTS/VECTOR** on Ladybug 0.19: DROP leaves
+  ghost catalog tables (`_0_Leaf_vec_UPPER`) so recreate fails while
+  `SHOW_INDEXES` omits HNSW. Fresh indexes = delete `var/kb.lbug` +
+  `bin/kb/index --rebuild`. Use `ensure_indexes()` after upserts.
 - **model2vec** — `potion-multilingual-128M` static embeddings (256-dim),
   CPU-fast, deterministic, no Ollama runtime dependency.
 - facts and info split semantically by `root` column but written inside the

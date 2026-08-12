@@ -6,6 +6,8 @@
 #   brain index           bin/kb/index
 #   brain watch <dir>     watchdog re-indexer (bin/kb/watch)
 #   brain serve           async Go HTTP server (bin/serve)
+#   brain extract         bin/facts/extract (docker×compose pairing)
+#   brain audit           bin/facts/audit
 #
 # Usage comment starts at line 2 (self-describing convention).
 set -euo pipefail
@@ -19,5 +21,7 @@ case "$CMD" in
   index) exec "$KB_PY" /app/bin/kb/index "$@" ;;
   watch) exec /app/bin/watch "$@" ;;
   serve) exec /app/bin/serve "$@" ;;
+  extract) exec "$KB_PY" /app/bin/facts/extract "$@" ;;
+  audit) exec "$KB_PY" /app/bin/facts/audit "$@" ;;
   *) echo "unknown command: $CMD" >&2; exit 2 ;;
 esac
