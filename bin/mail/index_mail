@@ -22,7 +22,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
-from kblib import DB_PATH, VAR, connect, create_fts_and_vector, init_schema, stats, upsert_leaf  # noqa: E402
+from kblib import DB_PATH, VAR, connect, ensure_indexes, init_schema, stats, upsert_leaf  # noqa: E402
 from mdleaves import read_markdown, to_all, walk_markdown  # noqa: E402
 
 
@@ -81,7 +81,7 @@ def main(argv: list[str]) -> int:
     init_schema(conn)
     embed = _embedder()
     done, total = _index_leafs(conn, leafs, embed)
-    create_fts_and_vector(conn, force=True)
+    ensure_indexes(conn)
     s = stats(conn)
     conn.close()
     db.close()

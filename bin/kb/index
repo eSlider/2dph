@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 from kblib import (  # noqa: E402
-    connect, create_fts_and_vector, init_schema, upsert_leaf,
+    connect, ensure_indexes, init_schema, upsert_leaf,
     open_readonly, stats,
 )
 from mdleaves import read_markdown, to_all, walk_markdown  # noqa: E402
@@ -116,13 +116,11 @@ def main(argv: list[str]) -> int:
     db, conn = connect(DB_PATH, read_only=False)
     init_schema(conn)
 
-    # Keep the FTS/VECTOR indexes in place across incremental runs: ladybug's
-    # DROP INDEX leaves the backing tables registered on migrated DBs, so a
-    # drop+recreate silently kills the vector index. Only create when missing.
+    # Never DROP FTS/VECTOR (ghost catalog). Write leafs, then ensure indexes.
+    # --rebuild already deleted kb.lbug above, so CREATE runs on a clean DB.
     embed = embedder()
     done, total = index_leafs(conn, leafs, embed, a.limit)
-    if a.rebuild or not _has_indexes(conn):
-        create_fts_and_vector(conn, force=True)
+    ensure_indexes(conn)
     s = stats(conn)
     conn.close()
     db.close()
@@ -130,15 +128,6 @@ def main(argv: list[str]) -> int:
     result = {"indexed": done, "corpus_total": total, **{k: v for k, v in s.items() if k in ("total", "by_root")}}
     print(json.dumps(result, indent=2) if a.json else f"indexed {done}/{total} leafs; db total {s['total']}")
     return 0
-
-
-def _has_indexes(conn) -> bool:
-    try:
-        rows = conn.execute("CALL SHOW_INDEXES() RETURN *").get_all()
-        names = {row[1] for row in rows if row[0] == "Leaf"}
-        return "id" in names and "Leaf_vec" in names
-    except Exception:
-        return False
 
 
 if __name__ == "__main__":

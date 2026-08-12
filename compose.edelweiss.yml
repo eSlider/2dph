@@ -1,0 +1,48 @@
+# 2dph Edelweiss pilot — knowledge brain for Pflegedienst facts/info only.
+#
+#   docker compose -f compose.edelweiss.yml build
+#   docker compose -f compose.edelweiss.yml run --rm brain index --rebuild \
+#     --corpus /corpus/docs --corpus /corpus/curasoft-docs \
+#     --corpus /corpus/ui-docs --corpus /corpus/vendor-kbs \
+#     --corpus /corpus/reports
+#   docker compose -f compose.edelweiss.yml run --rm brain search "GL IP"
+#
+# HNSW note: never DROP INDEX Leaf.Leaf_vec on a live DB (ghost catalog).
+# Fresh indexes = delete volume/db + --rebuild. See kblib.create_fts_and_vector.
+name: 2dph-edelweiss
+
+services:
+  brain:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: 2dph-edelweiss:local
+    working_dir: /app
+    environment:
+      HF_HOME: /data/hf
+      BRAIN_SEARCH_CACHE: /data/cache/web-search.sqlite
+      KB_SEARCH_CMD: /app/bin/kb/search
+      KB_WORKERS: "2"
+      KB_PY: python3
+      KB_ROOT: /app
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/data
+      - ./:/app
+      # Edelweiss host corpus mounts (override paths on other hosts)
+      - /home/devops/projects/docs/docs:/corpus/docs:ro
+      - /home/devops/projects/edelweiss-curasoft/docs:/corpus/curasoft-docs:ro
+      - /home/devops/projects/edelweiss-ui/docs:/corpus/ui-docs:ro
+      - /home/devops/projects/curasoft/docs/curasoft-de/kbs:/corpus/vendor-kbs:ro
+      - /home/devops/projects/docs/docs/reports:/corpus/reports:ro
+      # STT raw mounted read-only for humans — do NOT pass as --corpus
+      - /home/devops/projects/docs/stt:/corpus/stt:ro
+    command: ["brain", "search", "help"]
+    read_only: false
+    tmpfs:
+      - /tmp
+    restart: "no"
+
+volumes:
+  kb-model:
+  kb-var:
