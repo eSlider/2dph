@@ -8,7 +8,9 @@
 //	kbsearch --list-model           print the resolved model dir
 //
 // The potion-multilingual model is loaded only in `serve`; a CLI reuses the
-// daemon over localhost HTTP (falling back to in-process embedding).
+// daemon over localhost HTTP (KBSEARCH_PORT, default 17830) and starts one in
+// the background when none answers. KBSEARCH_NO_DAEMON=1 skips that and embeds
+// in-process instead, which costs a full model load per query.
 package main
 
 import (

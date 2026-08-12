@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	lbug "github.com/LadybugDB/go-ladybug"
@@ -309,11 +310,21 @@ func embedQuery(text string) ([]float64, error) {
 			port = p
 		}
 	}
-	emb, err := tryDaemon(text, port)
-	if err == nil {
+	if emb, err := tryDaemon(text, port); err == nil {
 		return emb, nil
 	}
+	// No daemon yet: start one in the background (it outlives this process and
+	// serves every later query from RAM) and retry once. KBSEARCH_NO_DAEMON=1
+	// keeps a run self-contained, e.g. in CI or a one-shot container.
+	if os.Getenv("KBSEARCH_NO_DAEMON") == "" {
+		if err := ensureDaemon(port); err == nil {
+			if emb, err := tryDaemon(text, port); err == nil {
+				return emb, nil
+			}
+		}
+	}
 
+	// Last resort: load the ~100MB matrix into this process, once per query.
 	model, err := loadModel()
 	if err != nil {
 		return nil, fmt.Errorf("fallback load model: %w", err)
@@ -374,6 +385,9 @@ func ensureDaemon(port int) error {
 	cmd.Dir, _ = filepath.Split(self)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	// Own session: a Ctrl+C in the terminal that launched the search must not
+	// take the daemon down with the foreground process group.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
