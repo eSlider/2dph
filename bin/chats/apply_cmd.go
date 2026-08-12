@@ -239,7 +239,6 @@ func findOO() string {
 	}
 	candidates := []string{
 		filepath.Join(os.Getenv("HOME"), "go", "bin", "oo"),
-		"/home/ano/go/bin/oo",
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {

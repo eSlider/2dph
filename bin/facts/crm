@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -27,7 +28,8 @@ sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 from kblib import upsert_leaf, connect, leaf_id  # noqa: E402
 
-CORPUS_MESH = Path("/mnt/8TB/projects/eslider/cv/projects/knowledge-mesh-seed.yaml")
+MESH_ENV = os.environ.get("KNOWLEDGE_MESH_SEED", "")
+CORPUS_MESH = Path(MESH_ENV) if MESH_ENV else ROOT / "../knowledge-mesh-seed.yaml"
 
 
 def corpus_orgs(raw: str) -> dict[str, dict]:
