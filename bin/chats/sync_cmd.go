@@ -42,28 +42,17 @@ func runSyncTelegram(args []string) int {
 		return 2
 	}
 
-	// Locate telegram-mcp directory
-	mcpDirs := []string{
-		envVar("TELEGRAM_MCP_DIR", ""),
-		"/mnt/8TB/projects/eslider/mcp-servers/telegram-mcp",
-		filepath.Join(os.Getenv("HOME"), "projects", "eSlider", "mcp-servers", "telegram-mcp"),
-	}
-	var mcpDir string
-	for _, d := range mcpDirs {
-		if d != "" {
-			if _, err := os.Stat(filepath.Join(d, "main.py")); err == nil {
-				mcpDir = d
-				break
-			}
-		}
-	}
+	mcpDir := envVar("TELEGRAM_MCP_DIR", "")
 	if mcpDir == "" {
-		fmt.Fprintln(os.Stderr, "chats: telegram-mcp not found; set TELEGRAM_MCP_DIR")
+		fmt.Fprintln(os.Stderr, "chats: set TELEGRAM_MCP_DIR to telegram-mcp directory")
+		return 1
+	}
+	if _, err := os.Stat(filepath.Join(mcpDir, "main.py")); err != nil {
+		fmt.Fprintf(os.Stderr, "chats: TELEGRAM_MCP_DIR=%s: main.py not found\n", mcpDir)
 		return 1
 	}
 
 	if sessionStr == "" {
-		// Fallback: try to read from telegram-mcp .env
 		envPath := filepath.Join(mcpDir, ".env")
 		if data, err := os.ReadFile(envPath); err == nil {
 			for _, line := range strings.Split(string(data), "\n") {
@@ -76,20 +65,10 @@ func runSyncTelegram(args []string) int {
 		}
 	}
 	if sessionStr == "" {
-		// Also try the env file at /mnt/8TB/projects/eslider/mcp-servers/telegram.env
-		envPath := "/mnt/8TB/projects/eslider/mcp-servers/telegram.env"
-		if data, err := os.ReadFile(envPath); err == nil {
-			for _, line := range strings.Split(string(data), "\n") {
-				if strings.HasPrefix(line, "TELEGRAM_SESSION_STRING=") {
-					sessionStr = strings.TrimPrefix(line, "TELEGRAM_SESSION_STRING=")
-					sessionStr = strings.Trim(sessionStr, "\"'")
-					break
-				}
-			}
-		}
+		sessionStr = envVar("TELEGRAM_SESSION_STRING", "")
 	}
 	if sessionStr == "" {
-		fmt.Fprintln(os.Stderr, "chats: TELEGRAM_SESSION_STRING not found in env or .env files")
+		fmt.Fprintln(os.Stderr, "chats: TELEGRAM_SESSION_STRING not found; set env or in TELEGRAM_MCP_DIR/.env")
 		return 1
 	}
 
