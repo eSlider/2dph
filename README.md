@@ -143,6 +143,6 @@ docker compose up brain-watch                  # auto re-index on change
   Neo4j + Qdrant + Matrix RAG brain
 - [agent-skills](https://github.com/eSlider/agent-skills) — upstream
   skills (`web-search`, `db-yaml`, …) that 2dph integrates
-- [detective](https://github.com/detective) — the two-source method
+- detective method — the two-source method
 
 See [PLAN.md](PLAN.md) for decisions, execution status, and v2 open questions.
