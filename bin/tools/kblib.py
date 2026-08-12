@@ -178,9 +178,15 @@ def ensure_indexes(conn: ladybug.Connection) -> None:
 def drop_indexes(conn: ladybug.Connection) -> None:
     """No-op. Kept for callers; DROP INDEX is fatal on Ladybug 0.19.
 
-    Historical note claimed "drop before bulk MERGE". Measured: upsert while
-    indexes exist keeps HNSW queryable; DROP leaves ghost catalog tables that
-    block recreate. Bulk rebuilders must delete `var/kb.lbug` instead.
+    Historical note claimed "drop before bulk MERGE". Measured on 0.19:
+    - DROP FTS/VECTOR leaves ghost catalog → CREATE fails permanently until
+      `var/kb.lbug` is deleted.
+    - MERGE/upsert while **FTS** exists can corrupt FTS
+      ("document for node offset N is missing during delete").
+    - Upsert while **HNSW** exists stays queryable.
+
+    Bulk rebuilders must delete `var/kb.lbug`, write all leafs (info+facts)
+    with no indexes, then `ensure_indexes()` once.
     """
     return
 
