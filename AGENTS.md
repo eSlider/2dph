@@ -89,7 +89,7 @@ parameter. Search before reading whole files.
    Test data must be synthetic (Alice, Bob, Charlie, Diana, example.com).
 3. **No credentials/secrets in commits.** API keys, tokens, passwords, session
    strings, phone numbers only in gitignored `.env` files, referenced by path.
-4. **Curasoft — no files, no mentions.** Remove all traces if found.
+4. **Curasoft, edelweiss — no files, no mentions.** Remove all traces if found.
 5. **Check git history before push.** If any commit contains leaks, rewrite
    history (rebase + force push) AND delete affected GitHub releases/tags.
 6. **`docs/chat-import-plan.md`** — reference Gitea issue, never embed secrets.
