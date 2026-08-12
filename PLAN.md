@@ -25,7 +25,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | # | Question | Answer |
 |---|----------|--------|
 | D1 | RAG corpus | ops stack (chat, onlyoffice, gitea/NPM, searchxng, observability, ai-bot, mcp-servers, `~/.ssh/config`) + portfolio. Exclude `office.dev` + jobs/applications. |
-| D2 | skill merging | integrate skills **in this project** `skills/`; skip gitea / brain-detective-depe ndent skills. |
+| D2 | skill merging | integrate skills **in this project** `skills/`; skip gitea / brain-dependent skills. |
 | D3 | web search | import `web-search`, retire local `searxng-ops`. Vendored here, no remote link. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |

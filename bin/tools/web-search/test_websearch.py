@@ -76,7 +76,7 @@ class PhiGuard(unittest.TestCase):
 
     def test_plain_technical_query_passes(self):
         self.assertIsNone(ws.phi_reason("Pflegegrad SGB XI Einstufung"))
-        self.assertIsNone(ws.phi_reason("site:ticket.detective.de Toureffizienz"))
+        self.assertIsNone(ws.phi_reason("site:example.com technical query"))
 
     def test_long_digit_run_is_refused(self):
         self.assertIsNotNone(ws.phi_reason("Kunde 4711220385 Adresse"))
