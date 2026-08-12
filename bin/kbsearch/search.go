@@ -25,6 +25,14 @@ const defaultPort = 17830
 const daemonPath = "/embed"
 const healthPath = "/health"
 
+// BM25 ranks best-first, so the top hits are the *highest* scores; cosine
+// distance ranks best-first ascending. Both mirror kblib.py.
+const ftsStmt = "CALL QUERY_FTS_INDEX('Leaf', 'id', $q) " +
+	"RETURN node.id, node.text, node.root, node.source, score ORDER BY score DESC LIMIT $n"
+
+const vecStmt = "CALL QUERY_VECTOR_INDEX('Leaf', 'Leaf_vec', $q, $n) " +
+	"RETURN node.id, node.text, node.root, node.source, distance ORDER BY distance LIMIT $n"
+
 func runSearch(args []string) int {
 	// Manual flag parsing to allow flags after query (like Python argparse)
 	root := ""
@@ -150,10 +158,7 @@ func b2i(err error) int {
 }
 
 func queryFTS(text string, limit int) ([]Hit, error) {
-	stmt, err := conn.Prepare(
-		"CALL QUERY_FTS_INDEX('Leaf', 'id', $q) " +
-			"RETURN node.id, node.text, node.root, node.source, score ORDER BY score LIMIT $n",
-	)
+	stmt, err := conn.Prepare(ftsStmt)
 	if err != nil {
 		return nil, err
 	}
@@ -170,10 +175,7 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 	for i, v := range emb {
 		embList[i] = v
 	}
-	stmt, err := conn.Prepare(
-		"CALL QUERY_VECTOR_INDEX('Leaf', 'Leaf_vec', $q, $n) " +
-			"RETURN node.id, node.text, node.root, node.source, distance ORDER BY distance LIMIT $n",
-	)
+	stmt, err := conn.Prepare(vecStmt)
 	if err != nil {
 		return nil, err
 	}
