@@ -124,7 +124,7 @@ touches network/db is read-only, throttled, cached. Tests gate every commit.
 ```bash
 uv venv .venv                                  # Python 3.12, uv-managed
 uv pip install -r requirements.lock.txt        # pinned toolchain
-bin/facts/audit self                           # lexicon consistency gate
+bin/facts/audit self                           # evidence rule + tool convention gate
 go test ./... && python -m unittest discover -s bin/tools -t .
 ```
 

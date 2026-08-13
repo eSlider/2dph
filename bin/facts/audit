@@ -116,23 +116,42 @@ def check_tool_convention() -> list[str]:
     return problems
 
 
+def code_snippets(text: str) -> list[str]:
+    """Inline code spans and fenced block lines.
+
+    Mode claims are only checked inside code, so prose like "run
+    bin/facts/audit before pushing" cannot be misread as a mode named
+    'before'.
+    """
+    spans = re.findall(r"`([^`\n]+)`", text)
+    for block in re.findall(r"```[a-z]*\n(.*?)```", text, re.S):
+        spans.extend(block.splitlines())
+    return spans
+
+
 def check_documented_modes() -> list[str]:
     """Docs must name the modes this tool actually has (AGENTS rule 6)."""
     problems: list[str] = []
-    for name in ("AGENTS.md", "PLAN.md"):
-        text = (ROOT / name).read_text()
-        for line in text.splitlines():
-            if "facts/audit" not in line or '"' not in line:
-                continue
-            documented = set(re.findall(r'"([a-z]+)"', line))
-            if not documented:
-                continue
-            unknown = documented - set(MODES)
-            missing = set(MODES) - documented
-            if unknown:
-                problems.append(f"{name} documents audit modes that do not exist: {sorted(unknown)}")
-            if missing:
-                problems.append(f"{name} omits real audit modes: {sorted(missing)}")
+    files = [ROOT / "AGENTS.md", ROOT / "PLAN.md", ROOT / "README.md"]
+    files += sorted((ROOT / "docs").glob("*.md"))
+    for path in files:
+        if not path.exists():
+            continue
+        name = path.relative_to(ROOT)
+        for snippet in code_snippets(path.read_text()):
+            # `bin/facts/audit ["self"|"db"]` - a full list must be complete
+            for listed in re.findall(r"facts/audit\s+\[([^\]]+)\]", snippet):
+                documented = set(re.findall(r"[a-z]+", listed))
+                unknown = documented - set(MODES)
+                missing = set(MODES) - documented
+                if unknown:
+                    problems.append(f"{name} documents audit modes that do not exist: {sorted(unknown)}")
+                if missing:
+                    problems.append(f"{name} omits real audit modes: {sorted(missing)}")
+            # `bin/facts/audit stale` - a single invocation must name a real mode
+            for mode in re.findall(r'facts/audit\s+"?([a-z][a-z-]*)"?', snippet):
+                if mode not in MODES:
+                    problems.append(f"{name} invokes a mode that does not exist: facts/audit {mode}")
     return problems
 
 

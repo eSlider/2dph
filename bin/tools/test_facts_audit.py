@@ -27,6 +27,11 @@ def load_audit():
 audit = load_audit()
 
 
+def fence(body: str) -> str:
+    """Mode claims only count inside code, so fixtures write fenced blocks."""
+    return f"```bash\n{body}\n```\n" if body else ""
+
+
 def write_tool(path: Path, body: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(body)
@@ -87,21 +92,39 @@ class DocumentedModesTest(unittest.TestCase):
     def tearDown(self):
         audit.ROOT = self.original_root
 
-    def write_docs(self, agents: str, plan: str = "") -> None:
-        (self.tmp / "AGENTS.md").write_text(agents)
-        (self.tmp / "PLAN.md").write_text(plan)
+    def write_docs(self, agents: str, plan: str = "", readme: str = "", design: str = "") -> None:
+        (self.tmp / "AGENTS.md").write_text(fence(agents))
+        (self.tmp / "PLAN.md").write_text(fence(plan))
+        (self.tmp / "README.md").write_text(fence(readme))
+        (self.tmp / "docs").mkdir(exist_ok=True)
+        (self.tmp / "docs" / "design.md").write_text(fence(design))
 
     def test_documented_but_missing_mode_is_flagged(self):
-        self.write_docs('bin/facts/audit ["self"|"db"|"stale"]\n')
+        self.write_docs('bin/facts/audit ["self"|"db"|"stale"]')
         problems = audit.check_documented_modes()
         self.assertTrue(any("do not exist" in p and "stale" in p for p in problems))
 
     def test_real_mode_missing_from_docs_is_flagged(self):
-        self.write_docs('bin/facts/audit ["self"]\n')
+        self.write_docs('bin/facts/audit ["self"]')
         self.assertTrue(any("omits real audit modes" in p for p in audit.check_documented_modes()))
 
     def test_matching_docs_pass(self):
-        self.write_docs('bin/facts/audit ["self"|"db"]\n', 'bin/facts/audit ["self"|"db"]\n')
+        self.write_docs('bin/facts/audit ["self"|"db"]', 'bin/facts/audit ["self"|"db"]')
+        self.assertEqual(audit.check_documented_modes(), [])
+
+    def test_invocation_of_a_missing_mode_in_any_doc_is_flagged(self):
+        self.write_docs("", "", "", "bin/facts/audit stale")
+        problems = audit.check_documented_modes()
+        self.assertTrue(any("docs/design.md" in p and "stale" in p for p in problems), problems)
+
+    def test_invocation_of_a_real_mode_passes(self):
+        self.write_docs("", "", "bin/facts/audit self", "bin/facts/audit db")
+        self.assertEqual(audit.check_documented_modes(), [])
+
+    def test_prose_mentioning_the_tool_is_not_a_mode_claim(self):
+        (self.tmp / "AGENTS.md").write_text("Run bin/facts/audit before pushing.\n")
+        (self.tmp / "PLAN.md").write_text("")
+        (self.tmp / "README.md").write_text("")
         self.assertEqual(audit.check_documented_modes(), [])
 
 
