@@ -141,7 +141,7 @@ bin/brain/search.go "invoice from last week"                            # same s
 `bin/{subject}/{method}.go` — self-describing: shebang on line 1, usage comment
 from line 2. Shared code in `internal/`. YAML default output, `--json` for
 machines. Tests gate every commit. HTTP: `bin/brain/serve.go` calls
-`internal/brain` in-process (`/health` `/search` `/get` `/stats` `/audit` `/ingest`).
+`internal/brain` in-process (`/health` `/search` `/get` `/stats` `/audit` `/ingest` `/openapi.json` `/mcp`).
 
 ## Development
 
