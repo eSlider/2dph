@@ -1,10 +1,9 @@
-// Common types and helpers for kbsearch.
-package main
+package brain
 
 import (
 	"os"
 
-	"github.com/eSlider/2dph/bin/kbsearch/rank"
+	"github.com/eSlider/2dph/internal/brain/rank"
 )
 
 func eps() string { return os.Getenv("KBTEST_EPS") }

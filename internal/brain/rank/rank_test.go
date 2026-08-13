@@ -136,6 +136,12 @@ func TestListModelNeedsNoQuery(t *testing.T) {
 	}
 }
 
+func TestUsageNamesBrainSearch(t *testing.T) {
+	if !strings.Contains(Usage, "bin/brain/search.go") {
+		t.Fatalf("usage must name bin/brain/search.go, got:\n%s", Usage)
+	}
+}
+
 func TestFTSQueryOrdersByScoreDescending(t *testing.T) {
 	if !strings.Contains(FTSStmt, "ORDER BY score DESC") {
 		t.Fatalf("FTS query must order by score DESC, got:\n%s", FTSStmt)

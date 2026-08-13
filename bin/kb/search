@@ -1,34 +1,37 @@
 #!/usr/bin/env bash
-# bin/kb/search - Go deduction search over the brain (model served by daemon).
-# Builds the kbsearch binary on first run / when source changes, then execs it.
+# bin/kb/search — deprecated wrapper. Use bin/brain/search.go.
+# Sets CGO for ladybug, builds a binary (embed daemon needs a real executable),
+# then execs it. Prints one deprecation line.
 set -euo pipefail
 
-KB="$(cd "$(dirname "$0")/../.." && pwd)"
-BIN="$KB/var/bin/kbsearch"
-SRC="$KB/bin/kbsearch"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BIN="$ROOT/var/bin/brain-search"
+SRC="$ROOT/internal/brain"
+CMD="$ROOT/bin/brain"
 
-mkdir -p "$KB/var/bin"
+mkdir -p "$ROOT/var/bin"
 
-# Rebuild if binary missing or any .go source newer
 need_build=0
 if [ ! -x "$BIN" ]; then
-    need_build=1
+	need_build=1
 else
-    # Check if any .go in kbsearch is newer than binary
-    while IFS= read -r -d '' f; do
-        if [ "$f" -nt "$BIN" ]; then
-            need_build=1
-            break
-        fi
-    done < <(find "$SRC" -name '*.go' -print0 2>/dev/null)
+	while IFS= read -r -d '' f; do
+		if [ "$f" -nt "$BIN" ]; then
+			need_build=1
+			break
+		fi
+	done < <(find "$SRC" "$CMD" -name '*.go' -print0 2>/dev/null)
 fi
 
 if [ "$need_build" -eq 1 ]; then
-    echo "Building kbsearch..." >&2
-    (cd "$SRC" && \
-        CGO_CFLAGS="-I$KB/lib-ladybug" \
-        CGO_LDFLAGS="-L$KB/lib-ladybug -Wl,-rpath,$KB/lib-ladybug" \
-        go build -tags system_ladybug -o "$BIN" .) || exit 1
+	echo "Building brain/search..." >&2
+	(
+		cd "$ROOT" &&
+			CGO_CFLAGS="-I$ROOT/lib-ladybug" \
+			CGO_LDFLAGS="-L$ROOT/lib-ladybug -Wl,-rpath,$ROOT/lib-ladybug" \
+			go build -tags system_ladybug -o "$BIN" ./bin/brain
+	) || exit 1
 fi
 
+echo "bin/kb/search is deprecated; use bin/brain/search.go" >&2
 exec "$BIN" "$@"
