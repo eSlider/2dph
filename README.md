@@ -95,6 +95,15 @@ bin/brain/eval.go                                    # recall@5 gate
 
 `--hop` is not implemented (needs File/FROM_FILE edges); the flag errors instead of walking. `bin/kb/search` is a deprecated wrapper around `bin/brain/search.go`.
 
+Git history is read with [go-git](https://github.com/go-git/go-git) (no git binary):
+
+```bash
+bin/git/import.go --json --limit 100              # commit leafs for this repo
+bin/git/import.go --root "$PROJECTS_ROOT" --json  # one pass per .git under root
+```
+
+Conversion only. Graph write (`File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`) stays with `bin/brain/index.go`.
+
 Mail is a first-class corpus (retrievable through the same search):
 
 ```bash

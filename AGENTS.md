@@ -41,7 +41,8 @@ bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
 bin/mail/     sync.go import.go (index_mail → brain/index.go)
 bin/markdown/ import.go (mistune leafs)
 bin/postgres/ query.go (read-only YAML)
-internal/     shared Go (brain/rank is cgo-free; chats parsers too)
+bin/git/      import.go (go-git history; Python shim execs it)
+internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/docker-entrypoint  container entrypoint (brain index|search|serve|watch)
@@ -81,6 +82,7 @@ bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/b
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/get.go <id> [--body]
 bin/markdown/import.go [dir]                      # mistune leaves → YAML
+bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
