@@ -8,6 +8,7 @@
 //	./bin/brain/get.go <id> --json
 //
 // Needs CGO + libladybug. Python bin/kb/get is the CI fallback (no cgo).
+// CGO compiler is Zig (`eval "$(bin/cgo/zig env)"`), not gcc.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

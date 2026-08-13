@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # bin/kb/search — deprecated wrapper. Use bin/brain/search.go.
-# Sets CGO for ladybug, builds a binary (embed daemon needs a real executable),
-# then execs it. Prints one deprecation line.
+# CGO via Zig (bin/cgo/zig), not gcc. Builds a binary then execs it.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
 BIN="$ROOT/var/bin/brain-search"
 SRC="$ROOT/internal/brain"
 CMD="$ROOT/bin/brain"
@@ -24,11 +23,10 @@ else
 fi
 
 if [ "$need_build" -eq 1 ]; then
-	echo "Building brain/search..." >&2
+	echo "Building brain/search (zig cc)..." >&2
 	(
 		cd "$ROOT" &&
-			CGO_CFLAGS="-I$ROOT/lib-ladybug" \
-			CGO_LDFLAGS="-L$ROOT/lib-ladybug -Wl,-rpath,$ROOT/lib-ladybug" \
+			eval "$("$ROOT/bin/cgo/zig" env)" &&
 			go build -tags system_ladybug -o "$BIN" ./bin/brain
 	) || exit 1
 fi
