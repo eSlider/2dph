@@ -116,11 +116,12 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 `.github/workflows/ci.yml`:
 
-1. go vet + go test ./... (Go tools)
-2. python -m unittest discover + pytest (Py tools)
-3. bin/facts/audit self  (lexicon internal consistency)
-4. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
-5. md-docs build/lint if docs tooling arrives.
+1. go vet + go test ./... (Go tools; root module)
+2. `go test ./rank` in `bin/kbsearch` (cgo-free ranking + flag parser; nested module still needs ladybug for the rest)
+3. python -m unittest discover (Py tools)
+4. bin/facts/audit self  (lexicon internal consistency)
+5. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
+6. md-docs build/lint if docs tooling arrives.
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
 `db/tech-poc`: contract first where there is an OpenAPI/message shape.
