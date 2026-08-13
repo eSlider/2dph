@@ -34,3 +34,32 @@ class BinLayoutTest(unittest.TestCase):
     def test_no_main_go_under_bin_brain(self) -> None:
         main = ROOT / "bin" / "brain" / "main.go"
         self.assertFalse(main.exists(), "bin/brain/main.go is not a method")
+
+    def test_chats_methods_are_shebangs_not_main(self) -> None:
+        chats = ROOT / "bin" / "chats"
+        self.assertFalse(
+            (chats / "main.go").exists(),
+            "bin/chats/main.go is a dispatcher, not a method",
+        )
+        self.assertFalse(
+            (chats / "index_cmd.go").exists(),
+            "chats index is a brain write hiding under the wrong subject",
+        )
+        for method in ("sync.go", "import.go", "facts.go", "apply.go"):
+            p = chats / method
+            self.assertTrue(p.is_file(), f"missing bin/chats/{method}")
+            first = p.read_text().splitlines()[0]
+            self.assertTrue(
+                first.startswith("//usr/bin/env go run"),
+                f"{method} shebang, got {first!r}",
+            )
+
+    def test_chats_lib_lives_in_internal(self) -> None:
+        self.assertTrue(
+            (ROOT / "internal" / "chats" / "linkedin.go").is_file(),
+            "LinkedIn parser must live in internal/chats",
+        )
+        self.assertFalse(
+            (ROOT / "bin" / "chats" / "linkedin.go").exists(),
+            "parser must not stay under bin/chats as a second main",
+        )
