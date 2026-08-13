@@ -15,9 +15,10 @@ OO_CLI                     (default: $HOME/go/bin/oo)
 ## Quick reference
 
 ```
-./bin/chat sync telegram --limit 100
-./bin/chat import
-./bin/chat index
-./bin/chat facts
-./bin/chat apply --dry-run
+./bin/chats/sync.go telegram --limit 100
+./bin/chats/import.go
+./bin/chats/facts.go
+./bin/chats/apply.go --dry-run
 ```
+
+JSONL → markdown only. Brain ingest is `bin/brain/index.go` (not a `chats index`).

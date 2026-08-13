@@ -57,6 +57,8 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/search.go         deduction: facts → info → web-search
     kb/get  kb/stats  kb/eval
     brain/serve.go          HTTP API (internal/httpapi)
+    chats/sync.go import.go facts.go apply.go
+                            (libs in internal/chats; no chats index)
     md/import  md/select  md/tables  md/gaps     (mistune)
     brain/extract  brain/audit   brain/deduce    (thinking wrapper)
     web/search               (vendored)
