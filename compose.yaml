@@ -3,6 +3,7 @@
 #   docker compose up -d brain                  # API (Zig CGO serve)
 #   docker compose --profile index run --rm index   # Python rebuild
 #   docker compose --profile picoclaw up brain-mcp
+#   docker compose --profile reasoner up -d reasoner   # CPU Ollama :11435
 #   docker compose --profile searxng up -d
 #
 # Secrets never baked in: search.env + db-profiles.yml from ~/.config/brain.
@@ -114,6 +115,23 @@ services:
       - /tmp
     restart: unless-stopped
 
+  # CPU OpenAI-compatible sidecar (D18). Weights are pulled at runtime, not
+  # baked into the 2dph image. Does not touch host Ollama on :11434.
+  #   docker compose --profile reasoner up -d reasoner
+  #   docker compose --profile reasoner exec reasoner ollama pull qwen3.5:9b
+  reasoner:
+    profiles: ["reasoner"]
+    image: docker.io/ollama/ollama:latest
+    environment:
+      OLLAMA_NUM_GPU: "0"
+      OLLAMA_HOST: "0.0.0.0:11434"
+    ports:
+      - "127.0.0.1:11435:11434"
+    volumes:
+      - reasoner-ollama:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   kb-model:
   kb-var:
+  reasoner-ollama:
