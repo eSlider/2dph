@@ -221,6 +221,53 @@ func TestCollectParts(t *testing.T) {
 	}
 }
 
+type fakeGmailAPI struct {
+	lastQ     string
+	lastLimit int
+	ids       []string
+}
+
+func (f *fakeGmailAPI) ListIDs(_ context.Context, q string, maxIDs int, _ string) ([]string, string, error) {
+	f.lastQ = q
+	f.lastLimit = maxIDs
+	return f.ids, "", nil
+}
+func (f *fakeGmailAPI) GetMessage(context.Context, string) (*Message, error) {
+	return nil, errors.New("unused")
+}
+func (f *fakeGmailAPI) DownloadAttachment(context.Context, string, string) ([]byte, error) {
+	return nil, errors.New("unused")
+}
+
+func TestGmailSourcePassesQueryToListIDs(t *testing.T) {
+	fake := &fakeGmailAPI{ids: []string{"m1"}}
+	src := &gmailSource{c: fake, query: "from:alice@example.com"}
+	ids, _, err := src.ListIDs(context.Background(), 10, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.lastQ != "from:alice@example.com" {
+		t.Fatalf("ListIDs q=%q, want from:alice@example.com", fake.lastQ)
+	}
+	if fake.lastLimit != 10 {
+		t.Fatalf("ListIDs limit=%d, want 10", fake.lastLimit)
+	}
+	if len(ids) != 1 || ids[0] != "m1" {
+		t.Fatalf("ids=%v", ids)
+	}
+}
+
+func TestGmailSourceEmptyQueryDefaultsToInbox(t *testing.T) {
+	fake := &fakeGmailAPI{}
+	src := &gmailSource{c: fake, query: ""}
+	if _, _, err := src.ListIDs(context.Background(), 5, ""); err != nil {
+		t.Fatal(err)
+	}
+	if fake.lastQ != "in:inbox" {
+		t.Fatalf("empty query q=%q, want in:inbox", fake.lastQ)
+	}
+}
+
 func TestParseCLIGmailQuery(t *testing.T) {
 	cli, code, err := ParseCLI([]string{
 		"--source", "gmail",

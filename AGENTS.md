@@ -54,7 +54,6 @@ var/          kb.lbug, var/mail/*, caches (gitignored)
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail   # raw message.json + attachments
 bin/mail/sync.go --source gmail --query 'from:example.com' --out var/mail  # Gmail search (default in:inbox)
 bin/mail/import --from-raw var/mail                                     # message.json → message.md (convert only)
-bin/mail/import --from-raw var/mail                                     # message.json → message.md (convert only)
 bin/mail/index_mail                                                     # rebuild brain incl. all mail (fresh DB)
 ```
 

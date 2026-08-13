@@ -137,8 +137,15 @@ type ooSource struct {
 	c    *OOClient
 	page int
 }
+// gmailAPI is the Gmail client surface gmailSource needs. *GmailClient implements it.
+type gmailAPI interface {
+	ListIDs(ctx context.Context, q string, maxIDs int, pageToken string) ([]string, string, error)
+	GetMessage(ctx context.Context, id string) (*Message, error)
+	DownloadAttachment(ctx context.Context, msgID, attID string) ([]byte, error)
+}
+
 type gmailSource struct {
-	c     *GmailClient
+	c     gmailAPI
 	cur   string
 	query string
 }
