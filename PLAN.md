@@ -52,8 +52,7 @@ detective method: **a fact needs ≥2 independent sources or it is
   docs/                     published docs (this conversation → docs/ as md)
   skills/                   in-project skills (web-search, db-yaml, brain, diataxis-docs)
   bin/
-    facts/extract           auto-pair 2 sources → lexicon yaml + graph
-    facts/audit             ["self"|"facts"|"info"|"stale"] 2-source + staleness gate
+    facts/extract.go audit.go crm.go  # D14 shebang; Python implementation
     kb/index                Python write path (called by bin/brain/index.go)
     brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
     brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
@@ -133,7 +132,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 1. go vet + go test ./... (root module; packages without ladybug cgo)
 2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
 3. python -m unittest discover -s bin/tools (includes published-docs SoT)
-4. bin/facts/audit self  (lexicon internal consistency)
+4. `bin/facts/audit self` (lexicon internal consistency; `bin/facts/audit.go` is the D14 wrapper)
 5. `bin/kb/eval` (recall@5 ≥ 0.95). Local SoT is `bin/brain/eval.go`; CI uses
    the Python twin until the runner has ladybug cgo. Questions live in
    `internal/brain/rank`.
