@@ -21,7 +21,8 @@ bin/brain/search.go "question"
   1. facts root   — confirmed answers only   → return with evidence links
   2. info  root   — supporting narrative     → snippets, marked (not confirmed)
   3. web-search   — second independent source → upgrade hypothesis to confirmed
-     (`bin/web/search.go`; status `throttled` is not evidence of absence)
+     (`web` block from `bin/web/search.go` when no facts hit; status `throttled`
+     is not evidence of absence; `--no-web` / `--root` skip it)
 ```
 
 `--hop` is not implemented yet (needs File/FROM_FILE edges). The flag is an
