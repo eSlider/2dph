@@ -1,0 +1,34 @@
+{
+  "url": "https://www.linkedin.com/messaging/",
+  "sections": {
+    "inbox": "Messaging\nInbox\nConversation List\nAlice Example\nExciting opportunity for a senior software engineer\n"
+  },
+  "references": {
+    "inbox": [
+      {
+        "kind": "conversation",
+        "url": "/messaging/thread/2-YWxpY2UtYm9iLXRocmVhZC0xMjM=/",
+        "context": "inbox",
+        "text": "Alice Example"
+      },
+      {
+        "kind": "person",
+        "url": "/in/alice-example/",
+        "text": "Alice Example",
+        "context": "inbox"
+      },
+      {
+        "kind": "conversation",
+        "url": "/messaging/thread/2-Y2hhcmxpZS1ib2ItdGhyZWFkLTQ1Ng==/",
+        "context": "inbox",
+        "text": "Charlie Example"
+      },
+      {
+        "kind": "conversation",
+        "url": "/messaging/thread/",
+        "context": "inbox",
+        "text": "should-be-skipped"
+      }
+    ]
+  }
+}

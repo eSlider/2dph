@@ -1,0 +1,12 @@
+{
+  "url": "https://www.linkedin.com/messaging/thread/2-YWxpY2UtYm9iLXRocmVhZC0xMjM=/",
+  "sections": {
+    "conversation": "WEDNESDAY\nAlice Example sent the following message at 10:02 AM\nView Alice Example's profile\nAlice Example  (She/Her)  10:02 AM\nHi Bob, we have a Senior Software Engineer role that matches your Go and Python background. Happy to share more if you are open to a chat.\n\nBob Example sent the following messages at 1:22 PM\nView Bob Example's profile\nBob Example  1:22 PM\nHi Alice, thanks for reaching out — yes, I am open to exploring a Senior Software Engineer role. Happy to do a short video call.\n"
+  },
+  "references": {
+    "conversation": [
+      {"kind": "person", "url": "/in/alice-example/", "text": "Alice Example"},
+      {"kind": "person", "url": "/in/bob-example/", "text": "Bob Example"}
+    ]
+  }
+}
