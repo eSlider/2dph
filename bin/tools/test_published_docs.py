@@ -39,6 +39,12 @@ class PublishedDocsTest(unittest.TestCase):
             "mail index is a brain write; README must name bin/brain/index.go",
         )
 
+    def test_readme_git_import_is_gogit(self) -> None:
+        text = (ROOT / "README.md").read_text()
+        self.assertIn("bin/git/import.go", text)
+        self.assertIn("go-git", text)
+        self.assertIn("D19", (ROOT / "PLAN.md").read_text())
+
     def test_docs_do_not_claim_hop_walks(self) -> None:
         paths = [
             ROOT / "README.md",

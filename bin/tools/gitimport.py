@@ -1,20 +1,11 @@
-"""gitimport - parse `git log` output and turn commits into brain leafs.
+"""gitimport - Ladybug graph writes for Commit/File/Person (no git binary).
 
-Pure, testable functions. Field grammar (see bin/git/import):
-
-  git log --no-merges --name-only \
-      --format='%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s'
-
-  0x1e = record separator, 0x1f = field separator.
-  Files: newline-separated lines following each record's subject.
+Commit records come from bin/git/import.go (go-git). This module only MERGEs
+the version graph File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person.
 """
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
-REC_SEP = "\x1e"
-FIELD_SEP = "\x1f"
 
 
 @dataclass
@@ -25,54 +16,6 @@ class Commit:
     date: str
     subject: str
     files: list[str] = field(default_factory=list)
-
-    def leaf_text(self, repo: str) -> str:
-        head = f"commit {self.sha[:12]} in {repo} — {self.subject}"
-        body = [head, f"Author: {self.author} <{self.email}>", f"Date: {self.date}"]
-        if self.files:
-            body.append("Changing: " + ", ".join(self.files))
-        return "\n".join(body)
-
-
-def parse_log(text: str) -> list[Commit]:
-    """Parse `git log` output into Commit records.
-
-    Records are separated by 0x1e. A record is fields joined by 0x1f,
-    followed by optional newline-separated file paths inside the next
-    segment (git emits blank line + files after each record).
-    """
-    commits: list[Commit] = []
-    # field records and file lists alternate; simpler: split on REC_SEP,
-    # each chunk = header line, possibly followed by newline + files.
-    for chunk in text.split(REC_SEP):
-        chunk = chunk.strip("\n")
-        if not chunk:
-            continue
-        lines = chunk.split("\n", 1)
-        header = lines[0].split(FIELD_SEP)
-        if len(header) < 5:
-            continue
-        sha, author, email, date, subject = header[:5]
-        files = [ln.strip() for ln in lines[1].splitlines() if ln.strip()] if len(lines) > 1 else []
-        commits.append(Commit(sha=sha, author=author, email=email,
-                              date=date, subject=subject, files=files))
-    return commits
-
-
-def commits_to_leafs(commits: list[Commit], repo: str) -> list[dict]:
-    """Map commits to the leaf shape bin/kb/index expects (source/repo/...)."""
-    out: list[dict] = []
-    for c in commits:
-        out.append({
-            "source": f"{repo}@{c.sha}",
-            "repo": repo,
-            "heading": f"commit {c.sha[:12]} — {c.subject}",
-            "text": c.leaf_text(repo),
-            "type": "commit",
-            "status": "current",
-            "related": ",".join(c.files),
-        })
-    return out
 
 
 GIT_SCHEMA = (

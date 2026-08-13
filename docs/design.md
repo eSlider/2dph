@@ -46,7 +46,8 @@ Every assertion edge carries:
 Content leafs: `sha256`, `observed_at`, `source_rev`, `confidence`. Stale = a
 file changed on disk (git HEAD/mtime) after its last observed `source_rev`.
 `File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person` records the history of every
-content leaf.
+content leaf. Commit records come from `bin/git/import.go` (go-git, no git
+binary); conversion prints leafs, brain write is `bin/brain/index.go`.
 
 `bin/facts/audit stale` flags leafs whose observed revision is behind the
 corpus HEAD.

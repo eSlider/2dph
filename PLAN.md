@@ -42,6 +42,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D16 | contradictions | ≥2 yes vs ≥2 no → unrelated sources conflict → hypothesis → `(not confirmed)`. Resolution (authority, staleness adjudication) = **v2**, tracked as open question. |
 | D17 | assertion gate | Fact-check every *claim* (facts → info → live sources → web), not every edit. Missing graph ≠ “does not exist”. |
 | D18 | reasoner | Pluggable OpenAI-compatible URL. RAM: Qwen3.5-9B. Quality: Bonsai-27B or Qwen3.6-27B. No official Qwen3.6-9B. |
+| D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
 
 ## Architecture
 
@@ -61,6 +62,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     mail/import.go          JSON → markdown (no brain write)
     markdown/import.go      mistune leaves
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
+    git/import.go           go-git history (no git binary; conversion only)
     chats/sync.go import.go facts.go apply.go
                             (libs in internal/chats; no chats index)
     md/import               (deprecated; bin/markdown/import.go)
