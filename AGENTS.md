@@ -42,7 +42,7 @@ bin/          self-describing tools bin/{subject}/{method}.go (shebang)
 bin/brain/    search.go serve.go index.go get.go stats.go eval.go watch.go
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
 bin/mail/     sync.go import.go (index_mail → brain/index.go)
-bin/markdown/ import.go (mistune leafs)
+bin/markdown/ import.go (H2 leaf split; Python bin/md/import fallback)
 bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
 bin/web/      search.go (SearXNG; Python shim execs it)
@@ -92,7 +92,7 @@ bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI
 bin/brain/stats.go [--json]
 bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
 bin/brain/serve.go                               # HTTP :8630; GET /openapi.json POST /mcp
-bin/markdown/import.go [dir]                      # mistune leaves → YAML
+bin/markdown/import.go [dir]                      # H2 leafs → YAML; Python bin/md/import fallback
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
 bin/reasoner/bakeoff.go [--model ID] [--json]     # D18 CPU tool-call bake-off

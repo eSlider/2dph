@@ -63,7 +63,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); Zig CGO (D21)
     cgo/zig zcc zc++        CGO toolchain (zig cc, not gcc)
     mail/import.go          JSON → markdown (no brain write)
-    markdown/import.go      mistune leaves
+    markdown/import.go      H2 leaf split (Go); Python bin/md/import fallback
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
     git/import.go           go-git history (no git binary; conversion only)
     web/search.go           SearXNG client (throttled ≠ absence)
