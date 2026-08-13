@@ -38,7 +38,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D12 | transactional | facts and info split by root but **written in the same Ladybug transaction (ACID)** on every write. |
 | D13 | portfolio | start graph `(Person:eslider)-[:HAS]->(Portfolio)`, associate other natural/juristic persons later. |
 | D14 | tooling style | `bin/{subject}/{method}` self-describing: shebang line 1, usage comment from line 2. Go shebang: `///usr/bin/env go run "$0" "$@"; exit`. |
-| D15 | repo | GitHub `eSlider/2dph`, public (like sibling repos), push/commit via `gh`, TDD + commit every change, CI/CD. |
+| D15 | repo | Gitea [`eSlider/2dph`](https://git.produktor.io/eSlider/2dph) is origin + [issues](https://git.produktor.io/eSlider/2dph/issues). GitHub `eSlider/2dph` is the public clone (PRs + Actions CI). No direct `main` pushes. TDD → PR → CI green → merge. |
 | D16 | contradictions | ≥2 yes vs ≥2 no → unrelated sources conflict → hypothesis → `(not confirmed)`. Resolution (authority, staleness adjudication) = **v2**, tracked as open question. |
 
 ## Architecture
