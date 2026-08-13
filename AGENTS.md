@@ -71,7 +71,7 @@ bin/mail/index_mail                                                     # rebuil
 ## Tools
 
 ```bash
-bin/facts/audit ["self"|"facts"|"info"|"stale"]   # 2-source + staleness gate
+bin/facts/audit ["self"|"db"]                     # repo invariants | evidence over kb.lbug
 bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--hop N] [--repo X]        # deduction search → YAML
 bin/md/tables                                     # what the graph holds → YAML

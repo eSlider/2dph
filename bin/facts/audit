@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 """facts/audit - evidence & lexicon checks for the 2dph brain.
 
-  bin/facts/audit self      # lexicon: every fact in db has >=2 sources
-  bin/facts/audit db        # evidence gate: run against var/kb.lbug
+  bin/facts/audit self      # repo invariants: no db, no network
+  bin/facts/audit db        # evidence gate over var/kb.lbug
 
-`self` mode checks the repo itself (no network, no runtime deps). It greps
-for known-good two-source pairings and confirms the docs are consistent.
-`db` mode loads every Leaf with root=facts and asserts each has source_rev
-and a non-empty `loc` (the "where did you see it" evidence pointer) and that
-'confirmed' facts carry a two-source `source` field.
+`self` runs the pairing rule (bin/tools/factsrules.py) against a fixture and
+asserts a single-source observation cannot become a fact, that every bin/
+tool follows the shebang + usage convention (D14), that AGENTS.md/PLAN.md
+document exactly the modes this tool has, and that the docs still describe
+the retrieval design.
 
-Exit 0 = all checks pass, 1 = audit failures, 2 = could not evaluate.
+`db` loads every Leaf with root=facts and asserts each carries a two-source
+`source` (the " x " pairing), a non-empty `loc` (the "where did you see it"
+pointer), a `how`, and confidence='confirmed'.
+
+Exit 0 = all checks pass, 1 = audit failures.
 """
 from __future__ import annotations
 

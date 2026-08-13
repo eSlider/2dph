@@ -48,8 +48,9 @@ file changed on disk (git HEAD/mtime) after its last observed `source_rev`.
 `File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person` records the history of every
 content leaf.
 
-`bin/facts/audit stale` flags leafs whose observed revision is behind the
-corpus HEAD.
+A planned `stale` mode will flag leafs whose observed revision is behind the
+corpus HEAD. Not implemented — `bin/facts/audit` has `self` and `db` today
+(tracked in PLAN.md, open questions).
 
 ## Sources (auto-pairing)
 

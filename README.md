@@ -29,7 +29,7 @@ graph TB
 
     subgraph dph["2dph tools"]
         EX["bin/facts/extract<br/>2-source pairing"]
-        AU["bin/facts/audit<br/>confidence + staleness"]
+        AU["bin/facts/audit<br/>2-source + convention gate"]
         IDX["bin/kb/index<br/>chunk + embed"]
         MD["bin/md/import<br/>mistune leaves"]
         SR["bin/kb/search<br/>deduction + --hop"]

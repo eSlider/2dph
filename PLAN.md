@@ -50,7 +50,7 @@ detective method: **a fact needs ≥2 independent sources or it is
   skills/                   in-project skills (web-search, db-yaml, kb-search, agent-cost, diataxis-docs, …)
   bin/
     facts/extract           auto-pair 2 sources → lexicon yaml + graph
-    facts/audit             ["self"|"facts"|"info"|"stale"] 2-source + staleness gate
+    facts/audit             ["self"|"db"] repo invariants | evidence over kb.lbug
     kb/index                build FTS + HNSW from corpus
     kb/search               deduction: facts → info → web-search; --hop N
     kb/get  kb/stats  kb/eval
@@ -118,7 +118,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 1. go vet + go test ./... (Go tools)
 2. python -m unittest discover + pytest (Py tools)
-3. bin/facts/audit self  (lexicon internal consistency)
+3. bin/facts/audit self  (evidence rule vs fixture, tool convention, doc/mode match)
 4. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
 5. md-docs build/lint if docs tooling arrives.
 

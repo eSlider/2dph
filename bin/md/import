@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+"""md/import - split a markdown corpus into leafs (mistune).
+
+  bin/md/import [DIR]                 # walk DIR (default .) for *.md
+  bin/md/import --files a.md,b.md     # explicit file list
+  bin/md/import --json                # JSON instead of YAML
+
+Prints the leafs; it does not write to the brain. bin/kb/index calls the same
+mdleaves functions to build var/kb.lbug.
+
+Exit 0 = leafs printed, 1 = no markdown found, 2 = path does not exist.
+"""
 from __future__ import annotations
 
 import sys
