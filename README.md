@@ -7,14 +7,16 @@
 [![Latest Release](https://img.shields.io/github/v/tag/eSlider/2dph?sort=semver&label=release)](https://github.com/eSlider/2dph/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/eSlider/2dph?style=social)](https://github.com/eSlider/2dph/stargazers)
 
-An evidence-first brain over the operational eSlider stack. **Facts need two
-independent sources, or they are `(not confirmed)`.**
+An evidence-first brain. **Facts need two independent sources, or they are
+`(not confirmed)`.** Cursor is not the runtime.
 
-`2dph` is a single embedded knowledge graph (LadybugDB = Kuzu successor) with
-native **HNSW vector** + **BM25 full-text** indexes, built from markdown,
-compose files, ssh config, docker state, and git history. Search is
-*deduction*: confirmed facts first, supporting info second, `web-search` as
-the independent second source when the local graph cannot confirm.
+`2dph` is a single embedded knowledge graph (LadybugDB) with native **HNSW
+vector** + **BM25 full-text** indexes. Search is *deduction*: confirmed facts
+first, supporting info second, `web-search` as the independent second source
+when the local graph cannot confirm.
+
+Run it: [docs/runbook.md](docs/runbook.md). Design: [docs/design.md](docs/design.md).
+Docs index: [docs/README.md](docs/README.md).
 
 ## Architecture
 
@@ -74,7 +76,7 @@ graph TB
 ## The method
 
 Every assertion is `Who / What / How / Where / When + evidence + confidence`,
-mirroring the detective detective skill: **≥2 independent sources confirm a
+mirroring the detective method: **≥2 independent sources confirm a
 fact; conflicting sources or a single source → `hypothesis` → `(not confirmed)`.**
 
 | root | meaning | used for answers |
@@ -124,17 +126,15 @@ bin/brain/search.go "invoice from last week"                            # same s
 
 ## Storage
 
-- **LadybugDB** — single `var/kb.lbug`, Cypher property graph, HNSW + BM25
-  in one engine, embedded (no server), ACID, read-only-safe for concurrent
-  readers. Read tools (`get` / `stats` / `eval`) are Go + Zig CGO (`bin/cgo/zcc`); Python
-  `bin/kb/{get,stats,eval}` is the CI fallback. **Never `DROP INDEX` FTS/VECTOR** on Ladybug 0.19: DROP leaves
-  ghost catalog tables (`_0_Leaf_vec_UPPER`) so recreate fails while
-  `SHOW_INDEXES` omits HNSW. Fresh indexes = delete `var/kb.lbug` +
-  `bin/brain/index.go --rebuild`. Use `ensure_indexes()` after upserts.
-- **model2vec** — `potion-multilingual-128M` static embeddings (256-dim),
-  CPU-fast, deterministic, no Ollama runtime dependency.
-- facts and info split semantically by `root` column but written inside the
-  same transaction.
+- **LadybugDB** — single `var/kb.lbug`, Cypher + HNSW + BM25, embedded.
+  Read tools (`get` / `stats` / `eval`) are Go + Zig CGO (`bin/cgo/zcc`).
+  Python fallbacks stay for CI until the runner fetches Zig. Write is
+  Compose profile `index` (`bin/brain/index.go`).
+- **model2vec** — `potion-multilingual-128M` (256-dim), CPU, no Ollama
+  runtime dependency.
+- facts and info split by `root` but written in the same transaction.
+
+Ladybug 0.19 DROP INDEX warning: [docs/runbook.md](docs/runbook.md).
 
 ## Tooling conventions
 
@@ -145,11 +145,13 @@ machines. Tests gate every commit. HTTP: `bin/brain/serve.go` calls
 
 ## Development
 
+See the portable runbook: [docs/runbook.md](docs/runbook.md).
+
 ```bash
-uv venv .venv                                  # Python 3.12, uv-managed
-uv pip install -r requirements.lock.txt        # pinned toolchain
-bin/facts/audit.go self                        # lexicon consistency gate
-go test ./... && python -m unittest discover -s bin/tools -t .
+uv venv .venv
+uv pip install -r requirements.lock.txt
+bin/facts/audit.go self
+go test ./... && uv run python -m unittest discover -s bin/tools -t .
 ```
 
 Docker (optional, cached model + var volumes):
