@@ -29,7 +29,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D3 | web search | Vendored client; SearXNG URL is config. Optional Compose instance (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
-| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `internal/brain`); Python remains for index/write until the Go write path is safe. |
+| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`); Python remains for index/write until the Go write path is safe. |
 | D7 | db access | `db-yaml`/`psql-yq`-style, read-only, YAML out. OnlyOffice Postgres via SSH tunnel (`127.0.0.1:5433`). |
 | D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. |
 | D9 | facts/goal model | Who / What / How / Where / When + evidence + confidence on every edge. |
@@ -57,7 +57,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
     brain/get.go stats.go eval.go watch.go
     brain/search.go         deduction: facts → info → web-search
-    brain/serve.go          HTTP API (internal/httpapi)
+    brain/serve.go          HTTP API in-process (internal/httpapi + internal/brain)
     mail/import.go          JSON → markdown (no brain write)
     markdown/import.go      mistune leaves
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
