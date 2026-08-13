@@ -15,6 +15,9 @@ Read first: [PLAN](PLAN.md) → [docs](docs/).
 - `info` root = descriptive/narrative leafs, searchable, never asserted as fact.
 - Search is deduction: `facts` → `info` → `web-search` (second independent
   source). An answer is `confirmed` only if it comes off the facts root.
+- Fact-check every *claim* (facts → info → live → web), not every edit or
+  syntax tweak. PicoClaw: `search` then `get` then `audit` before a factual
+  reply (`skills/picoclaw/SKILL.md`). `throttled` is not a negative finding.
 
 ## Hard rules
 
