@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "2dph": {
+      "url": "http://127.0.0.1:8630/mcp",
+      "description": "2dph fact gate. Tool order: search → get → audit. throttled is not absence."
+    }
+  }
+}

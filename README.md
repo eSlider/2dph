@@ -158,6 +158,7 @@ Docker (optional, cached model + var volumes):
 docker compose run --rm brain index            # (re)index corpus
 docker compose run --rm brain search "query"   # one-shot query
 docker compose run --rm brain serve            # bin/brain/serve.go
+docker compose --profile picoclaw up brain-mcp # MCP on 127.0.0.1:8630
 docker compose up brain-watch                  # auto re-index on change
 ```
 
