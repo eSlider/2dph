@@ -1,18 +1,16 @@
-//usr/bin/env go run -tags=brain_serve "$0" "$@"; exit
-//go:build brain_serve
+//go:build brain_serve && !system_ladybug
 //
-// bin/serve.go — deprecated; use bin/brain/serve.go.
+// Fallback serve when ladybug cgo is not in the build (CI / tags=brain_serve).
+// Production shebang is serve.go (in-process).
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/eSlider/2dph/internal/httpapi"
 )
 
 func main() {
-	fmt.Fprintln(os.Stderr, "bin/serve.go is deprecated; use bin/brain/serve.go")
 	if os.Getenv("KB_ROOT") == "" {
 		if wd, err := os.Getwd(); err == nil {
 			os.Setenv("KB_ROOT", wd)

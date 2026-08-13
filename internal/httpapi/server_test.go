@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,6 +46,26 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit int) ([]b
 		return f.callback(query, limit)
 	}
 	return []byte(`{"query":"` + query + `","count":0,"results":[]}`), nil
+}
+
+func (f *fakeSearcher) Get(_ context.Context, id string, body bool) ([]byte, error) {
+	out := map[string]any{"id": id, "root": "info"}
+	if body {
+		out["text"] = "fake body"
+	}
+	return json.Marshal(out)
+}
+
+func (f *fakeSearcher) Stats(context.Context) ([]byte, error) {
+	return []byte(`{"total":0,"by_root":{}}`), nil
+}
+
+func (f *fakeSearcher) Audit(context.Context) ([]byte, error) {
+	return []byte(`{"status":"ok"}`), nil
+}
+
+func (f *fakeSearcher) Ingest(context.Context) ([]byte, error) {
+	return []byte(`{"mode":"rebuild","command":"bin/brain/index.go --rebuild"}`), nil
 }
 
 func (f *fakeSearcher) count() int {
@@ -139,6 +160,47 @@ func TestSearchRejectsBadLimit(t *testing.T) {
 	h := NewServer(&fakeSearcher{}, 1)
 	if code, _ := get(t, h, "/search?q=x&n=hundred"); code != http.StatusBadRequest {
 		t.Fatalf("code = %d, want 400", code)
+	}
+}
+
+func TestGetLeaf(t *testing.T) {
+	fs := &fakeSearcher{callback: func(q string, limit int) ([]byte, error) {
+		return []byte(`{}`), nil
+	}}
+	h := NewServer(fs, 1)
+	if code, _ := get(t, h, "/get"); code != http.StatusBadRequest {
+		t.Fatalf("missing id code = %d, want 400", code)
+	}
+	code, body := get(t, h, "/get?id=leaf-1&body=1")
+	if code != http.StatusOK {
+		t.Fatalf("get code = %d, want 200 body=%s", code, body)
+	}
+	if !strings.Contains(string(body), "leaf-1") {
+		t.Fatalf("get body %s missing id", body)
+	}
+}
+
+func TestStatsAuditIngest(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	for _, path := range []string{"/stats", "/audit", "/ingest"} {
+		code, body := get(t, h, path)
+		if code != http.StatusOK {
+			t.Fatalf("%s code = %d, want 200 (%s)", path, code, body)
+		}
+		if !json.Valid(body) {
+			t.Fatalf("%s body not json: %s", path, body)
+		}
+	}
+}
+
+func TestHTTPPackageDoesNotExecPython(t *testing.T) {
+	raw, err := os.ReadFile("server.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lower := strings.ToLower(string(raw))
+	if strings.Contains(lower, "python3") || strings.Contains(lower, "bin/kb/search") {
+		t.Fatal("httpapi must not exec Python or bin/kb/search")
 	}
 }
 
