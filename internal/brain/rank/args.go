@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const Usage = `usage: bin/brain/search.go "query" [--root facts|info] [--repo REPO] [-n N] [--json]
+const Usage = `usage: bin/brain/search.go "query" [--root facts|info] [--repo REPO] [-n N] [--json] [--no-web]
        bin/brain/search.go serve [port]
        bin/brain/search.go --list-model`
 
@@ -17,6 +17,7 @@ type Options struct {
 	Limit     int
 	JSONOut   bool
 	ListModel bool
+	NoWeb     bool
 }
 
 // ParseArgs reads flags. Unknown flags are an error: silently dropping them
@@ -54,6 +55,8 @@ func ParseArgs(args []string) (Options, error) {
 			return opt, fmt.Errorf("--hop is not implemented yet (needs File/FROM_FILE edges)")
 		case "--json":
 			opt.JSONOut = true
+		case "--no-web":
+			opt.NoWeb = true
 		case "--list-model":
 			opt.ListModel = true
 		default:

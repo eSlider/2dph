@@ -59,6 +59,13 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertNotIn("password", settings.lower())
         self.assertIn("json", settings)
 
+    def test_readme_search_escalates_web(self) -> None:
+        text = (ROOT / "README.md").read_text()
+        self.assertIn("--no-web", text)
+        self.assertIn("D17", (ROOT / "PLAN.md").read_text())
+        skill = (ROOT / "skills" / "brain" / "SKILL.md").read_text()
+        self.assertIn("`web` block", skill)
+
     def test_docs_do_not_claim_hop_walks(self) -> None:
         paths = [
             ROOT / "README.md",
