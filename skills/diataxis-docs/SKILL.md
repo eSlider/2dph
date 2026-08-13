@@ -30,12 +30,13 @@ related:
 ---
 ```
 
-`bin/kb/index` reads this. `type` becomes a searchable column and `related`
-becomes a graph edge:
+`bin/kb/index` reads this. `type` is stored on the leaf; filtering on it from
+the CLI is not implemented, so use the root filter. `related` is not turned
+into a graph edge yet — the walk follows `FROM_FILE`.
 
 ```bash
-bin/kb/search "deploy" --type howto
-bin/kb/search "Stecktafel" --hop 1     # follow links and related
+bin/kb/search "deploy" --root info
+bin/kb/search "Stecktafel" --hop 1     # walks FROM_FILE to the file's other leafs
 ```
 
 ## Audit checklist

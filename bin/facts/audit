@@ -165,6 +165,95 @@ def code_snippets(text: str) -> list[str]:
     return spans
 
 
+DOC_FILES = ["AGENTS.md", "PLAN.md", "README.md"]
+
+# Where a tool's flags are really declared, when not in the tool file itself:
+# bin/kb/search is a shell wrapper around the Go binary, bin/mail/sync.go is a
+# shebang entry whose flags live in its package.
+FLAG_SOURCES = {
+    "bin/kb/search": ["bin/kbsearch"],
+    "bin/mail/sync.go": ["bin/mail/sync"],
+}
+
+# Tools documented here but deliberately not vendored. Each needs a reason,
+# and `audit self` prints them under `exceptions` on every run — a suppression
+# you cannot see is how `--hop` survived in six files for as long as it did.
+EXTERNAL_TOOLS = {
+    "bin/agents/cost": "skills/agent-cost documents the upstream tool; "
+                       "not vendored into this repo (PLAN D2). Vendor it or drop the skill.",
+}
+
+
+def doc_paths() -> list[Path]:
+    paths = [ROOT / n for n in DOC_FILES]
+    paths += sorted((ROOT / "docs").glob("*.md"))
+    paths += sorted((ROOT / "skills").glob("*/SKILL.md"))
+    return [p for p in paths if p.exists()]
+
+
+def documented_invocations(text: str) -> list[tuple[str, list[str]]]:
+    """(tool, flags) for every bin/... invocation inside code in a doc."""
+    out: list[tuple[str, list[str]]] = []
+    for snippet in code_snippets(text):
+        # (?<![\w/]) keeps `///usr/bin/env go run` from reading as `bin/env`.
+        m = re.search(r"(?<![\w/])(bin/[\w.-]+(?:/[\w.-]+)*)", snippet)
+        if not m:
+            continue
+        # Flags only count after the command, so `bash -n bin/db/psql-yq`
+        # does not attribute -n to psql-yq.
+        rest = snippet[m.end():]
+        flags = sorted(set(re.findall(r"(?<![\w-])(--?[a-zA-Z][\w-]*)", rest)))
+        out.append((m.group(1), flags))
+    return out
+
+
+def flag_is_declared(tool: str, flag: str) -> bool:
+    """Search the tool's own source (and its package, for wrappers) for the
+    flag. Static on purpose: running a tool to ask for --help would execute
+    tools that have no argparse and no dry-run.
+
+    Both spellings count: argparse writes `add_argument("--rebuild")`, Go's
+    flag package writes `fs.String("out", ...)` and still accepts `--out`.
+    """
+    bare = flag.lstrip("-")
+    wanted = (flag, f'"{bare}"', f"'{bare}'")
+    haystacks: list[Path] = [ROOT / tool]
+    for extra in FLAG_SOURCES.get(tool, []):
+        haystacks.extend(sorted((ROOT / extra).rglob("*")))
+    for path in haystacks:
+        if not path.is_file():
+            continue
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if any(w in body for w in wanted):
+            return True
+    return False
+
+
+def check_documented_commands() -> list[str]:
+    """Every bin/... command shown in the docs must exist and accept the flags
+    it is shown with. `--hop` was documented in six files and implemented in
+    none, and silently swallowed its argument into the query."""
+    problems: list[str] = []
+    for path in doc_paths():
+        name = path.relative_to(ROOT)
+        for tool, flags in documented_invocations(path.read_text()):
+            target = ROOT / tool
+            if target.is_dir():
+                continue  # a path argument, not a command (`-s bin/tools`)
+            if tool in EXTERNAL_TOOLS:
+                continue
+            if not target.exists():
+                problems.append(f"{name} documents a tool that does not exist: {tool}")
+                continue
+            for flag in flags:
+                if not flag_is_declared(tool, flag):
+                    problems.append(f"{name}: {tool} does not accept {flag}")
+    return sorted(set(problems))
+
+
 def check_documented_modes() -> list[str]:
     """Docs must name the modes this tool actually has (AGENTS rule 6)."""
     problems: list[str] = []
@@ -206,7 +295,7 @@ def check_docs() -> list[str]:
 def audit_self() -> list[str]:
     problems: list[str] = []
     for check in (check_evidence_rule, check_tool_convention,
-                  check_documented_modes, check_docs):
+                  check_documented_commands, check_documented_modes, check_docs):
         problems.extend(check())
     return problems
 
@@ -220,6 +309,8 @@ def main(argv: list[str]) -> int:
 
     problems = audit_self() if a.mode == "self" else audit_db()
     out = {"mode": a.mode, "ok": not problems, "problems": problems}
+    if a.mode == "self" and EXTERNAL_TOOLS:
+        out["exceptions"] = [f"{tool}: {why}" for tool, why in sorted(EXTERNAL_TOOLS.items())]
     if a.json:
         print(json.dumps(out, indent=2))
     else:

@@ -81,8 +81,7 @@ bin/mail/index_mail                                                     # rebuil
 bin/facts/audit ["self"|"db"]                     # repo invariants | evidence over kb.lbug
 bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--hop N] [--repo X]        # deduction search → YAML
-bin/md/tables                                     # what the graph holds → YAML
-bin/brain/deduce "question"                       # thinking wrapper
+bin/kb/stats                                      # what the graph holds → YAML
 ```
 
 Never start a shell command with `cd` — use the tool working-directory

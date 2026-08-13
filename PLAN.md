@@ -54,8 +54,8 @@ detective method: **a fact needs ≥2 independent sources or it is
     kb/index                build FTS + HNSW from corpus
     kb/search               deduction: facts → info → web-search; --hop N
     kb/get  kb/stats  kb/eval
-    md/import  md/select  md/tables  md/gaps     (mistune)
-    brain/extract  brain/audit   brain/deduce    (thinking wrapper)
+    md/import                                   (mistune; select/tables/gaps planned)
+                                                (brain/* thinking wrappers planned)
     web/search               (vendored)
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
