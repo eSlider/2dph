@@ -1,20 +1,21 @@
-//usr/bin/env go run -tags=brain_stats "$0" "$@"; exit
-//go:build brain_stats
+//usr/bin/env go run -tags=system_ladybug,brain_stats "$0" "$@"; exit
+//go:build cgo && system_ladybug && brain_stats
 //
 // bin/brain/stats.go - index health.
 //
 //	./bin/brain/stats.go
 //	./bin/brain/stats.go --json
 //
+// Needs CGO + libladybug. Python bin/kb/stats is the CI fallback (no cgo).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
 import (
 	"os"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	"github.com/eSlider/2dph/internal/brain"
 )
 
 func main() {
-	os.Exit(cmdbin.ExecFile("bin/kb/stats", os.Args[1:]))
+	os.Exit(brain.MainStats(os.Args[1:]))
 }

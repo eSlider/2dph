@@ -77,6 +77,37 @@ class BinLayoutTest(unittest.TestCase):
         for method in ("index.go", "get.go", "stats.go", "eval.go", "watch.go"):
             self._assert_shebang(f"bin/brain/{method}")
 
+    def test_brain_get_stats_eval_are_not_python_exec(self) -> None:
+        for method in ("get.go", "stats.go", "eval.go"):
+            text = (ROOT / "bin" / "brain" / method).read_text()
+            self.assertNotIn(
+                "ExecFile",
+                text,
+                f"bin/brain/{method} must call internal/brain, not ExecFile Python",
+            )
+            self.assertNotIn(
+                "cmdbin",
+                text,
+                f"bin/brain/{method} must not import internal/cmdbin",
+            )
+            self.assertIn(
+                "system_ladybug",
+                text.splitlines()[0],
+                f"bin/brain/{method} shebang must pass -tags=system_ladybug",
+            )
+            self.assertIn(
+                "github.com/eSlider/2dph/internal/brain",
+                text,
+            )
+
+    def test_eval_control_questions_live_in_rank(self) -> None:
+        rank = (ROOT / "internal" / "brain" / "rank" / "evalq.go").read_text()
+        py = (ROOT / "bin" / "kb" / "eval").read_text()
+        for frag in ("BM25", "DevOps", "LadybugDB"):
+            self.assertIn(frag, rank)
+            self.assertIn(frag, py)
+        self.assertIn("0.95", rank)
+
     def test_mail_import_is_shebang_not_brain_write(self) -> None:
         self._assert_shebang("bin/mail/import.go")
         index_mail = (ROOT / "bin" / "mail" / "index_mail").read_text()
