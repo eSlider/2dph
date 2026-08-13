@@ -81,6 +81,7 @@ bin/facts/audit ["self"|"facts"|"info"|"stale"]   # 2-source + staleness gate
 bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
+bin/brain/search.go "query" --no-web              # local graph only
 bin/brain/get.go <id> [--body]
 bin/markdown/import.go [dir]                      # mistune leaves → YAML
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs

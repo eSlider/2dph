@@ -85,9 +85,10 @@ fact; conflicting sources or a single source → `hypothesis` → `(not confirme
 ## Deduction search
 
 ```bash
-bin/brain/search.go "Matrix federation over HTTPS"   # facts → info → web-search
+bin/brain/search.go "Matrix federation over HTTPS"   # facts → info → web
 bin/brain/search.go "onlyoffice postgres" --root facts
 bin/brain/search.go "where is cs-lexicon" --json | yq '.'
+bin/brain/search.go "upstream flag" --no-web         # local graph only
 bin/brain/get.go <id> --body                         # full chunk on demand
 bin/brain/stats.go                                   # index health
 bin/brain/eval.go                                    # recall@5 gate

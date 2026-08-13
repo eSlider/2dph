@@ -39,8 +39,9 @@ are not wired yet); do not treat it as a graph walk.
 - Search before you read. Never grep a repo for a concept the graph covers.
 - `--root facts` returns only confirmed evidence-linked answers. Default shows
   facts first, then info leafs clearly marked `(not confirmed)`.
+- If there is no facts hit, `bin/brain/search.go` consults SearXNG and adds a
+  `web` block (kept apart from graph hits). `throttled` / `skipped` / `refused`
+  are not evidence of absence. `--root facts|info` and `--no-web` skip the web.
 - If recall looks wrong, run `bin/brain/eval.go`; it gates control questions and
   should stay at or above 95% recall@5.
-- Escalate to `web-search` (the `web-search` skill) as the independent second
-  source when both local roots cannot confirm; never report an unconfirmed
-  single-source local answer as fact.
+- Never report an unconfirmed single-source local answer as fact.
