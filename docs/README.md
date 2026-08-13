@@ -6,6 +6,7 @@ Brain/ops/eSlider stack. Facts need proof or they are
 
 - [PLAN.md](../PLAN.md) — decisions, execution order, open questions (v2)
 - [design](design.md) — schema, deduction model, sources
+- [reasoner](reasoner.md) — D18 CPU bake-off (Qwen3.5-9B vs Bonsai / Qwen3.6-27B)
 - [Gitea issues](https://git.produktor.io/eSlider/2dph/issues) — work board (origin)
 
 Search: `bin/brain/search.go "query"` (HTTP: `bin/brain/serve.go` —

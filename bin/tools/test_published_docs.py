@@ -103,6 +103,35 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertIn('profiles: ["index"]', compose)
         self.assertIn("target: api", compose)
 
+    def test_reasoner_docs_name_real_hf_ids_cpu_sidecar(self) -> None:
+        docs = (ROOT / "docs" / "reasoner.md").read_text()
+        for hf in (
+            "Qwen/Qwen3.5-9B",
+            "Qwen/Qwen3.6-27B",
+            "prism-ml/Bonsai-27B-gguf",
+        ):
+            self.assertIn(hf, docs)
+        self.assertIn("no official qwen3.6-9b", docs.lower())
+        self.assertIn("OLLAMA_NUM_GPU", docs)
+        self.assertIn("rss_mb", docs)
+        self.assertIn("vram_mb", docs)
+        self.assertIn("3/3", docs)
+        self.assertIn("Do not claim 9B is better at tools", docs)
+        self.assertNotIn("Qwen/Qwen3.6-9B", docs)
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("D18", plan)
+        self.assertIn("Qwen/Qwen3.5-9B", plan)
+        compose = (ROOT / "compose.yaml").read_text()
+        self.assertIn('profiles: ["reasoner"]', compose)
+        self.assertIn("OLLAMA_NUM_GPU", compose)
+        self.assertIn("127.0.0.1:11435", compose)
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertNotIn(".gguf", dockerfile.lower())
+        self.assertNotIn(".safetensors", dockerfile.lower())
+        api = dockerfile[dockerfile.index("FROM debian:bookworm-slim AS api") :]
+        self.assertNotIn("COPY models", api)
+        self.assertNotIn("qwen", api.lower())
+
     def test_readme_search_escalates_web(self) -> None:
         text = (ROOT / "README.md").read_text()
         self.assertIn("--no-web", text)
