@@ -1,5 +1,5 @@
 ---
-name: kb-search
+name: brain
 description: >-
   Deduction search over the 2dph brain (Ladybug graph: ops corpus, portfolio,
   ssh hosts) with bin/brain/search.go instead of reading files or grepping
@@ -8,7 +8,7 @@ description: >-
   documentation.
 ---
 
-# kb-search — deduction over facts and info
+# brain — deduction over facts and info
 
 One embedded Ladybug graph (`var/kb.lbug`, read-only when queried) holding two
 roots:
