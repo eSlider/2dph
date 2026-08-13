@@ -1,5 +1,4 @@
-// modelDir returns the resolved potion-multilingual-128m model directory.
-package main
+package brain
 
 import (
 	"fmt"

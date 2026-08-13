@@ -1,9 +1,11 @@
+//go:build cgo && system_ladybug
+
 // StaticModel wraps the potion-multilingual-128m embedding model.
 //
 // Mirrors model2vec.StaticModel: tokenizer (daulet Unigram) + safetensors matrix.
 // Embed(text) applies the same preprocessing: median_token_length pre-truncation,
 // add_special_tokens=false, drop unk (id=1), truncate to 512, mean pool, L2 normalize +1e-32.
-package main
+package brain
 
 import (
 	"encoding/json"
