@@ -85,6 +85,7 @@ bin/brain/search.go "query" --no-web              # local graph only
 bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI fallback
 bin/brain/stats.go [--json]
 bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
+bin/brain/serve.go                               # HTTP :8630; GET /openapi.json POST /mcp
 bin/markdown/import.go [dir]                      # mistune leaves → YAML
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
