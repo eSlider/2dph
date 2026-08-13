@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 )
@@ -44,10 +45,10 @@ func dbPath() string {
 }
 
 func openBrain() error {
-	return openWithOpts(2, eps())
+	return openWithSandbox(eps())
 }
 
-func openWithOpts(allow int, epsv string) error {
+func openWithSandbox(epsv string) error {
 	cfg := lbug.DefaultSystemConfig()
 	cfg.MaxNumThreads = 8
 	cfg.BufferPoolSize = 1 << 30 // 1GB
@@ -57,20 +58,30 @@ func openWithOpts(allow int, epsv string) error {
 	if err != nil {
 		return fmt.Errorf("OpenDatabase: %w", err)
 	}
-	if epsv != "" {
-		if _, err := conn.Query("SET STREAM_SANDBOX = '" + epsv + "'"); err != nil {
-			return err
-		}
-	}
 
 	conn, err = lbug.OpenConnection(db)
 	if err != nil {
+		closeBrain()
 		return fmt.Errorf("OpenConnection: %w", err)
 	}
+	// Session settings need a live connection; running this before
+	// OpenConnection dereferenced a nil *Connection.
+	if epsv != "" {
+		if strings.ContainsAny(epsv, "'\\") {
+			closeBrain()
+			return fmt.Errorf("SET STREAM_SANDBOX: invalid value")
+		}
+		if _, err := conn.Query("SET STREAM_SANDBOX = '" + epsv + "'"); err != nil {
+			closeBrain()
+			return fmt.Errorf("SET STREAM_SANDBOX: %w", err)
+		}
+	}
 	if _, err := conn.Query("LOAD EXTENSION FTS"); err != nil {
+		closeBrain()
 		return fmt.Errorf("LOAD EXTENSION FTS: %w", err)
 	}
 	if _, err := conn.Query("LOAD EXTENSION VECTOR"); err != nil {
+		closeBrain()
 		return fmt.Errorf("LOAD EXTENSION VECTOR: %w", err)
 	}
 	return nil
