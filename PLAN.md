@@ -98,6 +98,12 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 - OQ3: optional duckdb-md layer for `SELECT … FORMAT MARKDOWN` export/write-back.
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.
+- OQ5: gate the Go search path in CI. `bin/kbsearch` is a nested module that
+  needs the native ladybug library (`lib-ladybug/`, gitignored), so neither
+  `go test ./...` nor `bin/kb/eval` covers it; `kb/eval` measures the python
+  BM25 path in kblib. Ranking logic is unit-tested in
+  bin/kbsearch/rank_test.go, but that file only compiles where the library
+  is present. Needs a CI step that fetches/builds ladybug.
 
 ## Mail pipeline (done)
 
@@ -116,11 +122,15 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 `.github/workflows/ci.yml`:
 
-1. go vet + go test ./... (Go tools)
+1. go vet + go test ./... (Go tools; excludes the nested kbsearch module, OQ5)
 2. python -m unittest discover + pytest (Py tools)
 3. bin/facts/audit self  (evidence rule vs fixture, tool convention, doc/mode match)
-4. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
-5. md-docs build/lint if docs tooling arrives.
+4. bin/kb/index --rebuild (repo corpus; HF model from actions/cache)
+5. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
+6. md-docs build/lint if docs tooling arrives.
+
+Every gate is fail-closed: no step swallows its exit code. A gate that cannot
+be run is removed or tracked as an open question, never faked with `|| true`.
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
 `db/tech-poc`: contract first where there is an OpenAPI/message shape.

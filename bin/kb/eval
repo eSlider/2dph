@@ -4,7 +4,17 @@
   bin/kb/eval [--json]
 
 Control questions are answered from the graph; recall@5 >= 0.95 gates CI.
-Each question maps to leaf ids that MUST appear in the top 5 hits.
+Each question maps to a text fragment that MUST appear in the top 5 hits.
+
+Scope: the questions are answerable from the *repo* corpus (README, PLAN,
+AGENTS, docs, skills) so `bin/kb/index` in CI is enough to run the gate.
+Questions about the ops/portfolio/mail corpora belong in a separate set that
+only runs where those corpora are indexed.
+
+This gates the python retrieval path (kblib BM25). The shipped CLI
+`bin/kb/search` execs the Go binary, whose ranking is covered by
+bin/kbsearch/rank_test.go — building it needs the native ladybug library,
+which CI does not have yet (tracked in PLAN.md).
 """
 from __future__ import annotations
 
@@ -23,17 +33,18 @@ RECALL_THRESHOLD = 0.95
 # (query, expected text fragment that must be in the top-5 results)
 CONTROL_QUESTIONS: list[tuple[str, str]] = [
     ("hybrid search fts and vector", "BM25"),
-    ("eslider devops engineer", "DevOps"),
     ("ladybugdb graph engine storage", "LadybugDB"),
+    ("two independent sources evidence rule", "2 independent sources"),
+    ("deduction search facts before info", "deduction"),
+    ("embedding model for the brain", "model2vec"),
+    ("mail pipeline gmail attachments", "attachment"),
 ]
 
 
 def hit_texts_of(query: str, conn, limit: int = 5) -> list[str]:
-    try:
-        hits = query_fts(conn, query, limit)
-        return [h["text"] for h in hits]
-    except Exception:
-        return []
+    # Deliberately unguarded: a broken FTS index must fail the gate loudly,
+    # not disguise itself as recall 0.0.
+    return [h["text"] for h in query_fts(conn, query, limit)]
 
 
 def main(argv: list[str]) -> int:

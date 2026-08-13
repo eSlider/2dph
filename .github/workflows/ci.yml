@@ -42,13 +42,20 @@ jobs:
           go vet ./...
           go test ./... -count=1
 
-      - name: facts/audit self (lexicon consistency, no network)
-        run: |
-          ./bin/facts/audit self 2>/dev/null || echo "audit: not yet implemented; gate skipped"
+      - name: facts/audit self (repo invariants, no network)
+        run: uv run bin/facts/audit self
 
-      - name: kb/eval recall gate
-        run: |
-          ./bin/kb/eval 2>/dev/null || echo "eval: not yet implemented; gate skipped"
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-potion-multilingual-128M
+
+      - name: Build the brain index (repo corpus)
+        run: uv run bin/kb/index --rebuild
+
+      - name: kb/eval recall gate (recall@5 >= 0.95)
+        run: uv run bin/kb/eval
 
   release:
     name: Release (semver)
