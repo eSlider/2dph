@@ -91,3 +91,26 @@ class BinLayoutTest(unittest.TestCase):
 
     def test_postgres_query_is_shebang(self) -> None:
         self._assert_shebang("bin/postgres/query.go")
+
+    def test_git_import_is_gogit_shebang(self) -> None:
+        self._assert_shebang("bin/git/import.go")
+        py = (ROOT / "bin" / "git" / "import").read_text()
+        self.assertNotIn(
+            '["git"',
+            py,
+            "Python git/import must not subprocess the git binary",
+        )
+        self.assertIn("bin/git/import.go", py)
+
+    def test_gitimport_py_has_no_git_binary(self) -> None:
+        py = (ROOT / "bin" / "tools" / "gitimport.py").read_text()
+        self.assertNotIn("subprocess", py)
+        self.assertNotIn("git log", py)
+
+    def test_gogit_is_direct_go_mod_require(self) -> None:
+        text = (ROOT / "go.mod").read_text()
+        first = text.split("require (")[1].split(")")[0]
+        self.assertRegex(first, r"github.com/go-git/go-git/v5\s+v")
+        for line in first.splitlines():
+            if "go-git/go-git" in line:
+                self.assertNotIn("indirect", line)
