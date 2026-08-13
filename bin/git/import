@@ -1,153 +1,25 @@
 #!/usr/bin/env python3
-"""git/import - import git history (commits, authors, files) into the brain.
+"""git/import — deprecated. Use bin/git/import.go (go-git, no git binary).
 
-  bin/git/import [REPO]                 import all commits -> leafs + graph
-  bin/git/import --json                 emit import leafs as JSON, no write
-  bin/git/import --limit 100            cap commits processed
-  bin/git/import --since 2026-01-01     only recent commits
-  bin/git/import --root DIR             run per repo dir under DIR
-  bin/git/import --no-env               never read .env anywhere (default: true)
-
-Reads `git log --no-merges --name-only` from the repo, maps commits to
-`info` leafs (root=info, type=commit) and writes the version graph
-`File -[:HAS_VERSION]-> Commit -[:AUTHORED]-> Person` into var/kb.lbug.
-Idempotent: leaf MERGE by (source,text via leaf_id), graph MERGE by sha.
+  bin/git/import.go [REPO] [--json] [--limit N] [--since DATE]
 """
 from __future__ import annotations
 
-import json
-import subprocess
+import os
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "bin" / "tools"))
-
-from kblib import (  # noqa: E402
-    connect, ensure_indexes, init_schema, upsert_leaf,
-)
-from gitimport import commits_to_leafs, ensure_git_schema, index_commits, parse_log  # noqa: E402
-
-LOG_FMT = "--format=%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s"
-
-
-def git_log(repo: Path, limit: int = 0, since: str = "") -> str:
-    cmd = ["git", "-C", str(repo), "log", "--no-merges", "--name-only", LOG_FMT]
-    if since:
-        cmd += ["--since", since]
-    if limit:
-        cmd += ["-n", str(limit)]
-    try:
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return ""
-    if out.returncode != 0:
-        print(f"git/import: {repo}: {out.stderr.strip()}", file=sys.stderr)
-        return ""
-    return out.stdout
-
-
-def repo_name(repo: Path) -> str:
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(repo), "remote", "get-url", "origin"],
-            capture_output=True, text=True, timeout=20)
-        url = out.stdout.strip()
-        return url.rstrip("/").split("/")[-1].removesuffix(".git") if url else repo.name
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return repo.name
-
-
-def embedder():
-    from model2vec import StaticModel
-    model = StaticModel.from_pretrained("minishlab/potion-multilingual-128M")
-    return lambda text: model.encode([text])[0].astype(float).tolist()
-
-
-def import_repo(conn, repo: Path, embed, limit: int, since: str,
-                no_write: bool = False) -> tuple[int, int]:
-    raw = git_log(repo, limit, since)
-    commits = parse_log(raw)
-    leafs = commits_to_leafs(commits, repo_name(repo))
-    if no_write:
-        return len(commits), 0
-    written = 0
-    for lf in leafs:
-        query = f"{lf['heading']}\n\n{lf['text']}"
-        emb = embed(lf["text"]) if lf["text"] else None
-        upsert_leaf(conn, text=query, root="info", confidence="confirmed",
-                    source=lf["source"], source_rev="git", how="git/import",
-                    loc=lf["source"], type_=lf.get("type", "commit"),
-                    embedding=emb)
-        written += 1
-    index_commits(conn, commits, repo_name(repo))
-    return len(commits), written
 
 
 def main(argv: list[str]) -> int:
-    import argparse
-    p = argparse.ArgumentParser(description="import git history into the brain")
-    p.add_argument("repo", nargs="?", default=None)
-    p.add_argument("--root", default=None, help="directory of repos to import (each git dir separately)")
-    p.add_argument("--limit", type=int, default=0)
-    p.add_argument("--since", default="")
-    p.add_argument("--json", action="store_true")
-    p.add_argument("--dry-run", action="store_true", help="parse + report, no db write")
-    a = p.parse_args(argv)
-
-    repos: list[Path] = []
-    if a.repo:
-        repos = [Path(a.repo)]
-    elif a.root:
-        root = Path(a.root)
-        if root.is_file():
-            repos = [root]
-        else:
-            repos = [dp for dp in sorted(root.iterdir()) if (dp / ".git").exists() or dp.is_file()]
-    else:
-        repos = [ROOT]
-
-    total_commits = 0
-    results: list[dict] = []
-    if a.dry_run:
-        for repo in repos:
-            if not repo.exists():
-                continue
-            commits = parse_log(git_log(repo, a.limit, a.since))
-            name = repo_name(repo)
-            total_commits += len(commits)
-            results.append({"repo": name, "commits": len(commits),
-                            "leafs": len(commits_to_leafs(commits, name)), "path": str(repo)})
-        if a.json:
-            print(json.dumps(results, indent=2))
-        else:
-            for r in results:
-                print(f"{r['repo']:<24} {r['commits']:>5} commits -> {r['leafs']} leafs  {r['path']}")
-        return 0
-
-    # Never DROP FTS/VECTOR (ghost catalog). Upsert while indexes exist is OK;
-    # ensure_indexes only CREATEs when missing.
-    db, conn = connect(ROOT / "var" / "kb.lbug", read_only=False)
-    init_schema(conn)
-    embed = embedder()
-    rows: list[dict] = []
-    for repo in repos:
-        if not repo.exists():
-            continue
-        reached, written = import_repo(conn, repo, embed, a.limit, a.since)
-        total_commits += reached
-        rows.append({"repo": repo_name(repo), "commits": reached, "written": written})
-    ensure_indexes(conn)
-    conn.close()
-    db.close()
-
-    if a.json:
-        print(json.dumps(rows, indent=2))
-    else:
-        for r in rows:
-            print(f"imported {r['commits']:>5} commits -> {r['written']} leafs  {r['repo']}")
-        print(f"total: {total_commits} commits")
-    return 0
+    print(
+        "bin/git/import is deprecated; use bin/git/import.go (go-git)",
+        file=sys.stderr,
+    )
+    target = ROOT / "bin" / "git" / "import.go"
+    os.execvp("go", ["go", "run", str(target), *argv])
+    return 1
 
 
 if __name__ == "__main__":
