@@ -2,15 +2,10 @@
 //
 // Async by design: every request runs on its own goroutine, and CPU-heavy
 // searches are serialized through a bounded worker pool (a counting
-// semaphore) so N requests can't spawn N Python interpreters at once.
+// semaphore) so N requests can't spawn N search processes at once.
 //
-// Used by bin/serve.go which is a self-executing shebang script:
-//
-//	///usr/bin/env go run "$0" "$@"; exit
-//	package main
-//	import "github.com/eSlider/2dph/bin/server"
-//	func main() { server.Run() }
-package server
+// Used by bin/brain/serve.go.
+package httpapi
 
 import (
 	"context"
@@ -100,8 +95,8 @@ func writeRaw(w http.ResponseWriter, code int, body []byte) {
 	w.Write(body)
 }
 
-// brainSearcher shells out to bin/kb/search --json. A single python search
-// is bounded and short-lived; the worker pool keeps at most N live.
+// brainSearcher shells out to the Go brain-search binary (not Python).
+// A single search is bounded and short-lived; the worker pool keeps at most N live.
 type brainSearcher struct {
 	cmdPath string
 	timeout time.Duration
@@ -122,15 +117,18 @@ func (b *brainSearcher) Search(ctx context.Context, query string, limit int) ([]
 	return out, nil
 }
 
-// Run starts the HTTP server. Reads env: KB_SEARCH_CMD (default bin/kb/search,
-// relative to the repo root given by KB_ROOT), KB_WORKERS (default 4), KB_PORT
-// (default 8630).
+func defaultSearchCmd(root string) string {
+	if env := os.Getenv("KB_SEARCH_CMD"); env != "" {
+		return env
+	}
+	return filepath.Join(root, "var", "bin", "brain-search")
+}
+
+// Run starts the HTTP server. Reads env: KB_SEARCH_CMD (default
+// $KB_ROOT/var/bin/brain-search), KB_WORKERS (default 4), KB_PORT (default 8630).
 func Run() {
 	root := os.Getenv("KB_ROOT")
-	searchPath := os.Getenv("KB_SEARCH_CMD")
-	if searchPath == "" {
-		searchPath = filepath.Join(root, "bin", "kb", "search")
-	}
+	searchPath := defaultSearchCmd(root)
 	workers := 4
 	if raw := os.Getenv("KB_WORKERS"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
@@ -147,7 +145,7 @@ func Run() {
 	searcher := &brainSearcher{cmdPath: searchPath, timeout: 60 * time.Second}
 	handler := NewServer(searcher, workers)
 	addr := "127.0.0.1:" + strconv.Itoa(port)
-	log.Printf("serve: %s (workers=%d)", addr, workers)
+	log.Printf("serve: %s (workers=%d cmd=%s)", addr, workers, searchPath)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}
