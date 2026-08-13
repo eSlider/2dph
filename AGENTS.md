@@ -35,7 +35,9 @@ Read first: [PLAN](PLAN.md) → [docs](docs/).
 PLAN.md       decisions + execution + open questions
 docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
-bin/          self-describing tools bin/{subject}/{method} (shebang)
+bin/          self-describing tools bin/{subject}/{method}.go (shebang)
+bin/brain/    search.go (deduction); libs in internal/brain
+internal/     shared Go (brain/rank is cgo-free)
 bin/serve.go  async Go HTTP server entry (self-executing go run shebang)
 bin/watch/    corpus watcher Go package (mtimes, no inotify deps)
 bin/server/   async Go HTTP server (goroutines, bounded worker pool)
@@ -74,7 +76,8 @@ bin/mail/index_mail                                                     # rebuil
 ```bash
 bin/facts/audit ["self"|"facts"|"info"|"stale"]   # 2-source + staleness gate
 bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
-bin/kb/search "query" [--hop N] [--repo X]        # deduction search → YAML
+bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
+bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
 ```

@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-const Usage = `usage: kbsearch "query" [--root facts|info] [--repo REPO] [-n N] [--json]
-       kbsearch serve [port]
-       kbsearch --list-model`
+const Usage = `usage: bin/brain/search.go "query" [--root facts|info] [--repo REPO] [-n N] [--json]
+       bin/brain/search.go serve [port]
+       bin/brain/search.go --list-model`
 
 type Options struct {
 	Query     string

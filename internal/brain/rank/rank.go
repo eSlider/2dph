@@ -1,4 +1,4 @@
-// Package rank is the cgo-free ranking and CLI parsing for kbsearch.
+// Package rank is the cgo-free ranking and CLI parsing for brain search.
 // CI can `go test ./rank` without the native ladybug library.
 package rank
 

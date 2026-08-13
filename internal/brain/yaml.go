@@ -1,5 +1,5 @@
 // YAML emitter ported from bin/kb/yamlout.py — preserves insertion order.
-package main
+package brain
 
 import (
 	"fmt"

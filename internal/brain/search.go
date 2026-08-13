@@ -1,5 +1,6 @@
-// Hybrid FTS + vector search implementation, plus daemon client/server.
-package main
+//go:build cgo && system_ladybug
+
+package brain
 
 import (
 	"bytes"
@@ -18,7 +19,7 @@ import (
 	"time"
 
 	lbug "github.com/LadybugDB/go-ladybug"
-	"github.com/eSlider/2dph/bin/kbsearch/rank"
+	"github.com/eSlider/2dph/internal/brain/rank"
 )
 
 const defaultPort = 17830
@@ -28,7 +29,7 @@ const healthPath = "/health"
 func runSearch(args []string) int {
 	opt, err := rank.ParseArgs(args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "kbsearch: %v\n%s\n", err, rank.Usage)
+		fmt.Fprintf(os.Stderr, "brain/search: %v\n%s\n", err, rank.Usage)
 		return 2
 	}
 	root, repo, limit, query := opt.Root, opt.Repo, opt.Limit, opt.Query
@@ -247,7 +248,7 @@ func serve(port int) error {
 	})
 
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	log.Printf("kbsearch daemon listening on %s", addr)
+	log.Printf("brain search daemon listening on %s", addr)
 	return http.ListenAndServe(addr, mux)
 }
 
@@ -356,4 +357,22 @@ func ensureDaemon(port int) error {
 		}
 	}
 	return fmt.Errorf("daemon failed to start on port %d", port)
+}
+
+// Main is the bin/brain/search.go entry: search, serve, or --list-model.
+func Main(args []string) int {
+	if len(args) > 0 && args[0] == "serve" {
+		port := defaultPort
+		if len(args) > 1 {
+			if p, err := strconv.Atoi(args[1]); err == nil {
+				port = p
+			}
+		}
+		if err := serve(port); err != nil {
+			log.Printf("brain/search serve: %v", err)
+			return 1
+		}
+		return 0
+	}
+	return runSearch(args)
 }
