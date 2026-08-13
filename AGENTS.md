@@ -36,11 +36,9 @@ PLAN.md       decisions + execution + open questions
 docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}.go (shebang)
-bin/brain/    search.go (deduction); libs in internal/brain
+bin/brain/    search.go, serve.go; libs in internal/brain and internal/httpapi
 internal/     shared Go (brain/rank is cgo-free)
-bin/serve.go  async Go HTTP server entry (self-executing go run shebang)
-bin/watch/    corpus watcher Go package (mtimes, no inotify deps)
-bin/server/   async Go HTTP server (goroutines, bounded worker pool)
+bin/watch/    corpus watcher (internal via bin/brain/watch later)
 bin/mail/     mail pipeline: sync (Go), import (md), index_mail (rebuild)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/docker-entrypoint  container entrypoint (brain index|search|serve|watch)
