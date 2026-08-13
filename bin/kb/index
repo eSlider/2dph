@@ -26,6 +26,7 @@ from kblib import (  # noqa: E402
     open_readonly, stats,
 )
 from mdleaves import read_markdown, to_all, walk_markdown  # noqa: E402
+from mailleafs import from_mail_root  # noqa: E402
 
 CORPUS_DEFAULTS = ["README.md", "PLAN.md", "AGENTS.md", "docs", "skills"]
 
@@ -99,6 +100,9 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description="build the 2dph brain index")
     p.add_argument("--corpus", action="append", help="extra markdown dir/file to index (may repeat)")
     p.add_argument("--rebuild", action="store_true", help="fresh db + indexes")
+    p.add_argument("--with-mail", action="store_true", help="include var/mail message.md leafs")
+    p.add_argument("--since", default="", help="with --with-mail, only messages dated >= YYYY-MM-DD")
+    p.add_argument("--dry-run", action="store_true", help="count leafs, write nothing")
     p.add_argument(
         "--skip-indexes",
         action="store_true",
@@ -109,14 +113,26 @@ def main(argv: list[str]) -> int:
     a = p.parse_args(argv)
 
     from kblib import DB_PATH, VAR
-    VAR.mkdir(exist_ok=True)
-    if a.rebuild and DB_PATH.exists():
-        DB_PATH.unlink()
 
     leafs = load_corpus(ROOT)
     if a.corpus:
         for source in a.corpus:
             leafs.extend(load_corpus_glob(source))
+    mail_n = 0
+    if a.with_mail:
+        mail = from_mail_root(ROOT / "var" / "mail", since=a.since)
+        mail_n = len(mail)
+        leafs.extend(mail)
+
+    if a.dry_run:
+        msg = {"indexed": 0, "corpus_total": len(leafs), "mail_leafs": mail_n, "dry_run": True}
+        print(json.dumps(msg, indent=2) if a.json else
+              f"brain/index: {len(leafs)} leafs would be indexed (mail={mail_n})")
+        return 0
+
+    VAR.mkdir(exist_ok=True)
+    if a.rebuild and DB_PATH.exists():
+        DB_PATH.unlink()
 
     db, conn = connect(DB_PATH, read_only=False)
     init_schema(conn)

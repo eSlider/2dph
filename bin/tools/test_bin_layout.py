@@ -63,3 +63,31 @@ class BinLayoutTest(unittest.TestCase):
             (ROOT / "bin" / "chats" / "linkedin.go").exists(),
             "parser must not stay under bin/chats as a second main",
         )
+
+    def _assert_shebang(self, rel: str) -> None:
+        p = ROOT / rel
+        self.assertTrue(p.is_file(), f"missing {rel}")
+        first = p.read_text().splitlines()[0]
+        self.assertTrue(
+            first.startswith("//usr/bin/env go run"),
+            f"{rel} shebang, got {first!r}",
+        )
+
+    def test_brain_methods_are_shebangs(self) -> None:
+        for method in ("index.go", "get.go", "stats.go", "eval.go", "watch.go"):
+            self._assert_shebang(f"bin/brain/{method}")
+
+    def test_mail_import_is_shebang_not_brain_write(self) -> None:
+        self._assert_shebang("bin/mail/import.go")
+        index_mail = (ROOT / "bin" / "mail" / "index_mail").read_text()
+        self.assertIn(
+            "bin/brain/index.go",
+            index_mail,
+            "index_mail must point at bin/brain/index.go",
+        )
+
+    def test_markdown_import_is_shebang(self) -> None:
+        self._assert_shebang("bin/markdown/import.go")
+
+    def test_postgres_query_is_shebang(self) -> None:
+        self._assert_shebang("bin/postgres/query.go")

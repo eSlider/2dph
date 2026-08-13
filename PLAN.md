@@ -53,13 +53,17 @@ detective method: **a fact needs ≥2 independent sources or it is
   bin/
     facts/extract           auto-pair 2 sources → lexicon yaml + graph
     facts/audit             ["self"|"facts"|"info"|"stale"] 2-source + staleness gate
-    kb/index                build FTS + HNSW from corpus (Python, for now)
+    kb/index                Python write path (called by bin/brain/index.go)
+    brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
+    brain/get.go stats.go eval.go watch.go
     brain/search.go         deduction: facts → info → web-search
-    kb/get  kb/stats  kb/eval
     brain/serve.go          HTTP API (internal/httpapi)
+    mail/import.go          JSON → markdown (no brain write)
+    markdown/import.go      mistune leaves
+    postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
     chats/sync.go import.go facts.go apply.go
                             (libs in internal/chats; no chats index)
-    md/import  md/select  md/tables  md/gaps     (mistune)
+    md/import               (deprecated; bin/markdown/import.go)
     brain/extract  brain/audit   brain/deduce    (thinking wrapper)
     web/search               (vendored)
     db/psql-yq               (vendored)
@@ -108,12 +112,13 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 1. `bin/mail/sync.go` (Go, 8 workers) — paginated Gmail/OnlyOffice download.
    Gmail attachments key off `body.attachmentId`, not MIME `partId`.
-2. `bin/mail/import --from-raw` — message.json → message.md; PDFs via
+2. `bin/mail/import.go --from-raw` — message.json → message.md; PDFs via
    `pdftotext -layout` (~15ms) with docling subprocess fallback; ICS sidecars
    Latin-1→UTF-8 normalized.
-3. `bin/mail/index_mail` — fresh rebuild (repo corpus + mail) because ladybug
+3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
-   indexing stay separate for crash safety.
+   indexing stay separate for crash safety. `bin/mail/index_mail` is a
+   deprecation shim.
 4. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
    via `bin/brain/search.go`.
 
@@ -125,7 +130,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
 3. python -m unittest discover -s bin/tools (includes published-docs SoT)
 4. bin/facts/audit self  (lexicon internal consistency)
-5. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
+5. bin/brain/eval.go       (recall@5 ≥ 0.95, gates index regressions)
 6. md-docs build/lint if docs tooling arrives.
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
