@@ -1,5 +1,7 @@
 package httpapi
 
+import "strings"
+
 // Shared HTTP surface: OpenAPI paths and MCP tools are generated from Ops.
 // ServeHTTP must keep the same path strings.
 
@@ -123,4 +125,20 @@ func MCPTools() []MCPTool {
 		})
 	}
 	return out
+}
+
+// SkillMarkdown is the Cursor skill fragment generated from Ops/MCPTools.
+func SkillMarkdown() string {
+	var b strings.Builder
+	b.WriteString("# brain HTTP / MCP tools\n\n")
+	b.WriteString("Generated from `internal/httpapi.Ops`. Do not edit by hand.\n\n")
+	b.WriteString("Serve: `bin/brain/serve.go` (`GET /openapi.json`, `POST /mcp`).\n\n")
+	for _, t := range MCPTools() {
+		b.WriteString("- `")
+		b.WriteString(t.Name)
+		b.WriteString("` — ")
+		b.WriteString(t.Description)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
