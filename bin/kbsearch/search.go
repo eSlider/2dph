@@ -13,12 +13,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
-	"strings"
+	"syscall"
 	"time"
 
 	lbug "github.com/LadybugDB/go-ladybug"
+	"github.com/eSlider/2dph/bin/kbsearch/rank"
 )
 
 const defaultPort = 17830
@@ -26,45 +26,15 @@ const daemonPath = "/embed"
 const healthPath = "/health"
 
 func runSearch(args []string) int {
-	// Manual flag parsing to allow flags after query (like Python argparse)
-	root := ""
-	repo := ""
-	limit := 20
-	jsonOut := false
-	listModel := false
-
-	var queryArgs []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--root":
-			if i+1 < len(args) {
-				root = args[i+1]
-				i++
-			}
-		case "--repo":
-			if i+1 < len(args) {
-				repo = args[i+1]
-				i++
-			}
-		case "-n":
-			if i+1 < len(args) {
-				if n, err := strconv.Atoi(args[i+1]); err == nil {
-					limit = n
-				}
-				i++
-			}
-		case "--json":
-			jsonOut = true
-		case "--list-model":
-			listModel = true
-		default:
-			if !strings.HasPrefix(args[i], "-") {
-				queryArgs = append(queryArgs, args[i])
-			}
-		}
+	opt, err := rank.ParseArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "kbsearch: %v\n%s\n", err, rank.Usage)
+		return 2
 	}
+	root, repo, limit, query := opt.Root, opt.Repo, opt.Limit, opt.Query
+	jsonOut := opt.JSONOut
 
-	if listModel {
+	if opt.ListModel {
 		dir, err := modelDir()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -72,12 +42,6 @@ func runSearch(args []string) int {
 		}
 		fmt.Println(dir)
 		return 0
-	}
-
-	query := strings.TrimSpace(strings.Join(queryArgs, " "))
-	if query == "" {
-		fmt.Fprintln(os.Stderr, "usage: kbsearch \"query\" [--root facts|info] [--repo REPO] [-n N] [--json]")
-		return 1
 	}
 
 	if err := openBrain(); err != nil {
@@ -103,17 +67,7 @@ func runSearch(args []string) int {
 		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
 	}
 
-	results := hybrid(fts, vec, limit)
-
-	if root != "" {
-		results = filterRoot(results, root)
-	}
-	if repo != "" {
-		results = filterRepo(results, repo)
-	}
-	if len(results) > limit {
-		results = results[:limit]
-	}
+	results := rank.RankAndFilter(fts, vec, root, repo, limit)
 
 	for i := range results {
 		if results[i].Text != "" {
@@ -150,10 +104,7 @@ func b2i(err error) int {
 }
 
 func queryFTS(text string, limit int) ([]Hit, error) {
-	stmt, err := conn.Prepare(
-		"CALL QUERY_FTS_INDEX('Leaf', 'id', $q) " +
-			"RETURN node.id, node.text, node.root, node.source, score ORDER BY score LIMIT $n",
-	)
+	stmt, err := conn.Prepare(rank.FTSStmt)
 	if err != nil {
 		return nil, err
 	}
@@ -170,10 +121,7 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 	for i, v := range emb {
 		embList[i] = v
 	}
-	stmt, err := conn.Prepare(
-		"CALL QUERY_VECTOR_INDEX('Leaf', 'Leaf_vec', $q, $n) " +
-			"RETURN node.id, node.text, node.root, node.source, distance ORDER BY distance LIMIT $n",
-	)
+	stmt, err := conn.Prepare(rank.VecStmt)
 	if err != nil {
 		return nil, err
 	}
@@ -215,10 +163,10 @@ func rowsToHits(res *lbug.QueryResult) ([]Hit, error) {
 
 // JSON output types
 type jsonOut struct {
-	Query      string     `json:"query"`
-	RootFilter string     `json:"root_filter"`
-	Count      int        `json:"count"`
-	Results    []jsonHit  `json:"results"`
+	Query      string    `json:"query"`
+	RootFilter string    `json:"root_filter"`
+	Count      int       `json:"count"`
+	Results    []jsonHit `json:"results"`
 }
 
 type jsonHit struct {
@@ -246,70 +194,6 @@ func toJSONOut(hits []Hit, query, rootFilter string) *jsonOut {
 		Count:      len(hits),
 		Results:    out,
 	}
-}
-
-func hybrid(fts, vec []Hit, limit int) []Hit {
-	byID := make(map[string]Hit)
-	rrf := make(map[string]float64)
-
-	for rank, h := range fts {
-		byID[h.ID] = h
-		rrf[h.ID] += 1.0 / (60 + float64(rank+1))
-	}
-	for rank, h := range vec {
-		if _, ok := byID[h.ID]; !ok {
-			byID[h.ID] = h
-		} else {
-			existing := byID[h.ID]
-			if existing.Score == 0 {
-				existing.Score = h.Score
-				byID[h.ID] = existing
-			}
-		}
-		rrf[h.ID] += 1.0 / (60 + float64(rank+1))
-	}
-
-	type scored struct {
-		id  string
-		rrf float64
-	}
-	var scoredList []scored
-	for id, v := range rrf {
-		scoredList = append(scoredList, scored{id, v})
-	}
-	sort.Slice(scoredList, func(i, j int) bool {
-		return scoredList[i].rrf > scoredList[j].rrf
-	})
-
-	var out []Hit
-	for i, s := range scoredList {
-		if i >= limit {
-			break
-		}
-		h := byID[s.id]
-		out = append(out, h)
-	}
-	return out
-}
-
-func filterRoot(hits []Hit, root string) []Hit {
-	var out []Hit
-	for _, h := range hits {
-		if h.Root == root {
-			out = append(out, h)
-		}
-	}
-	return out
-}
-
-func filterRepo(hits []Hit, repo string) []Hit {
-	var out []Hit
-	for _, h := range hits {
-		if strings.Contains(h.Source, repo) {
-			out = append(out, h)
-		}
-	}
-	return out
 }
 
 func resultsToDicts(hits []Hit) []any {
@@ -382,9 +266,15 @@ func embedQuery(text string) ([]float64, error) {
 			port = p
 		}
 	}
-	emb, err := tryDaemon(text, port)
-	if err == nil {
+	if emb, err := tryDaemon(text, port); err == nil {
 		return emb, nil
+	}
+	if os.Getenv("KBSEARCH_NO_DAEMON") == "" {
+		if err := ensureDaemon(port); err == nil {
+			if emb, err := tryDaemon(text, port); err == nil {
+				return emb, nil
+			}
+		}
 	}
 
 	model, err := loadModel()
@@ -447,8 +337,12 @@ func ensureDaemon(port int) error {
 	cmd.Dir, _ = filepath.Split(self)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
+	}
+	if cmd.Process != nil {
+		_ = cmd.Process.Release()
 	}
 
 	for i := 0; i < 40; i++ {
