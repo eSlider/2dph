@@ -165,7 +165,8 @@ def write_facts(facts: list[dict]) -> None:
         emb = model.encode([f["text"]])[0].astype(float).tolist()
         upsert_leaf(conn, text=f["text"], root="facts", confidence="confirmed",
                     source=f["source"], source_rev=REPO, how=f["how"],
-                    loc=f["loc"], type_="fact", embedding=emb)
+                    loc=f["loc"], type_="fact", embedding=emb,
+                    evidence=f["evidence"])
     conn.close()
     db.close()
 

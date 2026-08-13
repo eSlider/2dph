@@ -31,23 +31,35 @@ MODES = ("self", "db")
 
 
 def audit_db() -> list[str]:
-    from kblib import connect
-    from kblib import VAR
+    from kblib import MIN_EVIDENCE, VAR, connect, facts_lacking_independence
     dbpath = VAR / "kb.lbug"
     if not dbpath.exists():
         return ["no database yet; run bin/kb/index first"]
     db, conn = connect(dbpath)
-    r = conn.execute("MATCH (l:Leaf {root:'facts'}) RETURN l.id, l.source, l.loc, l.how, l.confidence")
     problems: list[str] = []
-    for lid, source, loc, how, conf in r.get_all():
+
+    r = conn.execute("MATCH (l:Leaf {root:'facts'}) RETURN l.id, l.loc, l.how, l.confidence")
+    for lid, loc, how, conf in r.get_all():
         if conf != "confirmed":
             problems.append(f"{lid}: facts require confidence='confirmed', got '{conf}'")
-        if not source or " x " not in source:
-            problems.append(f"{lid}: needs 2-source evidence in source, got '{source}'")
         if not loc:
             problems.append(f"{lid}: missing loc (evidence pointer)")
         if not how:
             problems.append(f"{lid}: missing how")
+
+    # The evidence gate proper. Deliberately not a check on Leaf.source: that
+    # string is a rendering, and "bullshit x bullshit2" satisfies any shape
+    # test you can write about it. Independence is counted over the Evidence
+    # nodes: >=2 observations, >=2 kinds, >=2 origins.
+    for row in facts_lacking_independence(conn):
+        problems.append(
+            f"{row['id']}: not independently sourced "
+            f"(evidence={row['count']}, kinds={row['kinds']}, origins={row['origins']}) "
+            f"- {row['text'][:60]!r}"
+        )
+    if problems:
+        problems.append(f"note: root=facts requires >={MIN_EVIDENCE} independent observations")
+
     conn.close()
     db.close()
     return problems

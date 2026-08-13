@@ -10,6 +10,13 @@ Read first: [PLAN](PLAN.md) → [docs](docs/).
 > ≥2 independent sources of evidence, or the finding is `(not confirmed)`.
 > Link the lexicon yaml path that backs each claim.
 
+Independent means **different kind and different origin**, not two strings:
+`runtime | declared | netconfig | doc | vcs | external` × the system of record
+it came from. Two compose files are one kind and prove nothing together. Every
+observation needs a locator (`README.md:89`) so the claim can be re-checked.
+Enforced in `bin/tools/factsrules.py`, re-checked by `bin/facts/audit db` over
+`(Evidence)-[:SUPPORTS]->(Leaf)`.
+
 - `facts` root = assertions backed by ≥2 independent sources (docker ps ×
   compose × ssh-config × docs).
 - `info` root = descriptive/narrative leafs, searchable, never asserted as fact.

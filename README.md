@@ -77,9 +77,14 @@ Every assertion is `Who / What / How / Where / When + evidence + confidence`,
 mirroring the detective detective skill: **≥2 independent sources confirm a
 fact; conflicting sources or a single source → `hypothesis` → `(not confirmed)`.**
 
+Independence is checked, not assumed: two observations count only if they differ
+in **kind** (runtime / declared / netconfig / doc / vcs / external) *and* in
+**origin** (which system of record produced them), and each must carry a locator
+you can go back and look at. Two compose files are not two sources.
+
 | root | meaning | used for answers |
 |------|---------|------------------|
-| `facts` | assertions backed by ≥2 sources (`confirmed`) | yes, with evidence links |
+| `facts` | assertions backed by ≥2 independent observations (`confirmed`) | yes, with evidence links |
 | `info` | descriptive/narrative leafs (how-tos, notes) | context only, marked `(not confirmed)` |
 
 ## Deduction search

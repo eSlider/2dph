@@ -54,9 +54,28 @@ corpus HEAD. Not implemented — `bin/facts/audit` has `self` and `db` today
 
 ## Sources (auto-pairing)
 
-- A: runtime state — `docker ps` (container running), ports actually bound
-- B: declared config — `docker-compose.yml`, `~/.ssh/config`, `homeserver.yaml`
-- C: narrative — READMEs, AGENTS.md, docs
+Evidence is stored as `Evidence` nodes linked by `(Evidence)-[:SUPPORTS]->(Leaf)`,
+never as a substring of `Leaf.source` — a flattened string cannot be counted, and
+any shape test over it (`" x " in source`) is satisfied by `"bullshit x bullshit2"`.
 
-Confirmed = A×B or B×C agreement. Single source = hypothesis + `(not confirmed)`.
-Conflicting pairings (≥2 yes vs ≥2 no) = hypothesis (OQ1 → v2 resolution).
+Each observation carries a **kind**, a **method**, a **locator** (where to look
+again) and an **origin** (the system of record it came from):
+
+| kind | examples |
+|------|----------|
+| `runtime` | `docker ps`, systemctl, a live query |
+| `declared` | compose files, manifests, IaC |
+| `netconfig` | `~/.ssh/config`, DNS, firewall |
+| `doc` | markdown written by a human |
+| `vcs` | commits, authors, tags |
+| `external` | CRM, API, web — outside this machine and repo |
+
+**Confirmed = ≥2 observations differing in both `kind` and `origin`.** Differing
+in only one is not independence: two compose files are two paths but one kind of
+claim, and one file read two ways is still one system of record. A source
+without a locator is refused outright — evidence you cannot go back and look at
+is not evidence. Single source = hypothesis + `(not confirmed)`. Conflicting
+pairings (≥2 yes vs ≥2 no) = hypothesis (OQ1 → v2 resolution).
+
+`bin/tools/factsrules.py` enforces this at write time (`make_fact`),
+`bin/facts/audit db` re-checks it over the graph.

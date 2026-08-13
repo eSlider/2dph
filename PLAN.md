@@ -31,7 +31,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
 | D6 | graph engine | **LadybugDB** (Kuzu successor, MIT, embedded, native FTS+vector+Cypher). Python binding for `bin/*`; Go shebang for golang tools. |
 | D7 | db access | `db-yaml`/`psql-yq`-style, read-only, YAML out. OnlyOffice Postgres via SSH tunnel (`127.0.0.1:5433`). |
-| D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. |
+| D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. Independence = different `kind` **and** different `origin`, each with a locator; stored as `(Evidence)-[:SUPPORTS]->(Leaf)`, never as a substring of `Leaf.source`. |
 | D9 | facts/goal model | Who / What / How / Where / When + evidence + confidence on every edge. |
 | D10 | versioning | everything is a leaf with `sha256 + observed_at + source_rev`; `File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`. Stale = `source_rev` < git HEAD. |
 | D11 | strong/weak | `root` column: `facts` (strong) vs `info` (weak). Answer is `confirmed` only from facts root. |
@@ -98,6 +98,12 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 - OQ3: optional duckdb-md layer for `SELECT … FORMAT MARKDOWN` export/write-back.
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.
+- OQ6: re-verification of evidence. `Evidence.value_hash` exists in the schema
+  but is not filled: nothing re-runs a locator to check the observation still
+  says what it said. Until it does, `confirmed` means "was true when observed",
+  and staleness cannot be detected — which is what the planned `audit stale`
+  mode needs. Wants `audit db --recheck`: re-read each locator, compare the
+  hash, demote facts whose evidence moved to `hypothesis`.
 - OQ5: gate the Go search path in CI. `bin/kbsearch` is a nested module that
   needs the native ladybug library (`lib-ladybug/`, gitignored), so neither
   `go test ./...` nor `bin/kb/eval` covers it; `kb/eval` measures the python

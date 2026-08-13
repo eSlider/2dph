@@ -55,6 +55,71 @@ class KblibTest(unittest.TestCase):
         self.assertIn("rrf", result[0])
         self.assertEqual(result[0]["text"], "the quick brown fox")
 
+    def add_fact(self, text, evidence):
+        return kblib.upsert_leaf(
+            self.conn, text=text, root="facts", confidence="confirmed",
+            source="rendered", source_rev="r1", how="facts/extract", loc="loc",
+            type_="fact", embedding=make_emb(0.5), evidence=evidence,
+        )
+
+    def test_evidence_is_stored_as_nodes_and_linked_to_the_leaf(self):
+        lid = self.add_fact("chat runs", [
+            {"id": "e1", "kind": "runtime", "method": "docker ps",
+             "locator": "docker ps:chat", "origin": "docker-daemon"},
+            {"id": "e2", "kind": "declared", "method": "compose",
+             "locator": "/a.yaml:chat", "origin": "file:/a.yaml"},
+        ])
+        stored = kblib.evidence_for(self.conn, lid)
+        self.assertEqual({e["kind"] for e in stored}, {"runtime", "declared"})
+        self.assertEqual({e["origin"] for e in stored}, {"docker-daemon", "file:/a.yaml"})
+        self.assertTrue(all(e["locator"] for e in stored))
+
+    def test_evidence_is_shared_between_leafs_not_duplicated(self):
+        shared = {"id": "e1", "kind": "runtime", "method": "docker ps",
+                  "locator": "docker ps:chat", "origin": "docker-daemon"}
+        other = {"id": "e2", "kind": "declared", "method": "compose",
+                 "locator": "/a.yaml:chat", "origin": "file:/a.yaml"}
+        third = {"id": "e3", "kind": "doc", "method": "readme",
+                 "locator": "README.md:1", "origin": "file:README.md"}
+        self.add_fact("chat runs", [shared, other])
+        self.add_fact("chat is documented", [shared, third])
+        total = self.conn.execute("MATCH (e:Evidence) RETURN count(*)").get_all()[0][0]
+        self.assertEqual(total, 3)
+
+    def test_audit_query_flags_a_fact_with_one_kind_of_evidence(self):
+        weak = self.add_fact("two compose files agree", [
+            {"id": "c1", "kind": "declared", "method": "compose",
+             "locator": "/a.yaml:chat", "origin": "file:/a.yaml"},
+            {"id": "c2", "kind": "declared", "method": "compose",
+             "locator": "/b.yaml:chat", "origin": "file:/b.yaml"},
+        ])
+        strong = self.add_fact("chat runs", [
+            {"id": "e1", "kind": "runtime", "method": "docker ps",
+             "locator": "docker ps:chat", "origin": "docker-daemon"},
+            {"id": "e2", "kind": "declared", "method": "compose",
+             "locator": "/a.yaml:chat", "origin": "file:/a.yaml"},
+        ])
+        flagged = {row["id"]: row for row in kblib.facts_lacking_independence(self.conn)}
+        self.assertIn(weak, flagged)
+        self.assertNotIn(strong, flagged)
+        self.assertEqual(flagged[weak]["kinds"], ["declared"])
+
+    def test_audit_query_flags_a_fact_with_no_evidence_at_all(self):
+        bare = kblib.upsert_leaf(
+            self.conn, text="trust me", root="facts", confidence="confirmed",
+            source="bullshit x bullshit2", source_rev="r1", how="h", loc="l",
+            type_="fact", embedding=make_emb(0.5),
+        )
+        flagged = {row["id"] for row in kblib.facts_lacking_independence(self.conn)}
+        self.assertIn(bare, flagged)
+
+    def test_info_leafs_are_not_subject_to_the_evidence_rule(self):
+        kblib.upsert_leaf(self.conn, text="just a note", root="info",
+                          confidence="confirmed", source="s", source_rev="r1",
+                          how="test", loc="/tmp", type_="reference",
+                          embedding=make_emb(0.5))
+        self.assertEqual(kblib.facts_lacking_independence(self.conn), [])
+
     def test_stats_counts_roots(self):
         kblib.upsert_leaf(self.conn, text="a fact leaf", root="facts",
                           confidence="confirmed", source="s", source_rev="r1",

@@ -21,6 +21,7 @@ EMBED_DIM = 256
 ROOT_FACTS = "facts"
 ROOT_INFO = "info"
 CONF_CONFIRMED = "confirmed"
+MIN_EVIDENCE = 2  # independent observations required for root=facts
 
 def _repo_root() -> Path:
     p = Path(__file__).resolve().parent
@@ -69,6 +70,17 @@ def init_schema(conn: ladybug.Connection) -> None:
         "CREATE NODE TABLE IF NOT EXISTS File ("
         " id STRING, path STRING, repo STRING, mtime STRING, PRIMARY KEY(id))"
     )
+    # Evidence is a node, not a substring of Leaf.source: the audit has to be
+    # able to count *kinds* and *origins*, which a flattened string cannot
+    # express. value_hash is reserved for re-verification (PLAN OQ6).
+    conn.execute(
+        "CREATE NODE TABLE IF NOT EXISTS Evidence ("
+        " id STRING, kind STRING, method STRING, locator STRING, "
+        " origin STRING, value_hash STRING, observed_at STRING, PRIMARY KEY(id))"
+    )
+    conn.execute(
+        "CREATE REL TABLE IF NOT EXISTS SUPPORTS (FROM Evidence TO Leaf)"
+    )
     conn.execute(
         "CREATE REL TABLE IF NOT EXISTS FROM_FILE (FROM Leaf TO File)"
     )
@@ -99,7 +111,8 @@ def leaf_id(text: str, source: str) -> str:
 
 def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: str,
                 source: str, source_rev: str, how: str, loc: str, type_: str,
-                embedding: list[float] | None) -> str:
+                embedding: list[float] | None,
+                evidence: list[dict] | None = None) -> str:
     lid = leaf_id(text, source)
     obs = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     conn.execute(
@@ -115,7 +128,68 @@ def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: s
             "emb": (embedding if embedding else None),
         },
     )
+    for item in evidence or []:
+        upsert_evidence(conn, item, lid, obs)
     return lid
+
+
+def upsert_evidence(conn: ladybug.Connection, item: dict, leaf: str, observed_at: str) -> None:
+    """Store one Evidence node and link it to the leaf it supports.
+
+    Evidence is shared: the same observation backing two assertions is one
+    node with two SUPPORTS edges, so 'how many independent things did we
+    actually look at' stays answerable.
+    """
+    conn.execute(
+        "MERGE (e:Evidence {id:$id}) "
+        "SET e.kind=$kind, e.method=$method, e.locator=$locator, "
+        "    e.origin=$origin, e.value_hash=$vhash, e.observed_at=$obs",
+        parameters={
+            "id": item["id"], "kind": item["kind"], "method": item.get("method", ""),
+            "locator": item.get("locator", ""), "origin": item.get("origin", ""),
+            "vhash": item.get("value_hash", ""), "obs": observed_at,
+        },
+    )
+    conn.execute(
+        "MATCH (e:Evidence {id:$eid}), (l:Leaf {id:$lid}) MERGE (e)-[:SUPPORTS]->(l)",
+        parameters={"eid": item["id"], "lid": leaf},
+    )
+
+
+def evidence_for(conn: ladybug.Connection, leaf: str) -> list[dict]:
+    r = conn.execute(
+        "MATCH (e:Evidence)-[:SUPPORTS]->(l:Leaf {id:$lid}) "
+        "RETURN e.id, e.kind, e.method, e.locator, e.origin, e.observed_at",
+        parameters={"lid": leaf},
+    )
+    return [
+        {"id": row[0], "kind": row[1], "method": row[2], "locator": row[3],
+         "origin": row[4], "observed_at": row[5]}
+        for row in r.get_all()
+    ]
+
+
+def facts_lacking_independence(conn: ladybug.Connection) -> list[dict]:
+    """Every facts leaf that is not backed by >=2 independent observations.
+
+    Independent = different kind AND different origin. This is the check that
+    `" x " in source` pretended to be: a fact claiming two sources while both
+    are compose files, or claiming them with no Evidence at all, shows up here.
+    """
+    facts = conn.execute(
+        "MATCH (l:Leaf) WHERE l.root=$root RETURN l.id, l.text",
+        parameters={"root": ROOT_FACTS},
+    ).get_all()
+    problems: list[dict] = []
+    for lid, text in facts:
+        found = evidence_for(conn, lid)
+        kinds = sorted({e["kind"] for e in found if e["kind"]})
+        origins = sorted({e["origin"] for e in found if e["origin"]})
+        if len(found) >= MIN_EVIDENCE and len(kinds) >= MIN_EVIDENCE and len(origins) >= MIN_EVIDENCE:
+            continue
+        problems.append({"id": lid, "text": text, "count": len(found),
+                         "kinds": kinds, "origins": origins})
+    return problems
 
 
 def create_fts_and_vector(conn: ladybug.Connection, force: bool = False) -> None:

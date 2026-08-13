@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "bin" / "tools"))
 from kblib import upsert_leaf, connect, leaf_id  # noqa: E402
 
 CORPUS_MESH = Path("/mnt/8TB/projects/eslider/cv/projects/knowledge-mesh-seed.yaml")
+CRM_GRAPH = Path("/tmp/opencode/crm/graph.json")
 
 
 def corpus_orgs(raw: str) -> dict[str, dict]:
@@ -44,13 +45,15 @@ def main() -> int:
     orgs = corpus_orgs(mesh)
 
     # CRM graph (produced by /tmp/opencode/crm/graph.py -> /tmp/opencode/crm/graph.json)
-    graph = json.load(open("/tmp/opencode/crm/graph.json"))
+    graph = json.load(open(CRM_GRAPH))
     crm_person_company = graph["companies_with_persons"]          # company -> [persons]
     crm_project_companies = {}                                    # pid -> title, companies
     for pid, v in graph["projects_contacts"].items():
         crm_project_companies[pid] = {"title": v["title"], "companies": v["companies"]}
 
-    facts: list[str] = []
+    # Each entry keeps the identifiers of *both* sides, so the evidence can
+    # name where it was seen instead of pointing back at this script.
+    facts: list[dict] = []
     mismatches: list[str] = []
 
     # ---- person->company proven by CRM + corpus org ---- #
@@ -64,8 +67,12 @@ def main() -> int:
         persons = crm_person_company.get(key, []) if key else []
         if persons and org:
             for p in persons:
-                facts.append(f"{p} is associated with {org.get('label')} "
-                             f"(role: {org.get('kind', '?')}, {org.get('period', '')})")
+                facts.append({
+                    "text": f"{p} is associated with {org.get('label')} "
+                            f"(role: {org.get('kind', '?')}, {org.get('period', '')})",
+                    "crm_key": key,
+                    "org": org_name,
+                })
         elif org and key and not persons:
             mismatches.append(f"corpus org '{org_name}' ({org.get('label')}) has no CRM persons")
         elif org and not key:
@@ -82,7 +89,7 @@ def main() -> int:
 
     print(f"# CRM association facts proven (corpus x CRM): {len(facts)}")
     for f in facts:
-        print("  -", f)
+        print("  -", f["text"])
     print(f"# mismatches / one-sided associations: {len(mismatches)}")
     for f in mismatches:
         print("  !", f)
@@ -103,14 +110,25 @@ def main() -> int:
         stats_before = 0
     rev = time.strftime("%Y%m%d-%H%M%S")
     written = 0
-    for f in facts:
-        src = f"ooCRM x {CORPUS_MESH.name}"
+    import factsrules
+    for item in facts:
+        # external (the CRM system of record) x doc (the corpus SoT yaml):
+        # different kind, different origin, both with a locator to look at.
+        fact = factsrules.make_fact(item["text"], [
+            factsrules.Source(
+                "external", "ooCRM",
+                f"{CRM_GRAPH}:companies_with_persons:{item['crm_key']}", "oo-crm"),
+            factsrules.Source(
+                "doc", CORPUS_MESH.name,
+                f"{CORPUS_MESH}:orgs:{item['org']}", f"file:{CORPUS_MESH}"),
+        ], how="crm-crosscheck")
         lid = upsert_leaf(
             conn,
-            text=f, root="facts", confidence="confirmed",
-            source=src, source_rev=rev,
-            how="crm-crosscheck", loc="bin/facts/crm", type_="association",
-            embedding=model.encode(f).tolist(),
+            text=fact.text, root="facts", confidence="confirmed",
+            source=fact.source, source_rev=rev,
+            how=fact.how, loc=fact.loc, type_="association",
+            embedding=model.encode(fact.text).tolist(),
+            evidence=fact.evidence(),
         )
         written += 1
     conn.close()
