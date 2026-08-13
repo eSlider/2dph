@@ -48,18 +48,22 @@ func NewServer(api API, workers int) http.Handler {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
-	case "/health":
+	case PathHealth:
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
-	case "/search":
+	case PathSearch:
 		s.handleSearch(w, r)
-	case "/get":
+	case PathGet:
 		s.handleGet(w, r)
-	case "/stats":
+	case PathStats:
 		s.handleJSON(w, r, s.api.Stats)
-	case "/audit":
+	case PathAudit:
 		s.handleJSON(w, r, s.api.Audit)
-	case "/ingest":
+	case PathIngest:
 		s.handleJSON(w, r, s.api.Ingest)
+	case PathOpenAPI:
+		s.handleOpenAPI(w, r)
+	case PathMCP:
+		s.handleMCP(w, r)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 	}
@@ -111,6 +115,16 @@ func (s *Server) handleJSON(w http.ResponseWriter, r *http.Request, fn func(cont
 	body, err := fn(r.Context())
 	writeAPI(w, body, err)
 }
+
+func (s *Server) tryAcquire(r *http.Request) bool {
+	return s.acquire(nopWriter{}, r)
+}
+
+type nopWriter struct{}
+
+func (nopWriter) Header() http.Header       { return http.Header{} }
+func (nopWriter) Write([]byte) (int, error) { return 0, nil }
+func (nopWriter) WriteHeader(int)           {}
 
 func (s *Server) acquire(w http.ResponseWriter, r *http.Request) bool {
 	select {

@@ -67,6 +67,14 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertIn("internal/brain/rank", design)
         self.assertIn("They do not exec Python", design)
 
+    def test_openapi_mcp_from_same_handlers(self) -> None:
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("D20", plan)
+        self.assertIn("/openapi.json", (ROOT / "README.md").read_text())
+        self.assertIn("/mcp", (ROOT / "README.md").read_text())
+        skill = (ROOT / "skills" / "brain" / "SKILL.md").read_text()
+        self.assertIn("/mcp", skill)
+
     def test_readme_search_escalates_web(self) -> None:
         text = (ROOT / "README.md").read_text()
         self.assertIn("--no-web", text)
