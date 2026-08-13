@@ -18,9 +18,10 @@ bin/web/search "postgres partial index" --lang en --fresh year
 
 ## Web or knowledge base
 
-`bin/kb/search` holds our own facts: the ops stack, portfolio, ssh hosts, the
-lexicon. Go there first. Reach for `bin/web/search` when the answer is outside
-our repos: upstream library behaviour, vendor documentation, public standards.
+`bin/brain/search.go` holds our own facts: the ops stack, portfolio, ssh hosts,
+the lexicon. Go there first. Reach for `bin/web/search` when the answer is
+outside our repos: upstream library behaviour, vendor documentation, public
+standards.
 
 Keep the two apart. A finding is stronger when the reader can see that one
 source was ours and one was not.

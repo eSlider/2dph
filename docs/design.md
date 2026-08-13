@@ -17,14 +17,14 @@ as one consistent state.
 ## Deduction search
 
 ```
-bin/kb/search "question"
+bin/brain/search.go "question"
   1. facts root   — confirmed answers only   → return with evidence links
   2. info  root   — supporting narrative     → snippets, marked (not confirmed)
   3. web-search   — second independent source → upgrade hypothesis to confirmed
 ```
 
-`--hop N` follows graph edges (sibling leaves under a heading, owning file,
-`related:` files, vector-neighbour leaves) — the deduction walk.
+`--hop` is not implemented yet (needs File/FROM_FILE edges). The flag is an
+error; it is not a graph walk.
 
 ## Who / What / How / Where / When + evidence
 

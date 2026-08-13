@@ -32,7 +32,7 @@ graph TB
         AU["bin/facts/audit<br/>confidence + staleness"]
         IDX["bin/kb/index<br/>chunk + embed"]
         MD["bin/md/import<br/>mistune leaves"]
-        SR["bin/kb/search<br/>deduction + --hop"]
+        SR["bin/brain/search.go<br/>deduction"]
     end
 
     subgraph store["Ladybug var/kb.lbug"]
@@ -85,13 +85,15 @@ fact; conflicting sources or a single source → `hypothesis` → `(not confirme
 ## Deduction search
 
 ```bash
-bin/kb/search "Matrix federation over HTTPS"      # facts → info → web-search
-bin/kb/search "what runs on arc-2" --hop 1        # walk graph edges
-bin/kb/search "where is cs-lexicon" --json | yq '.'  # YAML by default
-bin/kb/get <id> --body                            # full chunk on demand
-bin/kb/stats                                      # index health
-bin/kb/eval                                       # recall@5 gate
+bin/brain/search.go "Matrix federation over HTTPS"   # facts → info → web-search
+bin/brain/search.go "onlyoffice postgres" --root facts
+bin/brain/search.go "where is cs-lexicon" --json | yq '.'
+bin/kb/get <id> --body                               # full chunk on demand
+bin/kb/stats                                         # index health
+bin/kb/eval                                          # recall@5 gate
 ```
+
+`--hop` is not implemented (needs File/FROM_FILE edges); the flag errors instead of walking. `bin/kb/search` is a deprecated wrapper around `bin/brain/search.go`.
 
 Mail is a first-class corpus (retrievable through the same search):
 
@@ -99,7 +101,7 @@ Mail is a first-class corpus (retrievable through the same search):
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
 bin/mail/import --from-raw var/mail                                     # JSON → markdown
 bin/mail/index_mail                                                     # rebuild brain incl. mail
-bin/kb/search "Mietwagen Nürnberg invoice"                              # now answers from mail
+bin/brain/search.go "invoice from last week"                            # same search over mail leafs
 ```
 
 ## Storage
@@ -117,10 +119,10 @@ bin/kb/search "Mietwagen Nürnberg invoice"                              # now a
 
 ## Tooling conventions
 
-`bin/{subject}/{method}` — self-describing: shebang on line 1, usage comment
-from line 2. bash + python primary; golang via the Go shebang when a compiled
-helper is right. YAML default output, `--json` for machines. Everything that
-touches network/db is read-only, throttled, cached. Tests gate every commit.
+`bin/{subject}/{method}.go` — self-describing: shebang on line 1, usage comment
+from line 2. Shared code in `internal/`. YAML default output, `--json` for
+machines. Tests gate every commit. HTTP: `bin/brain/serve.go` (default search
+binary `var/bin/brain-search`, not Python).
 
 ## Development
 
@@ -136,7 +138,7 @@ Docker (optional, cached model + var volumes):
 ```bash
 docker compose run --rm brain index            # (re)index corpus
 docker compose run --rm brain search "query"   # one-shot query
-docker compose run --rm brain serve            # async Go HTTP server
+docker compose run --rm brain serve            # bin/brain/serve.go
 docker compose up brain-watch                  # auto re-index on change
 ```
 
