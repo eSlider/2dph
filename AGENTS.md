@@ -77,8 +77,8 @@ bin/brain/index.go --rebuild                                            # rebuil
 ## Tools
 
 ```bash
-bin/facts/audit ["self"|"facts"|"info"|"stale"]   # 2-source + staleness gate
-bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
+bin/facts/audit.go ["self"|"facts"|"info"|"stale"]  # 2-source + staleness gate
+bin/facts/crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --no-web              # local graph only

@@ -108,6 +108,13 @@ class BinLayoutTest(unittest.TestCase):
             self.assertIn(frag, py)
         self.assertIn("0.95", rank)
 
+    def test_facts_methods_are_shebangs(self) -> None:
+        for method in ("audit.go", "extract.go", "crm.go"):
+            self._assert_shebang(f"bin/facts/{method}")
+            text = (ROOT / "bin" / "facts" / method).read_text()
+            self.assertIn("cmdbin.ExecFile", text)
+            self.assertIn(f"bin/facts/{method.removesuffix('.go')}", text)
+
     def test_mail_import_is_shebang_not_brain_write(self) -> None:
         self._assert_shebang("bin/mail/import.go")
         index_mail = (ROOT / "bin" / "mail" / "index_mail").read_text()
