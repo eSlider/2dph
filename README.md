@@ -31,7 +31,7 @@ graph TB
         EX["bin/facts/extract.go<br/>2-source pairing"]
         AU["bin/facts/audit.go<br/>confidence + staleness"]
         IDX["bin/brain/index.go<br/>chunk + embed"]
-        MD["bin/markdown/import.go<br/>mistune leaves"]
+        MD["bin/markdown/import.go<br/>H2 leaf split"]
         SR["bin/brain/search.go<br/>deduction"]
     end
 

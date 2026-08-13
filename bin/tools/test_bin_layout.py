@@ -125,8 +125,28 @@ class BinLayoutTest(unittest.TestCase):
             "index_mail must point at bin/brain/index.go",
         )
 
-    def test_markdown_import_is_shebang(self) -> None:
+    def test_markdown_import_is_go_not_python_exec(self) -> None:
         self._assert_shebang("bin/markdown/import.go")
+        text = (ROOT / "bin" / "markdown" / "import.go").read_text()
+        self.assertNotIn("ExecFile", text)
+        self.assertNotIn("cmdbin", text)
+        self.assertIn("internal/mdleaves", text)
+        self.assertNotIn("kb.lbug", text)
+
+    def test_import_adapters_do_not_write_ladybug(self) -> None:
+        for rel in (
+            "bin/mail/import.go",
+            "bin/mail/import",
+            "bin/markdown/import.go",
+            "bin/chats/import.go",
+            "bin/git/import.go",
+        ):
+            text = (ROOT / rel).read_text()
+            self.assertNotIn("upsert_leaf", text, rel)
+            self.assertNotIn("kb.lbug", text, rel)
+            self.assertNotIn("var/brain.lbug", text, rel)
+        index = (ROOT / "bin" / "brain" / "index.go").read_text()
+        self.assertIn("bin/kb/index", index)
 
     def test_postgres_query_is_shebang(self) -> None:
         self._assert_shebang("bin/postgres/query.go")
