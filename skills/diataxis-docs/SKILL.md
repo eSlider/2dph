@@ -30,12 +30,11 @@ related:
 ---
 ```
 
-`bin/kb/index` reads this. `type` becomes a searchable column and `related`
-becomes a graph edge:
+`bin/kb/index` reads this. `type` becomes a searchable column. `related:` is
+frontmatter for humans; graph hops from it are not implemented yet.
 
 ```bash
-bin/kb/search "deploy" --type howto
-bin/kb/search "Stecktafel" --hop 1     # follow links and related
+bin/brain/search.go "deploy"
 ```
 
 ## Audit checklist
@@ -46,8 +45,7 @@ bin/kb/search "Stecktafel" --hop 1     # follow links and related
    The indexer chunks on H2, so split files also search better.
 3. Is `status: archive` set on anything superseded? Archived files stay indexed
    but stop competing with current ones for a reader's attention.
-4. Does every explanation link the reference it explains, and vice versa? That
-   link is what `--hop 1` walks.
+4. Does every explanation link the reference it explains, and vice versa?
 
 ## Rule
 
