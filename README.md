@@ -166,7 +166,7 @@ docker compose up brain-watch                  # auto re-index on change
 - [go-second-brain](https://github.com/eSlider/go-second-brain) — the earlier
   Neo4j + Qdrant + Matrix RAG brain
 - [agent-skills](https://github.com/eSlider/agent-skills) — upstream
-  skills (`web-search`, `db-yaml`, …) that 2dph integrates
+  skills (`web-search`, `postgres`, …) that 2dph integrates
 - detective method — the two-source method
 
 Work board (issues): [git.produktor.io/eSlider/2dph/issues](https://git.produktor.io/eSlider/2dph/issues).

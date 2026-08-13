@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -73,6 +75,17 @@ func TestMCPToolsListAndCall(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "matrix") {
 		t.Fatalf("search call body %s", body)
+	}
+}
+
+func TestSkillMarkdownMatchesCommittedFile(t *testing.T) {
+	want, err := os.ReadFile(filepath.Join("..", "..", "skills", "brain", "tools.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := SkillMarkdown()
+	if got != string(want) {
+		t.Fatalf("skills/brain/tools.md stale; regenerate from SkillMarkdown()\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
 
