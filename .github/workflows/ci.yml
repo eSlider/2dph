@@ -19,6 +19,10 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
@@ -32,23 +36,19 @@ jobs:
           bash -n bin/db/psql-yq
           bash -n bin/db/ssh-tunnel
           bash -n bin/docker-entrypoint
+          bash -n bin/kb/search
 
       - name: Python unit tests (offline, vendored tools)
         run: |
           uv run python -m unittest discover -s bin/tools -t .
 
-      - name: Go tests (server + watch packages)
+      - name: Go tests (root module, no ladybug cgo)
         run: |
           go vet ./...
           go test ./... -count=1
 
-      - name: kbsearch ranking tests (no cgo / no ladybug)
-        working-directory: bin/kbsearch
-        run: go test ./rank -count=1
-
-      - name: Go tests (chats nested module)
-        working-directory: bin/chats
-        run: go test ./... -count=1
+      - name: brain ranking tests (no cgo / no ladybug)
+        run: go test ./internal/brain/rank -count=1
 
       - name: facts/audit self (lexicon consistency, no network)
         run: |

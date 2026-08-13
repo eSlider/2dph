@@ -1,5 +1,6 @@
-// Brain connection management using go-ladybug.
-package main
+//go:build cgo && system_ladybug
+
+package brain
 
 import (
 	"fmt"
