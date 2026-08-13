@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/eSlider/2dph/internal/brain/rank"
 )
 
 // Ready opens the Ladybug file for the life of the serve process.
@@ -17,7 +19,7 @@ func Ready() error {
 // HTTP is the in-process API used by bin/brain/serve.go.
 type HTTP struct{}
 
-func (HTTP) Search(_ context.Context, query string, limit int) ([]byte, error) {
+func (HTTP) Search(ctx context.Context, query string, limit int) ([]byte, error) {
 	hits, err := searchHits(query, "", "", limit)
 	if err != nil {
 		return nil, err
@@ -31,10 +33,13 @@ func (HTTP) Search(_ context.Context, query string, limit int) ([]byte, error) {
 			hits[i].Snippet = string(runes)
 		}
 	}
+	webOut := rank.Deduce(hits, query, "", false, func(q string) rank.SecondSource {
+		return lookupWeb(ctx, q)
+	})
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(toJSONOut(hits, query, "")); err != nil {
+	if err := enc.Encode(toJSONOut(hits, query, "", webOut)); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

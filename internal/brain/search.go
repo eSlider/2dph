@@ -68,18 +68,25 @@ func runSearch(args []string) int {
 		}
 	}
 
+	webOut := rank.Deduce(results, query, root, opt.NoWeb, func(q string) rank.SecondSource {
+		return lookupWeb(context.Background(), q)
+	})
+
 	out := Dict{
 		{"query", query},
 		{"root_filter", root},
 		{"count", len(results)},
 		{"results", resultsToDicts(results)},
 	}
+	if webOut != nil {
+		out = append(out, KV{"web", secondToDict(*webOut)})
+	}
 
 	if jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.SetEscapeHTML(false)
-		return b2i(enc.Encode(toJSONOut(results, query, root)))
+		return b2i(enc.Encode(toJSONOut(results, query, root, webOut)))
 	}
 	fmt.Print(toYAML(out, 0))
 	return 0
@@ -168,10 +175,11 @@ func rowsToHits(res *lbug.QueryResult) ([]Hit, error) {
 
 // JSON output types
 type jsonOut struct {
-	Query      string    `json:"query"`
-	RootFilter string    `json:"root_filter"`
-	Count      int       `json:"count"`
-	Results    []jsonHit `json:"results"`
+	Query      string             `json:"query"`
+	RootFilter string             `json:"root_filter"`
+	Count      int                `json:"count"`
+	Results    []jsonHit          `json:"results"`
+	Web        *rank.SecondSource `json:"web,omitempty"`
 }
 
 type jsonHit struct {
@@ -182,7 +190,7 @@ type jsonHit struct {
 	Snippet string  `json:"snippet,omitempty"`
 }
 
-func toJSONOut(hits []Hit, query, rootFilter string) *jsonOut {
+func toJSONOut(hits []Hit, query, rootFilter string, web *rank.SecondSource) *jsonOut {
 	out := make([]jsonHit, len(hits))
 	for i, h := range hits {
 		out[i] = jsonHit{
@@ -198,6 +206,7 @@ func toJSONOut(hits []Hit, query, rootFilter string) *jsonOut {
 		RootFilter: rootFilter,
 		Count:      len(hits),
 		Results:    out,
+		Web:        web,
 	}
 }
 
