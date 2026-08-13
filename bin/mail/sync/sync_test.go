@@ -221,6 +221,24 @@ func TestCollectParts(t *testing.T) {
 	}
 }
 
+func TestParseCLIGmailQuery(t *testing.T) {
+	cli, code, err := ParseCLI([]string{
+		"--source", "gmail",
+		"--query", "from:letrado@example.com",
+		"--out", t.TempDir(),
+		"--dry-run",
+	})
+	if err != nil || code != 0 {
+		t.Fatalf("ParseCLI: code=%d err=%v", code, err)
+	}
+	if cli.Sync.Query != "from:letrado@example.com" {
+		t.Fatalf("query=%q", cli.Sync.Query)
+	}
+	if cli.Sync.Gmail == nil {
+		t.Fatal("gmail source not configured")
+	}
+}
+
 func b64(s string) string {
 	return base64.URLEncoding.EncodeToString([]byte(s))
 }
