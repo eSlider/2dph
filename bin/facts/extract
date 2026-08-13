@@ -101,78 +101,42 @@ def mentions(term: str, files: list[Path]) -> bool:
 
 
 def build_facts() -> list[dict]:
-    facts: list[dict] = []
-    doc_files = [ROOT / m for m in DOC_MARKERS]
+    """Gather observations; factsrules decides which pairings become facts."""
+    import factsrules
 
+    doc_files = [ROOT / m for m in DOC_MARKERS]
     running = read_docker_ps()
-    # Pair each running container against its own compose file (2 independent
-    # sources: runtime state docker ps × declared state compose).
-    runtime_facts = 0
+
+    # Compose candidates stay scoped to the container they were found for.
+    compose_by_container: dict[str, dict[str, list[str]]] = {}
     for name in running:
         cdir = container_compose_dir(name)
-        for cfile in compose_files_in(cdir) if cdir else []:
-            if name in read_compose_services(cfile):
-                facts.append({
-                    "text": f"container '{name}' is running and declared in {cfile.name}",
-                    "source": f"docker ps x compose:{cfile.name}",
-                    "loc": f"{cfile}:{name}",
-                    "how": "facts/extract",
-                })
-                runtime_facts += 1
-                break
-    if runtime_facts:
-        print(f"facts/extract: paired {runtime_facts}/{len(running)} running containers to compose", file=sys.stderr)
+        compose_by_container[name] = {
+            str(cfile): read_compose_services(cfile)
+            for cfile in (compose_files_in(cdir) if cdir else [])
+        }
 
-    compose = [Path(p) for p in COMPOSE_FILES]
-    compose_services = set()
-    for c in compose:
-        compose_services.update(read_compose_services(c))
-    if compose_services and running:
-        overlap = sorted(compose_services & set(running))
-        for name in overlap:
-            facts.append({
-                "text": f"container '{name}' is running and declared in compose",
-                "source": f"docker ps x {compose[0].name}",
-                "loc": "docker ps; docker compose config",
-                "how": "facts/extract",
-            })
+    repo_services: list[str] = []
+    for c in COMPOSE_FILES:
+        repo_services.extend(read_compose_services(Path(c)))
 
     hosts = read_ssh_hosts(SSH_CONFIG)
-    for host in hosts:
-        if mentions(host, doc_files):
-            facts.append({
-                "text": f"host '{host}' is configured in ~/.ssh/config and referenced in this repo",
-                "source": f"ssh config x docs({', '.join(DOC_MARKERS)})",
-                "loc": f"~/.ssh/config:{host}",
-                "how": "facts/extract",
-            })
+    doc_terms = {h for h in hosts if mentions(h, doc_files)}
 
-    # Single-docker-container facts still need 2 sources: running + hostname hint
-    for name in running:
-        known_hosts = set(hosts)
-        if not known_hosts:
-            break
-        # a running container name that also matches a configured host
-        if name in known_hosts:
-            facts.append({
-                "text": f"container '{name}' is running and matches configured host '{name}'",
-                "source": "docker ps x ssh config",
-                "loc": f"docker ps:{name}; ~/.ssh/config:{name}",
-                "how": "facts/extract",
-            })
-    return facts
-
-
-def dedupe(facts: list[dict]) -> list[dict]:
-    seen = set()
-    out = []
-    for f in facts:
-        key = f["text"]
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(f)
-    return out
+    facts = factsrules.pair_all(
+        running=running,
+        compose_by_container=compose_by_container,
+        repo_services=repo_services,
+        repo_compose_name=Path(COMPOSE_FILES[0]).name,
+        ssh_hosts=hosts,
+        doc_terms=doc_terms,
+        doc_markers=DOC_MARKERS,
+    )
+    paired = sum(1 for f in facts if any(s.startswith("compose:") for s in f.sources))
+    if paired:
+        print(f"facts/extract: paired {paired}/{len(running)} running containers to compose",
+              file=sys.stderr)
+    return [f.as_dict() for f in facts]
 
 
 def write_facts(facts: list[dict]) -> None:
@@ -207,7 +171,7 @@ def main(argv: list[str]) -> int:
     if a.ssh:
         SSH_CONFIG = Path(a.ssh)
 
-    facts = dedupe(build_facts())
+    facts = build_facts()  # factsrules.pair_all already dedupes by text
     if not a.dry_run and facts:
         write_facts(facts)
 
