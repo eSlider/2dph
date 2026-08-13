@@ -43,6 +43,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D17 | assertion gate | Fact-check every *claim* (facts → info → live → web), not every edit. `bin/brain/search.go` adds a `web` block when there is no facts hit (`throttled`/`skipped`/`refused` ≠ absence). `--root` and `--no-web` stay local. Missing graph ≠ “does not exist”. |
 | D18 | reasoner | Pluggable OpenAI-compatible URL. RAM: Qwen3.5-9B. Quality: Bonsai-27B or Qwen3.6-27B. No official Qwen3.6-9B. |
 | D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
+| D20 | agent API | OpenAPI + MCP are generated from the same `internal/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`). |
 
 ## Architecture
 
@@ -58,7 +59,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
     brain/watch.go
     brain/search.go         deduction: facts → info → web-search
-    brain/serve.go          HTTP API in-process (internal/httpapi + internal/brain)
+    brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20)
     mail/import.go          JSON → markdown (no brain write)
     markdown/import.go      mistune leaves
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)

@@ -70,3 +70,10 @@ Conflicting pairings (≥2 yes vs ≥2 no) = hypothesis (OQ1 → v2 resolution).
 live in `internal/brain/rank` so CI can test the table without libladybug.
 Python `bin/kb/{get,stats,eval}` remain for GitHub Actions until the runner
 has ladybug cgo. Index/write is still `bin/kb/index`.
+
+## Agent API (D20)
+
+`bin/brain/serve.go` exposes the same `internal/httpapi.Ops` table as OpenAPI
+(`GET /openapi.json`) and MCP (`POST /mcp` JSON-RPC `tools/list` +
+`tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`.
+Agents should use these endpoints instead of shebang CLIs.

@@ -6,6 +6,9 @@
 //	KB_ROOT=/path/to/2dph ./bin/brain/serve.go
 //	KB_WORKERS=4 KB_PORT=8630 ./bin/brain/serve.go
 //
+//	GET  /openapi.json  same Ops table as the handlers
+//	POST /mcp           JSON-RPC tools/list + tools/call
+//
 // Needs CGO + libladybug (same as bin/brain/search.go).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
