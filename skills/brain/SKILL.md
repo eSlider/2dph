@@ -44,4 +44,6 @@ are not wired yet); do not treat it as a graph walk.
   are not evidence of absence. `--root facts|info` and `--no-web` skip the web.
 - If recall looks wrong, run `bin/brain/eval.go`; it gates control questions and
   should stay at or above 95% recall@5.
+- Agents: `GET /openapi.json` and `POST /mcp` on `bin/brain/serve.go` (same
+  handlers; tool names match paths `search`/`get`/`stats`/`audit`).
 - Never report an unconfirmed single-source local answer as fact.
