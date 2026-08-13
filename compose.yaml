@@ -61,6 +61,21 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
+  # Optional local SearXNG (D3). Skip if BRAIN_SEARCH_URL already points at a
+  # live instance — do not run a second copy on that host.
+  #   SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile searxng up -d
+  searxng:
+    profiles: ["searxng"]
+    image: docker.io/searxng/searxng:2026.8.10-0a118066d
+    ports:
+      - "127.0.0.1:8888:8080"
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-}
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ./deploy/searxng/limiter.toml:/etc/searxng/limiter.toml:ro
+    restart: unless-stopped
+
 volumes:
   kb-model:
   kb-var:

@@ -102,6 +102,11 @@ class BinLayoutTest(unittest.TestCase):
         )
         self.assertIn("bin/git/import.go", py)
 
+    def test_web_search_is_shebang(self) -> None:
+        self._assert_shebang("bin/web/search.go")
+        py = (ROOT / "bin" / "web" / "search").read_text()
+        self.assertIn("bin/web/search.go", py)
+
     def test_gitimport_py_has_no_git_binary(self) -> None:
         py = (ROOT / "bin" / "tools" / "gitimport.py").read_text()
         self.assertNotIn("subprocess", py)

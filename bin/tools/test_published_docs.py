@@ -45,6 +45,20 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertIn("go-git", text)
         self.assertIn("D19", (ROOT / "PLAN.md").read_text())
 
+    def test_web_search_is_go_not_ops_host(self) -> None:
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("bin/web/search.go", readme)
+        skill = (ROOT / "skills" / "web-search" / "SKILL.md").read_text()
+        self.assertIn("bin/web/search.go", skill)
+        self.assertNotIn("search.ops.io", skill)
+        self.assertNotIn("search.ops.io", readme)
+        compose = (ROOT / "compose.yaml").read_text()
+        self.assertIn("searxng", compose)
+        self.assertNotIn("search.ops.io", compose)
+        settings = (ROOT / "deploy" / "searxng" / "settings.yml").read_text()
+        self.assertNotIn("password", settings.lower())
+        self.assertIn("json", settings)
+
     def test_docs_do_not_claim_hop_walks(self) -> None:
         paths = [
             ROOT / "README.md",

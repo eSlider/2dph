@@ -26,7 +26,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 |---|----------|--------|
 | D1 | RAG corpus | ops stack (chat, onlyoffice, gitea/NPM, searchxng, observability, ai-bot, mcp-servers, `~/.ssh/config`) + portfolio. Exclude `office.dev` + jobs/applications. |
 | D2 | skill merging | integrate skills **in this project** `skills/`; skip gitea / brain-dependent skills. |
-| D3 | web search | Vendored client; SearXNG URL is config. Optional Compose instance (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
+| D3 | web search | Go client `bin/web/search.go` (`internal/websearch`). SearXNG URL is config (`BRAIN_SEARCH_URL`). Optional Compose profile `searxng` (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
 | D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`); Python remains for index/write until the Go write path is safe. |
@@ -63,11 +63,12 @@ detective method: **a fact needs ≥2 independent sources or it is
     markdown/import.go      mistune leaves
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
     git/import.go           go-git history (no git binary; conversion only)
+    web/search.go           SearXNG client (throttled ≠ absence)
     chats/sync.go import.go facts.go apply.go
                             (libs in internal/chats; no chats index)
     md/import               (deprecated; bin/markdown/import.go)
     brain/extract  brain/audit   brain/deduce    (thinking wrapper)
-    web/search               (vendored)
+    web/search               (deprecated shim → web/search.go)
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
   var/kb.lbug               single embedded store (gitignored)
