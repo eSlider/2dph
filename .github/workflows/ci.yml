@@ -42,6 +42,10 @@ jobs:
           go vet ./...
           go test ./... -count=1
 
+      - name: kbsearch ranking tests (no cgo / no ladybug)
+        working-directory: bin/kbsearch
+        run: go test ./rank -count=1
+
       - name: facts/audit self (lexicon consistency, no network)
         run: |
           ./bin/facts/audit self 2>/dev/null || echo "audit: not yet implemented; gate skipped"
