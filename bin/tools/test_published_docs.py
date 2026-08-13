@@ -74,6 +74,8 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertIn("/mcp", (ROOT / "README.md").read_text())
         skill = (ROOT / "skills" / "brain" / "SKILL.md").read_text()
         self.assertIn("/mcp", skill)
+        self.assertFalse((ROOT / "skills" / "db-yaml").exists())
+        self.assertTrue((ROOT / "skills" / "postgres" / "SKILL.md").is_file())
 
     def test_readme_search_escalates_web(self) -> None:
         text = (ROOT / "README.md").read_text()
