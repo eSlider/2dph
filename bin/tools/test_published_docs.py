@@ -43,7 +43,7 @@ class PublishedDocsTest(unittest.TestCase):
         paths = [
             ROOT / "README.md",
             ROOT / "docs" / "design.md",
-            ROOT / "skills" / "kb-search" / "SKILL.md",
+            ROOT / "skills" / "brain" / "SKILL.md",
             ROOT / "skills" / "diataxis-docs" / "SKILL.md",
         ]
         # Command-style `--hop 1` / `--hop N` plus follow/walk = the old lie.
