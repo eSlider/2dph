@@ -51,7 +51,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 2dph/
   PLAN.md / AGENTS.md
   docs/                     published docs (this conversation → docs/ as md)
-  skills/                   in-project skills (web-search, db-yaml, brain, diataxis-docs)
+  skills/                   in-project skills (web-search, postgres, brain, diataxis-docs)
   bin/
     facts/extract.go audit.go crm.go  # D14 shebang; Python implementation
     kb/index                Python write path (called by bin/brain/index.go)
@@ -146,7 +146,7 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 
 1. scaffold repo (:done after this file + AGENTS.md + .gitignore + ci)
 2. gh repo create eSlider/2dph --private + initial commit + CI
-3. vendored skill integration (web-search, db-yaml, brain, diataxis-docs) — no remote links
+3. vendored skill integration (web-search, postgres, brain, diataxis-docs) — no remote links
 4. .venv: ladybug + model2vec + mistune
 5. schema + tools with TDD (kb + md + facts + brain)
 6. ~/.config/brain config
