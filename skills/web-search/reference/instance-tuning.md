@@ -5,63 +5,47 @@ status: current
 
 # Tuning the SearXNG instance
 
-The client works around a fragile instance. These changes fix the cause, and
-they need shell access to the host behind `search.ops.io`
-(`90.169.228.16` / `ops.mywire.org`), which is a different machine from
-the one the agents run on.
+The client treats HTTP 200 + `results: []` as **throttled**, not as absence.
+Fix the cause on the instance you point `BRAIN_SEARCH_URL` at, or use the
+optional Compose profile in this repo.
 
-## Why it is needed
+## Optional Compose profile
 
-Measured on 2026-08-10 from this host:
+Do not start this on a host that already runs SearXNG — set `BRAIN_SEARCH_URL`
+instead (D3).
 
-- The default engine set for the `general` category is only `duckduckgo`,
-  `brave` and `startpage`. `brave` and `startpage` sit in
-  `Suspended: too many requests` or `Suspended: CAPTCHA` almost permanently, so
-  in practice a single engine carries every query.
-- About 25 probe requests over a few minutes pushed `duckduckgo` into `CAPTCHA`
-  as well. The instance then answered HTTP 200 with `results: []` and an empty
-  `unresponsive_engines` - indistinguishable from "nothing found" without the
-  client-side handling we added.
-- Recovery took roughly six minutes.
+```bash
+SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile searxng up -d
+```
 
-## Changes
+Pinned image: `docker.io/searxng/searxng:2026.8.10-0a118066d`.
+Settings: `deploy/searxng/settings.yml` + `limiter.toml` (RFC1918 `pass_ip`,
+short `suspended_times`, `formats: [html, json]`). No secrets in git. Bind is
+`127.0.0.1:8888`.
 
-1. **Allow our egress IP through the limiter.** In `limiter.toml`:
+## Why the client classifies empty as throttled
 
-   ```toml
-   [botdetection.ip_lists]
-   pass_ip = ["77.7.46.234"]
-   ```
+A default engine set under load answers HTTP 200 with `results: []` (sometimes
+with empty `unresponsive_engines`). That is indistinguishable from "nothing
+found" unless the client refuses to call it absence.
 
-2. **Shorten the suspensions.** In `settings.yml` the defaults are 24 hours for
-   a CAPTCHA and one hour for too-many-requests, which is far longer than the
-   condition lasts:
+## Instance-side levers
 
-   ```yaml
-   search:
-     suspended_times:
-       SearxEngineCaptcha: 300
-       SearxEngineTooManyRequests: 120
-       SearxEngineAccessDenied: 300
-   ```
-
-3. **Give `general` more than one working engine.** `google` and `wikipedia`
-   report `enabled: true` in `/config` yet never appear in a `general` response,
-   so they are not in the default set. Put them in it; one live engine per
-   category is a single point of failure.
-
-4. **Keep the JSON API on.** `formats: [html, json]` must stay, otherwise every
-   client here breaks.
+1. **Allow the callers through the limiter** (`limiter.toml` `pass_ip`). The
+   Compose file uses RFC1918 only.
+2. **Shorten suspensions** (`settings.yml` `search.suspended_times`) so a
+   CAPTCHA does not last a day.
+3. **More than one engine in `general`.** One live engine is a single point of
+   failure. This repo enables bing, google, duckduckgo, wikipedia.
+4. **Keep the JSON API on.** `formats: [html, json]` must stay.
 
 ## Verifying
 
-Ten requests in a row used to suspend the instance for minutes. After the
-change they should all answer:
-
 ```bash
 for i in $(seq 10); do
-  bin/web/search "test $i" -n 1 --refresh --json | jq -r .status
+  bin/web/search.go "test $i" -n 1 --refresh --json | jq -r .status
 done
 ```
 
-Ten lines of `ok` means it is fixed.
+Ten lines of `ok` means the instance is healthy. Any `throttled` means say
+nothing about whether the subject exists.
