@@ -59,7 +59,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
     brain/watch.go
     brain/search.go         deduction: facts → info → web-search
-    brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20)
+    brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); compose profile picoclaw
     mail/import.go          JSON → markdown (no brain write)
     markdown/import.go      mistune leaves
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)

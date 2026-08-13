@@ -9,7 +9,8 @@ description: >-
 # PicoClaw — fact-check before assert
 
 PicoClaw (or any agent) speaks MCP at `POST /mcp` on `bin/brain/serve.go`.
-2dph does not run the agent loop. Compose profile for a live agent is issue #9.
+2dph does not run the agent loop. Compose: `docker compose --profile picoclaw up brain-mcp`
+(see [docs/picoclaw.md](../../docs/picoclaw.md)).
 
 ## Tool order (before a factual reply)
 

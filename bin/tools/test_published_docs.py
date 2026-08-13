@@ -59,6 +59,18 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertNotIn("password", settings.lower())
         self.assertIn("json", settings)
 
+    def test_picoclaw_compose_profile_has_mcp_example(self) -> None:
+        compose = (ROOT / "compose.yaml").read_text()
+        self.assertIn('profiles: ["picoclaw"]', compose)
+        self.assertIn("127.0.0.1:8630", compose)
+        example = (ROOT / "deploy" / "picoclaw" / "mcp.json.example").read_text()
+        self.assertIn("127.0.0.1:8630/mcp", example)
+        self.assertNotIn("password", example.lower())
+        self.assertNotIn("token", example.lower())
+        docs = (ROOT / "docs" / "picoclaw.md").read_text()
+        self.assertIn("search", docs)
+        self.assertIn("throttled", docs)
+
     def test_readme_read_path_is_go(self) -> None:
         plan = (ROOT / "PLAN.md").read_text()
         self.assertIn("get.go", plan)
