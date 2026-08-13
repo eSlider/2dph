@@ -1,3 +1,11 @@
+---
+type: explanation
+status: current
+related:
+  - docs/README.md
+  - docs/runbook.md
+---
+
 # Design — facts, info, deduction
 
 ## Two roots, one transaction
