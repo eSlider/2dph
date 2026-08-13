@@ -3,6 +3,7 @@ package watch
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,7 +44,10 @@ func TestFromEnvDefaults(t *testing.T) {
 	if opts.Interval != 30*time.Second {
 		t.Fatalf("default interval = %s, want 30s", opts.Interval)
 	}
-	if opts.IndexCmd == "" {
-		t.Fatal("default index cmd is empty")
+	if !strings.Contains(opts.IndexCmd, "kb/index") {
+		t.Fatalf("default index cmd = %q, want kb/index", opts.IndexCmd)
+	}
+	if !strings.Contains(opts.IndexCmd, "--with-mail") {
+		t.Fatalf("default index cmd must include --with-mail, got %q", opts.IndexCmd)
 	}
 }

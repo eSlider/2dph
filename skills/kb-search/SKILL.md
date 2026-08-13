@@ -26,9 +26,9 @@ second independent source when local roots cannot confirm. An answer is
 bin/brain/search.go "Matrix federation"                # pointers + snippets, YAML
 bin/brain/search.go "onlyoffice postgres" --root facts # restrict to confirmed
 bin/brain/search.go "where is cs-lexicon" --json | yq '.[].ref'
-bin/kb/get <id> --body                                 # full chunk only when needed
-bin/kb/stats                                           # index health
-bin/kb/eval                                            # recall@5 >= 0.95 gate
+bin/brain/get.go <id> --body                           # full chunk only when needed
+bin/brain/stats.go                                     # index health
+bin/brain/eval.go                                      # recall@5 >= 0.95 gate
 ```
 
 `bin/kb/search` is a deprecated wrapper. `--hop` errors (File/FROM_FILE edges
@@ -39,7 +39,7 @@ are not wired yet); do not treat it as a graph walk.
 - Search before you read. Never grep a repo for a concept the graph covers.
 - `--root facts` returns only confirmed evidence-linked answers. Default shows
   facts first, then info leafs clearly marked `(not confirmed)`.
-- If recall looks wrong, run `bin/kb/eval`; it gates control questions and
+- If recall looks wrong, run `bin/brain/eval.go`; it gates control questions and
   should stay at or above 95% recall@5.
 - Escalate to `web-search` (the `web-search` skill) as the independent second
   source when both local roots cannot confirm; never report an unconfirmed

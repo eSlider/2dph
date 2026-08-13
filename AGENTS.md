@@ -36,11 +36,13 @@ PLAN.md       decisions + execution + open questions
 docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}.go (shebang)
-bin/brain/    search.go, serve.go; libs in internal/brain and internal/httpapi
+bin/brain/    search.go serve.go index.go get.go stats.go eval.go watch.go
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
+bin/mail/     sync.go import.go (index_mail → brain/index.go)
+bin/markdown/ import.go (mistune leafs)
+bin/postgres/ query.go (read-only YAML)
 internal/     shared Go (brain/rank is cgo-free; chats parsers too)
-bin/watch/    corpus watcher (internal via bin/brain/watch later)
-bin/mail/     mail pipeline: sync (Go), import (md), index_mail (rebuild)
+bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/docker-entrypoint  container entrypoint (brain index|search|serve|watch)
 compose.yaml  docker composition (root level, not docker/)
@@ -54,8 +56,8 @@ var/          kb.lbug, var/mail/*, caches (gitignored)
 ```bash
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail   # raw message.json + attachments
 bin/mail/sync.go --source gmail --query 'from:example.com' --out var/mail  # Gmail search (default in:inbox)
-bin/mail/import --from-raw var/mail                                     # message.json → message.md (convert only)
-bin/mail/index_mail                                                     # rebuild brain incl. all mail (fresh DB)
+bin/mail/import.go --from-raw var/mail                                  # message.json → message.md (convert only)
+bin/brain/index.go --rebuild                                            # rebuild brain incl. all mail (fresh DB)
 ```
 
 - `sync` (Go) downloads messages + attachments; Gmail uses paginated list +
@@ -64,7 +66,7 @@ bin/mail/index_mail                                                     # rebuil
   `pdftotext -layout` fast path (~15ms); textless/scanned PDFs fall back to
   docling (isolated subprocess — its native onnx can segfault the parent).
   Conversion never touches the brain DB (crash safety).
-- `index_mail` always rebuilds from scratch (repo corpus + mail). Ladybug
+- `index_mail` is a deprecation shim for `bin/brain/index.go --rebuild`. Ladybug
   corrupts its WAL when brand-new leafs are bulk-inserted while FTS/vector
   indexes exist; a fresh DB with indexes created last is the only safe path.
   Keep conversion + indexing separate so a conversion crash can't leave the
@@ -77,6 +79,9 @@ bin/facts/audit ["self"|"facts"|"info"|"stale"]   # 2-source + staleness gate
 bin/facts/crm [--dry-run]                         # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
+bin/brain/get.go <id> [--body]
+bin/markdown/import.go [dir]                      # mistune leaves → YAML
+bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
 ```

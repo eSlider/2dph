@@ -30,7 +30,7 @@ related:
 ---
 ```
 
-`bin/kb/index` reads this. `type` becomes a searchable column. `related:` is
+`bin/brain/index.go` reads this. `type` becomes a searchable column. `related:` is
 frontmatter for humans; graph hops from it are not implemented yet.
 
 ```bash

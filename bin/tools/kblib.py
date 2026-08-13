@@ -135,7 +135,7 @@ def create_fts_and_vector(conn: ladybug.Connection, force: bool = False) -> None
 
     `force=True` is accepted for API compatibility but does **not** drop.
     Fresh indexes require deleting `var/kb.lbug` and rebuilding
-    (`bin/kb/index --rebuild`).
+    (`bin/brain/index.go --rebuild`).
     """
     del force  # API compat; DROP is unsafe — see docstring
     names = leaf_index_names(conn)
@@ -145,7 +145,7 @@ def create_fts_and_vector(conn: ladybug.Connection, force: bool = False) -> None
         except Exception as e:
             raise RuntimeError(
                 "CREATE_FTS_INDEX failed (often ghost catalog after DROP INDEX). "
-                "Delete var/kb.lbug and run bin/kb/index --rebuild. "
+                "Delete var/kb.lbug and run bin/brain/index.go --rebuild. "
                 f"Cause: {e}"
             ) from e
     if "Leaf_vec" not in names:
@@ -158,7 +158,7 @@ def create_fts_and_vector(conn: ladybug.Connection, force: bool = False) -> None
             raise RuntimeError(
                 "CREATE_VECTOR_INDEX failed (often ghost catalog after DROP INDEX "
                 "Leaf.Leaf_vec → `_0_Leaf_vec_UPPER already exists in catalog`). "
-                "Delete var/kb.lbug and run bin/kb/index --rebuild. "
+                "Delete var/kb.lbug and run bin/brain/index.go --rebuild. "
                 f"Cause: {e}"
             ) from e
     names = leaf_index_names(conn)
@@ -237,6 +237,6 @@ def stats(conn: ladybug.Connection) -> dict:
 
 def open_readonly() -> tuple[ladybug.Database, ladybug.Connection]:
     if not DB_PATH.exists():
-        raise FileNotFoundError(f"{DB_PATH} missing - run bin/kb/index first")
+        raise FileNotFoundError(f"{DB_PATH} missing - run bin/brain/index.go --rebuild first")
     db, conn = connect(read_only=True)
     return db, conn
