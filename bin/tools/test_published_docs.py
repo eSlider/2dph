@@ -145,6 +145,8 @@ class PublishedDocsTest(unittest.TestCase):
             ROOT / "docs" / "design.md",
             ROOT / "skills" / "brain" / "SKILL.md",
             ROOT / "skills" / "diataxis-docs" / "SKILL.md",
+            ROOT / "docs" / "runbook.md",
+            ROOT / "docs" / "README.md",
         ]
         # Command-style `--hop 1` / `--hop N` plus follow/walk = the old lie.
         # Honest "not implemented" notes must not match.
@@ -155,3 +157,19 @@ class PublishedDocsTest(unittest.TestCase):
                 lie.search(text),
                 f"{path.relative_to(ROOT)} still claims --hop walks the graph",
             )
+
+    def test_docs_are_portable_diataxis(self) -> None:
+        index = (ROOT / "docs" / "README.md").read_text()
+        self.assertIn("type: reference", index)
+        for d in ("D3", "D6", "D14", "D15", "D17", "D18"):
+            self.assertIn(d, index)
+        runbook = (ROOT / "docs" / "runbook.md").read_text()
+        self.assertIn("type: howto", runbook)
+        self.assertIn("bin/brain/search.go", runbook)
+        self.assertIn("bin/brain/index.go", runbook)
+        self.assertNotIn("search.ops.io", runbook)
+        self.assertNotIn("/mnt/", runbook)
+        self.assertNotIn("/home/", runbook)
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("docs/runbook.md", readme)
+        self.assertNotIn("search.ops.io", readme)
