@@ -6,5 +6,6 @@ Brain/ops/eSlider stack. Facts need proof or they are
 
 - [PLAN.md](../PLAN.md) — decisions, execution order, open questions (v2)
 - [design](design.md) — schema, deduction model, sources
+- [Gitea issues](https://git.produktor.io/eSlider/2dph/issues) — work board (origin)
 
 Published docs live here and mirror the project state.
