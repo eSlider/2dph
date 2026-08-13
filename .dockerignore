@@ -3,6 +3,7 @@
 var
 .git
 .github
+lib-ladybug
 __pycache__
 *.pyc
 *.lbug

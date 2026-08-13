@@ -66,10 +66,12 @@ Conflicting pairings (≥2 yes vs ≥2 no) = hypothesis (OQ1 → v2 resolution).
 ## Read path
 
 `bin/brain/get.go`, `stats.go`, and `eval.go` call `internal/brain` with cgo
-(`system_ladybug`). They do not exec Python. Control questions for recall@5
-live in `internal/brain/rank` so CI can test the table without libladybug.
+(`system_ladybug`), compiled by **Zig** (`bin/cgo/zcc`, D21), not gcc.
+They do not exec Python. Control questions for recall@5 live in
+`internal/brain/rank` so CI can test the table without libladybug.
 Python `bin/kb/{get,stats,eval}` remain for GitHub Actions until the runner
-has ladybug cgo. Index/write is still `bin/kb/index`.
+fetches Zig + libs (`bin/cgo/zig`). Index/write is still `bin/kb/index`
+(`docker compose --profile index`).
 
 ## Agent API (D20)
 
