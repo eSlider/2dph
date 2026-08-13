@@ -57,6 +57,7 @@ def check_evidence_rule() -> list[str]:
     """The gate that matters: run the pairing rule against a fixture where one
     observation has a second source and one has none. No docker, no network."""
     import factsrules
+    from factsrules import Source
 
     problems: list[str] = []
     facts = factsrules.pair_all(
@@ -65,10 +66,9 @@ def check_evidence_rule() -> list[str]:
             "chat": {"/srv/chat/compose.yaml": ["chat"]},
             "lonely": {},
         },
-        repo_services=[],
-        repo_compose_name="compose.yaml",
+        repo_services_by_file={},
         ssh_hosts=["arc-2"],
-        doc_terms={"arc-2"},
+        doc_hits={"arc-2": ["AGENTS.md:1"]},
     )
     texts = " | ".join(f.text for f in facts)
     if "lonely" in texts:
@@ -77,16 +77,40 @@ def check_evidence_rule() -> list[str]:
         problems.append("evidence rule broken: docker ps x compose no longer pairs")
     if "arc-2" not in texts:
         problems.append("evidence rule broken: ssh config x docs no longer pairs")
-    for fact in facts:
-        if len(set(fact.sources)) < factsrules.MIN_SOURCES:
-            problems.append(f"fact with <{factsrules.MIN_SOURCES} sources: {fact.text!r}")
-        if " x " not in fact.source:
-            problems.append(f"fact source is not a pairing: {fact.source!r}")
-    try:
-        factsrules.make_fact("single source", ["docker ps"], "loc")
-        problems.append("make_fact accepted a single source")
-    except ValueError:
-        pass
+    for fact in factsrules.pair_all(
+        running=["chat"], compose_by_container={"chat": {"/srv/chat/compose.yaml": ["chat"]}},
+        repo_services_by_file={}, ssh_hosts=[], doc_hits={},
+    ):
+        for reason in factsrules.check_independence(list(fact.sources)):
+            problems.append(f"{fact.text!r}: {reason}")
+
+    # Each of these must be refused; a gate that only accepts is not a gate.
+    runtime = Source("runtime", "docker ps", "docker ps:chat", "docker-daemon")
+    refusals = {
+        "a single source": [runtime],
+        "two sources of the same kind": [
+            Source("declared", "compose", "/a.yaml:chat", "file:/a.yaml"),
+            Source("declared", "compose", "/b.yaml:chat", "file:/b.yaml"),
+        ],
+        "two sources from one origin": [
+            runtime,
+            Source("declared", "compose", "docker ps:chat", "docker-daemon"),
+        ],
+        "a source without a locator": [
+            runtime,
+            Source("declared", "compose", "", "file:/a.yaml"),
+        ],
+        "a source outside the kind taxonomy": [
+            runtime,
+            Source("vibes", "gut feeling", "nowhere", "me"),
+        ],
+    }
+    for label, sources in refusals.items():
+        try:
+            factsrules.make_fact("test assertion", sources)
+            problems.append(f"make_fact accepted {label}")
+        except ValueError:
+            pass
     return problems
 
 
