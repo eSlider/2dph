@@ -104,6 +104,14 @@ bin/git/import.go --root "$PROJECTS_ROOT" --json  # one pass per .git under root
 
 Conversion only. Graph write (`File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`) stays with `bin/brain/index.go`.
 
+Web search (second independent source) goes through SearXNG. Empty results mean **throttled**, not “nothing exists”:
+
+```bash
+bin/web/search.go "LadybugDB vector index" --json
+# Optional local instance (skip if BRAIN_SEARCH_URL already points at one):
+# SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile searxng up -d
+```
+
 Mail is a first-class corpus (retrievable through the same search):
 
 ```bash
