@@ -76,6 +76,25 @@ services:
       - ./deploy/searxng/limiter.toml:/etc/searxng/limiter.toml:ro
     restart: unless-stopped
 
+  # MCP endpoint for an external agent (PicoClaw is not shipped here).
+  #   docker compose --profile picoclaw up brain-mcp
+  # Point the agent at http://127.0.0.1:8630/mcp (see deploy/picoclaw/).
+  brain-mcp:
+    profiles: ["picoclaw"]
+    image: ghcr.io/eslider/2dph:latest
+    environment: *env
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/data
+      - ~/.config/brain:/secret:ro
+    command: ["brain", "serve"]
+    ports:
+      - "127.0.0.1:8630:8630"
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
 volumes:
   kb-model:
   kb-var:
