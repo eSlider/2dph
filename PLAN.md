@@ -29,7 +29,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D3 | web search | Go client `bin/web/search.go` (`internal/websearch`). SearXNG URL is config (`BRAIN_SEARCH_URL`). Optional Compose profile `searxng` (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
-| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`). Read path (`get.go` / `stats.go` / `eval.go`) is Go + cgo. Python `bin/kb/{get,stats,eval}` is the CI fallback (GitHub runners have no ladybug cgo). Index/write stays Python until the Go write path is safe. |
+| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`). Read path is Go + Zig CGO (D21). Python `bin/kb/{get,stats,eval}` is the CI fallback when Zig/libs are not fetched. Index/write stays Python (`compose --profile index`) until the Go write path is safe. |
 | D7 | db access | `db-yaml`/`psql-yq`-style, read-only, YAML out. OnlyOffice Postgres via SSH tunnel (`127.0.0.1:5433`). |
 | D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. |
 | D9 | facts/goal model | Who / What / How / Where / When + evidence + confidence on every edge. |
@@ -44,6 +44,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D18 | reasoner | Pluggable OpenAI-compatible URL. RAM: Qwen3.5-9B. Quality: Bonsai-27B or Qwen3.6-27B. No official Qwen3.6-9B. |
 | D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
 | D20 | agent API | OpenAPI + MCP are generated from the same `internal/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`). |
+| D21 | CGO | Ladybug/tokenizers CGO is compiled with **Zig** (`bin/cgo/zcc` → `zig cc -target …-linux-gnu`), not gcc. `bin/cgo/zig` pins Zig 0.14.1 + liblbug 0.19.1 + libtokenizers 1.27.0. Compose `target: api` has no CPython; write/rebuild is profile `index`. |
 
 ## Architecture
 
@@ -59,7 +60,8 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
     brain/watch.go
     brain/search.go         deduction: facts → info → web-search
-    brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); compose profile picoclaw
+    brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); Zig CGO (D21)
+    cgo/zig zcc zc++        CGO toolchain (zig cc, not gcc)
     mail/import.go          JSON → markdown (no brain write)
     markdown/import.go      mistune leaves
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
@@ -134,10 +136,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
 3. python -m unittest discover -s bin/tools (includes published-docs SoT)
 4. `bin/facts/audit self` (lexicon internal consistency; `bin/facts/audit.go` is the D14 wrapper)
-5. `bin/kb/eval` (recall@5 ≥ 0.95). Local SoT is `bin/brain/eval.go`; CI uses
-   the Python twin until the runner has ladybug cgo. Questions live in
-   `internal/brain/rank`.
-6. md-docs build/lint if docs tooling arrives.
+5. `bin/kb/eval` (recall@5 ≥ 0.95). Local SoT is `bin/brain/eval.go` via Zig CGO.
+6. `bin/cgo/zig go build -tags system_ladybug` (compile search with zig cc; fetches pinned zig+libs).
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
 `db/tech-poc`: contract first where there is an OpenAPI/message shape.

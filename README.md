@@ -126,7 +126,7 @@ bin/brain/search.go "invoice from last week"                            # same s
 
 - **LadybugDB** — single `var/kb.lbug`, Cypher property graph, HNSW + BM25
   in one engine, embedded (no server), ACID, read-only-safe for concurrent
-  readers. Read tools (`get` / `stats` / `eval`) are Go + cgo; Python
+  readers. Read tools (`get` / `stats` / `eval`) are Go + Zig CGO (`bin/cgo/zcc`); Python
   `bin/kb/{get,stats,eval}` is the CI fallback. **Never `DROP INDEX` FTS/VECTOR** on Ladybug 0.19: DROP leaves
   ghost catalog tables (`_0_Leaf_vec_UPPER`) so recreate fails while
   `SHOW_INDEXES` omits HNSW. Fresh indexes = delete `var/kb.lbug` +
@@ -155,9 +155,8 @@ go test ./... && python -m unittest discover -s bin/tools -t .
 Docker (optional, cached model + var volumes):
 
 ```bash
-docker compose run --rm brain index            # (re)index corpus
-docker compose run --rm brain search "query"   # one-shot query
-docker compose run --rm brain serve            # bin/brain/serve.go
+docker compose up -d brain                     # API (Zig CGO serve :8630)
+docker compose --profile index run --rm index  # Python Ladybug rebuild
 docker compose --profile picoclaw up brain-mcp # MCP on 127.0.0.1:8630
 docker compose up brain-watch                  # auto re-index on change
 ```

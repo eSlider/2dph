@@ -1,6 +1,7 @@
 """D14 layout: bin/{subject}/{method}.go, libs in internal/, one go.mod."""
 from __future__ import annotations
 
+import os
 import unittest
 from pathlib import Path
 
@@ -157,3 +158,21 @@ class BinLayoutTest(unittest.TestCase):
         for line in first.splitlines():
             if "go-git/go-git" in line:
                 self.assertNotIn("indirect", line)
+
+    def test_cgo_uses_zig_not_gcc(self) -> None:
+        for rel in ("bin/cgo/zig", "bin/cgo/zcc", "bin/cgo/zc++"):
+            p = ROOT / rel
+            self.assertTrue(p.is_file(), f"missing {rel}")
+            self.assertTrue(
+                os.access(p, os.X_OK),
+                f"{rel} must be executable",
+            )
+        zig = (ROOT / "bin" / "cgo" / "zig").read_text()
+        self.assertIn("zig cc", zig)
+        self.assertIn("0.14.1", zig)
+        zcc = (ROOT / "bin" / "cgo" / "zcc").read_text()
+        self.assertIn('exec "$ZIG" cc', zcc)
+        self.assertNotIn("command -v gcc", zcc)
+        search = (ROOT / "bin" / "kb" / "search").read_text()
+        self.assertIn("bin/cgo/zig", search)
+        self.assertNotIn("command -v gcc", search)

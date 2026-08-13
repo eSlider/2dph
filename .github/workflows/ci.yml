@@ -37,6 +37,9 @@ jobs:
           bash -n bin/db/ssh-tunnel
           bash -n bin/docker-entrypoint
           bash -n bin/kb/search
+          bash -n bin/cgo/zig
+          sh -n bin/cgo/zcc
+          sh -n bin/cgo/zc++
 
       - name: Python unit tests (offline, vendored tools)
         run: |
@@ -54,9 +57,10 @@ jobs:
         run: |
           ./bin/facts/audit self 2>/dev/null || echo "audit: not yet implemented; gate skipped"
 
-      - name: kb/eval recall gate
+      - name: CGO via Zig (compile brain/search)
         run: |
-          ./bin/kb/eval 2>/dev/null || echo "eval: not yet implemented; gate skipped"
+          chmod +x bin/cgo/zig bin/cgo/zcc bin/cgo/zc++
+          bin/cgo/zig go build -tags system_ladybug -o /tmp/brain-search ./bin/brain/search.go
 
   release:
     name: Release (semver)
