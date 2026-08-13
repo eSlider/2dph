@@ -51,7 +51,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 2dph/
   PLAN.md / AGENTS.md
   docs/                     published docs (this conversation → docs/ as md)
-  skills/                   in-project skills (web-search, postgres, brain, diataxis-docs)
+  skills/                   in-project skills (web-search, postgres, brain, picoclaw, diataxis-docs)
   bin/
     facts/extract.go audit.go crm.go  # D14 shebang; Python implementation
     kb/index                Python write path (called by bin/brain/index.go)
