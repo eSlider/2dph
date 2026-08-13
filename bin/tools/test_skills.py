@@ -37,3 +37,13 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("tools.md", skill)
         for name in ("search", "get", "stats", "audit"):
             self.assertIn(f"`{name}`", tools)
+
+    def test_picoclaw_lists_tool_order(self) -> None:
+        skill = (ROOT / "skills" / "picoclaw" / "SKILL.md").read_text()
+        agents = (ROOT / "AGENTS.md").read_text()
+        self.assertIn("**`search`**", skill)
+        self.assertIn("**`get`**", skill)
+        self.assertIn("**`audit`**", skill)
+        self.assertIn("throttled", skill.lower())
+        self.assertIn("not a negative finding", agents)
+        self.assertIn("Fact-check every", agents)
