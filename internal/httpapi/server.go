@@ -1,10 +1,10 @@
-// Package server serves the 2dph brain over HTTP.
+// Package httpapi serves the 2dph brain over HTTP.
 //
 // Async by design: every request runs on its own goroutine, and CPU-heavy
-// searches are serialized through a bounded worker pool (a counting
-// semaphore) so N requests can't spawn N search processes at once.
+// searches are serialized through a bounded worker pool so N requests can't
+// spawn N backends at once.
 //
-// Used by bin/brain/serve.go.
+// Used by bin/brain/serve.go. Tests inject a fake API (no exec, no ladybug).
 package httpapi
 
 import (
@@ -21,30 +21,45 @@ import (
 	"time"
 )
 
-type Searcher interface {
+// API is the in-process brain surface. Production serve.go wires internal/brain.
+type API interface {
 	Search(ctx context.Context, query string, limit int) ([]byte, error)
+	Get(ctx context.Context, id string, body bool) ([]byte, error)
+	Stats(ctx context.Context) ([]byte, error)
+	Audit(ctx context.Context) ([]byte, error)
+	Ingest(ctx context.Context) ([]byte, error)
 }
 
 type Server struct {
-	searcher  Searcher
+	api       API
 	semaphore chan struct{}
 }
 
 const defaultPort = 8630
 
-func NewServer(searcher Searcher, workers int) http.Handler {
+var errUnimplemented = errors.New("not implemented")
+
+func NewServer(api API, workers int) http.Handler {
 	return &Server{
-		searcher:  searcher,
+		api:       api,
 		semaphore: make(chan struct{}, workers),
 	}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.URL.Path == "/health":
+	switch r.URL.Path {
+	case "/health":
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
-	case r.URL.Path == "/search":
+	case "/search":
 		s.handleSearch(w, r)
+	case "/get":
+		s.handleGet(w, r)
+	case "/stats":
+		s.handleJSON(w, r, s.api.Stats)
+	case "/audit":
+		s.handleJSON(w, r, s.api.Audit)
+	case "/ingest":
+		s.handleJSON(w, r, s.api.Ingest)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
 	}
@@ -65,19 +80,56 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
-
-	// Worker pool: block until a slot frees, so burst concurrency still
-	// bounds memory (no unbounded python processes).
-	select {
-	case s.semaphore <- struct{}{}:
-		defer func() { <-s.semaphore }()
-	case <-r.Context().Done():
+	if !s.acquire(w, r) {
 		return
 	}
+	defer s.release()
+	body, err := s.api.Search(r.Context(), q, limit)
+	writeAPI(w, body, err)
+}
 
-	body, err := s.searcher.Search(r.Context(), q, limit)
+func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id required"})
+		return
+	}
+	body := r.URL.Query().Get("body") == "1" || r.URL.Query().Get("body") == "true"
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	out, err := s.api.Get(r.Context(), id, body)
+	writeAPI(w, out, err)
+}
+
+func (s *Server) handleJSON(w http.ResponseWriter, r *http.Request, fn func(context.Context) ([]byte, error)) {
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := fn(r.Context())
+	writeAPI(w, body, err)
+}
+
+func (s *Server) acquire(w http.ResponseWriter, r *http.Request) bool {
+	select {
+	case s.semaphore <- struct{}{}:
+		return true
+	case <-r.Context().Done():
+		return false
+	}
+}
+
+func (s *Server) release() { <-s.semaphore }
+
+func writeAPI(w http.ResponseWriter, body []byte, err error) {
 	if err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, map[string]any{"error": err.Error()})
+		code := http.StatusBadGateway
+		if errors.Is(err, errUnimplemented) {
+			code = http.StatusNotImplemented
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
 		return
 	}
 	writeRaw(w, http.StatusOK, body)
@@ -95,17 +147,20 @@ func writeRaw(w http.ResponseWriter, code int, body []byte) {
 	w.Write(body)
 }
 
-// brainSearcher shells out to the Go brain-search binary (not Python).
-// A single search is bounded and short-lived; the worker pool keeps at most N live.
-type brainSearcher struct {
-	cmdPath string
-	timeout time.Duration
+// ExecSearcher shells out to var/bin/brain-search. Fallback when the serve
+// binary is built without ladybug cgo (CI / tags=brain_serve only).
+type ExecSearcher struct {
+	CmdPath string
+	Timeout time.Duration
 }
 
-func (b *brainSearcher) Search(ctx context.Context, query string, limit int) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, b.timeout)
+func (b ExecSearcher) Search(ctx context.Context, query string, limit int) ([]byte, error) {
+	if b.Timeout == 0 {
+		b.Timeout = 60 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, b.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, b.cmdPath, "--json", "-n", strconv.Itoa(limit), query)
+	cmd := exec.CommandContext(ctx, b.CmdPath, "--json", "-n", strconv.Itoa(limit), query)
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -117,6 +172,18 @@ func (b *brainSearcher) Search(ctx context.Context, query string, limit int) ([]
 	return out, nil
 }
 
+func (ExecSearcher) Get(context.Context, string, bool) ([]byte, error) {
+	return nil, errUnimplemented
+}
+func (ExecSearcher) Stats(context.Context) ([]byte, error) { return nil, errUnimplemented }
+func (ExecSearcher) Audit(context.Context) ([]byte, error) { return nil, errUnimplemented }
+func (ExecSearcher) Ingest(context.Context) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"mode":    "rebuild",
+		"command": "bin/brain/index.go --rebuild",
+	})
+}
+
 func defaultSearchCmd(root string) string {
 	if env := os.Getenv("KB_SEARCH_CMD"); env != "" {
 		return env
@@ -124,11 +191,7 @@ func defaultSearchCmd(root string) string {
 	return filepath.Join(root, "var", "bin", "brain-search")
 }
 
-// Run starts the HTTP server. Reads env: KB_SEARCH_CMD (default
-// $KB_ROOT/var/bin/brain-search), KB_WORKERS (default 4), KB_PORT (default 8630).
-func Run() {
-	root := os.Getenv("KB_ROOT")
-	searchPath := defaultSearchCmd(root)
+func workersAndPort() (int, int) {
 	workers := 4
 	if raw := os.Getenv("KB_WORKERS"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
@@ -141,11 +204,19 @@ func Run() {
 			port = n
 		}
 	}
+	return workers, port
+}
 
-	searcher := &brainSearcher{cmdPath: searchPath, timeout: 60 * time.Second}
-	handler := NewServer(searcher, workers)
+// Run starts the HTTP server with an injected API (in-process brain, or ExecSearcher).
+func Run(api API) {
+	if api == nil {
+		root := os.Getenv("KB_ROOT")
+		api = ExecSearcher{CmdPath: defaultSearchCmd(root), Timeout: 60 * time.Second}
+	}
+	workers, port := workersAndPort()
+	handler := NewServer(api, workers)
 	addr := "127.0.0.1:" + strconv.Itoa(port)
-	log.Printf("serve: %s (workers=%d cmd=%s)", addr, workers, searchPath)
+	log.Printf("serve: %s (workers=%d)", addr, workers)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}

@@ -51,25 +51,13 @@ func runSearch(args []string) int {
 	}
 	defer closeBrain()
 
-	emb, err := embedQuery(query)
+	hits, err := searchHits(query, root, repo, limit)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "embed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "search: %v\n", err)
 		return 1
 	}
 
-	fts, err := queryFTS(query, limit*3)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "fts: %v\n", err)
-		return 1
-	}
-
-	var vec []Hit
-	if vec, err = queryVector(emb, limit*3); err != nil {
-		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
-	}
-
-	results := rank.RankAndFilter(fts, vec, root, repo, limit)
-
+	results := hits
 	for i := range results {
 		if results[i].Text != "" {
 			runes := []rune(results[i].Text)
@@ -95,6 +83,22 @@ func runSearch(args []string) int {
 	}
 	fmt.Print(toYAML(out, 0))
 	return 0
+}
+
+func searchHits(query, root, repo string, limit int) ([]Hit, error) {
+	emb, err := embedQuery(query)
+	if err != nil {
+		return nil, fmt.Errorf("embed: %w", err)
+	}
+	fts, err := queryFTS(query, limit*3)
+	if err != nil {
+		return nil, fmt.Errorf("fts: %w", err)
+	}
+	var vec []Hit
+	if vec, err = queryVector(emb, limit*3); err != nil {
+		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
+	}
+	return rank.RankAndFilter(fts, vec, root, repo, limit), nil
 }
 
 func b2i(err error) int {
