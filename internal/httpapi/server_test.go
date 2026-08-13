@@ -1,10 +1,11 @@
-package server
+package httpapi
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -138,6 +139,17 @@ func TestSearchRejectsBadLimit(t *testing.T) {
 	h := NewServer(&fakeSearcher{}, 1)
 	if code, _ := get(t, h, "/search?q=x&n=hundred"); code != http.StatusBadRequest {
 		t.Fatalf("code = %d, want 400", code)
+	}
+}
+
+func TestDefaultSearchCmdIsBrainNotPython(t *testing.T) {
+	t.Setenv("KB_SEARCH_CMD", "")
+	cmd := defaultSearchCmd("/repo")
+	if strings.Contains(strings.ToLower(cmd), "python") {
+		t.Fatalf("search path still python: %s", cmd)
+	}
+	if !strings.Contains(cmd, "brain") {
+		t.Fatalf("search path must be the Go brain binary, got %s", cmd)
 	}
 }
 

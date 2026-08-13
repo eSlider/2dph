@@ -1,27 +1,22 @@
-//usr/bin/env go run "$0" "$@"; exit
-// bin/serve.go - async Go HTTP server for the 2dph brain (see bin/server).
+//usr/bin/env go run -tags=brain_serve "$0" "$@"; exit
+//go:build brain_serve
 //
-//	KB_ROOT=/path/to/2dph ./bin/serve.go        # serve the brain
-//	KB_SEARCH_CMD=... KB_WORKERS=4 KB_PORT=8630 ./bin/serve.go
-//
-// Shebang trick: the first line is a Go `//` comment; when executed, env runs
-// `go run "$0"` so this file doubles as an executable script. The real code
-// lives in the importable package (module path, never a relative import).
-// NOTE: never run `gofmt -w` on this file - it rewrites `//usr/bin/env` to
-// `// usr/...` and breaks the shebang.
+// bin/serve.go — deprecated; use bin/brain/serve.go.
 package main
 
 import (
+	"fmt"
 	"os"
 
-	"github.com/eSlider/2dph/bin/server"
+	"github.com/eSlider/2dph/internal/httpapi"
 )
 
 func main() {
-	if env := os.Getenv("KB_ROOT"); env == "" {
+	fmt.Fprintln(os.Stderr, "bin/serve.go is deprecated; use bin/brain/serve.go")
+	if os.Getenv("KB_ROOT") == "" {
 		if wd, err := os.Getwd(); err == nil {
 			os.Setenv("KB_ROOT", wd)
 		}
 	}
-	server.Run()
+	httpapi.Run()
 }
