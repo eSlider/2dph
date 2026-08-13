@@ -28,8 +28,8 @@ graph TB
     end
 
     subgraph dph["2dph tools"]
-        EX["bin/facts/extract<br/>2-source pairing"]
-        AU["bin/facts/audit<br/>confidence + staleness"]
+        EX["bin/facts/extract.go<br/>2-source pairing"]
+        AU["bin/facts/audit.go<br/>confidence + staleness"]
         IDX["bin/brain/index.go<br/>chunk + embed"]
         MD["bin/markdown/import.go<br/>mistune leaves"]
         SR["bin/brain/search.go<br/>deduction"]
@@ -148,7 +148,7 @@ machines. Tests gate every commit. HTTP: `bin/brain/serve.go` calls
 ```bash
 uv venv .venv                                  # Python 3.12, uv-managed
 uv pip install -r requirements.lock.txt        # pinned toolchain
-bin/facts/audit self                           # lexicon consistency gate
+bin/facts/audit.go self                        # lexicon consistency gate
 go test ./... && python -m unittest discover -s bin/tools -t .
 ```
 
