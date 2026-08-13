@@ -24,7 +24,7 @@ Read first: [PLAN](PLAN.md) → [docs](docs/).
 2. **Read-only data sources.** Ladybug `var/kb.lbug` and Postgres are opened
    read-only for queries. Index rebuilds write to `var/` (gitignored).
 3. **PII.** `brain-test`, `cs_brain` client data is never read or quoted.
-4. **No main pushes.** Feature branches + PR via `gh`; CI must be green.
+4. **No main pushes.** Feature branches + GitHub PR (`gh`); CI (Actions) must be green. Work board: [Gitea issues](https://git.produktor.io/eSlider/2dph/issues).
 5. **TDD.** Failing test before tool code. Unit tests run offline against
    fixtures; network/db calls are wrapped.
 6. **docs reflect behaviour.** Any change updates `docs/` + `PLAN.md` status.
