@@ -59,6 +59,14 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertNotIn("password", settings.lower())
         self.assertIn("json", settings)
 
+    def test_readme_read_path_is_go(self) -> None:
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("get.go", plan)
+        self.assertIn("CI fallback", plan)
+        design = (ROOT / "docs" / "design.md").read_text()
+        self.assertIn("internal/brain/rank", design)
+        self.assertIn("They do not exec Python", design)
+
     def test_readme_search_escalates_web(self) -> None:
         text = (ROOT / "README.md").read_text()
         self.assertIn("--no-web", text)
