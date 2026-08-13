@@ -1,4 +1,4 @@
-// Package watch polls corpus directories for changes and re-runs bin/kb/index.
+// Package watch polls corpus directories for changes and re-runs brain/index.
 //
 // Port of the former bin/kb-watch bash script to an importable, testable Go
 // package. Polls file mtimes (no inotify deps); cheap and reliable.
@@ -18,8 +18,8 @@ import (
 type Options struct {
 	Dirs     []string
 	Interval time.Duration
-	// IndexCmd is the kb/index command template. %s is replaced by the repo
-	// root (from KB_ROOT). Defaults to `python3 <root>/bin/kb/index`.
+	// IndexCmd is the index command template. %s is replaced by the repo
+	// root (from KB_ROOT). Defaults to `python3 <root>/bin/kb/index --with-mail`.
 	IndexCmd string
 }
 
@@ -67,7 +67,7 @@ func fromEnv(args []string) Options {
 	if pys == "" {
 		pys = "python3"
 	}
-	opts.IndexCmd = pys + " <root>/bin/kb/index"
+	opts.IndexCmd = pys + " <root>/bin/kb/index --with-mail"
 	return opts
 }
 

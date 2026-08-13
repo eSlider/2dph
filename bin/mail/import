@@ -15,8 +15,8 @@ Writes one directory per message: var/mail/{folder}/{message_id}/
   attachments/              raw attachment files (zips unpacked to _unpacked/)
   attachments/*.md          converted attachment content
 
-Indexing is a separate step (bin/mail/index_mail): conversion can crash in
-native docling and must not leave the brain DB mid-transaction.
+Indexing is a separate step (`bin/brain/index.go --rebuild`): conversion can
+crash in native docling and must not leave the brain DB mid-transaction.
 
 Requires ONLYOFFICE_URL/USER/PASS in .env (or env). Idempotent: a message
 already present (message.md exists) is skipped unless --force.
