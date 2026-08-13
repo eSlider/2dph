@@ -1,4 +1,4 @@
-package main
+package chats
 
 import (
 	"context"
@@ -28,7 +28,7 @@ func checkLinkedInSession(userDataDir string) (bool, error) {
 	return false, nil
 }
 
-func runSyncLinkedIn(args []string) int {
+func RunSyncLinkedIn(args []string) int {
 	fs := flag.NewFlagSet("chats sync linkedin", flag.ContinueOnError)
 	limit := fs.Int("limit", 0, "max messages per conversation (0 = all)")
 	refresh := fs.Bool("refresh", false, "refresh session from live webtop browser before sync")
@@ -72,7 +72,7 @@ func runSyncLinkedIn(args []string) int {
 	defer cancel()
 
 	start := time.Now()
-	if err := src.Sync(ctx, chatsDir(), *limit); err != nil {
+	if err := src.Sync(ctx, Dir(), *limit); err != nil {
 		fmt.Fprintf(os.Stderr, "chats sync linkedin: %v\n", err)
 		return 1
 	}
