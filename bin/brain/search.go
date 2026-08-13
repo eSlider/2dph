@@ -7,7 +7,7 @@
 //	./bin/brain/search.go serve [port]
 //	./bin/brain/search.go --list-model
 //
-// Needs CGO + libladybug (CGO_CFLAGS/CGO_LDFLAGS). Prefer the wrapper
+// Needs CGO + libladybug via Zig (`eval "$(bin/cgo/zig env)"`), not gcc.
 // bin/kb/search which sets those and builds a binary for the embed daemon.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main

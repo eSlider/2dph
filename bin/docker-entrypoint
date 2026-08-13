@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # bin/docker-entrypoint - run 2dph tools inside the container.
 #
-#   brain                 shell (default)
-#   brain search <q>      bin/brain/search.go
-#   brain index           bin/kb/index --with-mail
-#   brain watch <dir>     compiled /app/bin/watch (bin/brain/watch.go)
-#   brain serve           compiled /app/bin/serve (bin/brain/serve.go)
-#   brain extract         bin/facts/extract (docker×compose pairing)
-#   brain audit           bin/facts/audit
+# API image (Zig CGO binaries):
+#   serve | search | watch
+# Index image (Python write path, compose profile `index`):
+#   index | extract | audit | search (deprecated python wrapper)
 #
 # Usage comment starts at line 2 (self-describing convention).
 set -euo pipefail
@@ -15,13 +12,27 @@ set -euo pipefail
 CMD="${1:-shell}"
 shift || true
 
+if [ -x /usr/local/bin/brain-serve ]; then
+	case "$CMD" in
+		shell) exec bash ;;
+		serve) exec /usr/local/bin/brain-serve "$@" ;;
+		search) exec /usr/local/bin/brain-search "$@" ;;
+		watch) exec /usr/local/bin/brain-watch "$@" ;;
+		index)
+			echo "index is the Python sidecar: docker compose --profile index run --rm index" >&2
+			exit 2
+			;;
+		*) echo "unknown command: $CMD (api: serve|search|watch)" >&2; exit 2 ;;
+	esac
+fi
+
 case "$CMD" in
-  shell) exec bash ;;
-  search) exec "$KB_PY" /app/bin/kb/search "$@" ;;
-  index) exec "$KB_PY" /app/bin/kb/index --with-mail "$@" ;;
-  watch) exec /app/bin/watch "$@" ;;
-  serve) exec /app/bin/serve "$@" ;;
-  extract) exec "$KB_PY" /app/bin/facts/extract "$@" ;;
-  audit) exec "$KB_PY" /app/bin/facts/audit "$@" ;;
-  *) echo "unknown command: $CMD" >&2; exit 2 ;;
+	shell) exec bash ;;
+	search) exec "$KB_PY" /app/bin/kb/search "$@" ;;
+	index) exec "$KB_PY" /app/bin/kb/index --with-mail "$@" ;;
+	watch) exec /app/bin/watch "$@" ;;
+	serve) exec /app/bin/serve "$@" ;;
+	extract) exec "$KB_PY" /app/bin/facts/extract "$@" ;;
+	audit) exec "$KB_PY" /app/bin/facts/audit "$@" ;;
+	*) echo "unknown command: $CMD" >&2; exit 2 ;;
 esac

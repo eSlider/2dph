@@ -1,0 +1,23 @@
+#!/bin/sh
+# bin/cgo/zc++ — CGO CXX. Zig, not g++.
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
+case "$(uname -m)" in
+  x86_64|amd64) TARGET=x86_64-linux-gnu ;;
+  aarch64|arm64) TARGET=aarch64-linux-gnu ;;
+  *)
+    echo "zc++: unsupported arch $(uname -m)" >&2
+    exit 2
+    ;;
+esac
+if [ -n "${ZIG:-}" ] && [ -x "$ZIG" ]; then
+  :
+elif [ -x "$ROOT/var/zig/zig" ]; then
+  ZIG="$ROOT/var/zig/zig"
+elif command -v zig >/dev/null 2>&1; then
+  ZIG="$(command -v zig)"
+else
+  echo "zc++: zig missing; run bin/cgo/zig first" >&2
+  exit 127
+fi
+exec "$ZIG" c++ -target "$TARGET" "$@"

@@ -49,9 +49,10 @@ bin/web/      search.go (SearXNG; Python shim execs it)
 internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog; websearch)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
-bin/docker-entrypoint  container entrypoint (brain index|search|serve|watch)
+bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
+bin/docker-entrypoint  container entrypoint (api: serve|search|watch; index: python)
 compose.yaml  docker composition (root level, not docker/)
-Dockerfile    multi-stage: python deps + static Go binaries
+Dockerfile    api (Zig CGO, no Python) + index (Python write)
 var/          kb.lbug, var/mail/*, caches (gitignored)
 .venv/        ladybug + model2vec + mistune
 ```
@@ -85,6 +86,7 @@ bin/facts/crm.go [--dry-run]                       # proof person↔company/comp
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --no-web              # local graph only
+eval "$(bin/cgo/zig env)"                         # Zig cc + liblbug (not gcc)
 bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI fallback
 bin/brain/stats.go [--json]
 bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
