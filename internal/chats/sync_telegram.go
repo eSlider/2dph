@@ -1,4 +1,4 @@
-package main
+package chats
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func runSyncTelegram(args []string) int {
+func RunSyncTelegram(args []string) int {
 	fs := flag.NewFlagSet("chats sync telegram", flag.ContinueOnError)
 	limit := fs.Int("limit", 0, "max messages per chat (0 = all)")
 	phone := fs.String("phone", "", "phone number (default env TELEGRAM_PHONE)")
@@ -78,7 +78,7 @@ func runSyncTelegram(args []string) int {
 	defer cancel()
 
 	start := time.Now()
-	if err := src.Sync(ctx, chatsDir(), *limit); err != nil {
+	if err := src.Sync(ctx, Dir(), *limit); err != nil {
 		fmt.Fprintf(os.Stderr, "chats sync telegram: %v\n", err)
 		return 1
 	}

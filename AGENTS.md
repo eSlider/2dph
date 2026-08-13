@@ -37,7 +37,8 @@ docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}.go (shebang)
 bin/brain/    search.go, serve.go; libs in internal/brain and internal/httpapi
-internal/     shared Go (brain/rank is cgo-free)
+bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
+internal/     shared Go (brain/rank is cgo-free; chats parsers too)
 bin/watch/    corpus watcher (internal via bin/brain/watch later)
 bin/mail/     mail pipeline: sync (Go), import (md), index_mail (rebuild)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
