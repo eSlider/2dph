@@ -26,10 +26,10 @@ detective method: **a fact needs ≥2 independent sources or it is
 |---|----------|--------|
 | D1 | RAG corpus | ops stack (chat, onlyoffice, gitea/NPM, searchxng, observability, ai-bot, mcp-servers, `~/.ssh/config`) + portfolio. Exclude `office.dev` + jobs/applications. |
 | D2 | skill merging | integrate skills **in this project** `skills/`; skip gitea / brain-dependent skills. |
-| D3 | web search | import `web-search`, retire local `searxng-ops`. Vendored here, no remote link. |
+| D3 | web search | Vendored client; SearXNG URL is config. Optional Compose instance (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
-| D6 | graph engine | **LadybugDB** (Kuzu successor, MIT, embedded, native FTS+vector+Cypher). Python binding for `bin/*`; Go shebang for golang tools. |
+| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `internal/brain`); Python remains for index/write until the Go write path is safe. |
 | D7 | db access | `db-yaml`/`psql-yq`-style, read-only, YAML out. OnlyOffice Postgres via SSH tunnel (`127.0.0.1:5433`). |
 | D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. |
 | D9 | facts/goal model | Who / What / How / Where / When + evidence + confidence on every edge. |
@@ -40,6 +40,8 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D14 | tooling style | `bin/{subject}/{method}.go` shebang (e.g. `bin/brain/search.go`). Shared code in `internal/`. One root `go.mod` + `go.work`. No `bin/*/main.go`, no nested modules. |
 | D15 | repo | Gitea [`eSlider/2dph`](https://git.produktor.io/eSlider/2dph) is origin + [issues](https://git.produktor.io/eSlider/2dph/issues). GitHub `eSlider/2dph` is the public clone (PRs + Actions CI). No direct `main` pushes. TDD → PR → CI green → merge. |
 | D16 | contradictions | ≥2 yes vs ≥2 no → unrelated sources conflict → hypothesis → `(not confirmed)`. Resolution (authority, staleness adjudication) = **v2**, tracked as open question. |
+| D17 | assertion gate | Fact-check every *claim* (facts → info → live sources → web), not every edit. Missing graph ≠ “does not exist”. |
+| D18 | reasoner | Pluggable OpenAI-compatible URL. RAM: Qwen3.5-9B. Quality: Bonsai-27B or Qwen3.6-27B. No official Qwen3.6-9B. |
 
 ## Architecture
 
@@ -51,9 +53,10 @@ detective method: **a fact needs ≥2 independent sources or it is
   bin/
     facts/extract           auto-pair 2 sources → lexicon yaml + graph
     facts/audit             ["self"|"facts"|"info"|"stale"] 2-source + staleness gate
-    kb/index                build FTS + HNSW from corpus
-    kb/search               deduction: facts → info → web-search; --hop N
+    kb/index                build FTS + HNSW from corpus (Python, for now)
+    brain/search.go         deduction: facts → info → web-search
     kb/get  kb/stats  kb/eval
+    brain/serve.go          HTTP API (internal/httpapi)
     md/import  md/select  md/tables  md/gaps     (mistune)
     brain/extract  brain/audit   brain/deduce    (thinking wrapper)
     web/search               (vendored)
@@ -110,19 +113,18 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
    indexing stay separate for crash safety.
 4. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
-   via `bin/kb/search`.
+   via `bin/brain/search.go`.
 
 ## CI/CD pipeline (D15)
 
 `.github/workflows/ci.yml`:
 
-1. go vet + go test ./... (Go tools; root module)
-2. `go test ./rank` in `bin/kbsearch` (cgo-free ranking + flag parser; nested module still needs ladybug for the rest)
-3. `go test ./...` in `bin/chats` (Telegram + LinkedIn parsers; nested module)
-4. python -m unittest discover (Py tools)
-5. bin/facts/audit self  (lexicon internal consistency)
-6. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
-7. md-docs build/lint if docs tooling arrives.
+1. go vet + go test ./... (root module; packages without ladybug cgo)
+2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
+3. python -m unittest discover -s bin/tools (includes published-docs SoT)
+4. bin/facts/audit self  (lexicon internal consistency)
+5. bin/kb/eval            (recall@5 ≥ 0.95, gates index regressions)
+6. md-docs build/lint if docs tooling arrives.
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
 `db/tech-poc`: contract first where there is an OpenAPI/message shape.

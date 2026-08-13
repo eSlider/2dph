@@ -2,9 +2,10 @@
 name: kb-search
 description: >-
   Deduction search over the 2dph brain (Ladybug graph: ops corpus, portfolio,
-  ssh hosts) with bin/kb/search instead of reading files or grepping repos.
-  Use whenever a question starts with "where is", "what runs on", "which file
-  describes", "who is", "how is X done", before opening any documentation.
+  ssh hosts) with bin/brain/search.go instead of reading files or grepping
+  repos. Use whenever a question starts with "where is", "what runs on",
+  "which file describes", "who is", "how is X done", before opening any
+  documentation.
 ---
 
 # kb-search — deduction over facts and info
@@ -22,14 +23,16 @@ second independent source when local roots cannot confirm. An answer is
 `(not confirmed)`.
 
 ```bash
-bin/kb/search "Matrix federation"                # pointers + snippets, YAML
-bin/kb/search "what runs on arc-2" --hop 1       # follow graph edges
-bin/kb/search "onlyoffice postgres" --root facts # restrict to confirmed
-bin/kb/search "where is cs-lexicon" --json | yq '.[].ref'
-bin/kb/get <id> --body                           # full chunk only when needed
-bin/kb/stats                                     # index health
-bin/kb/eval                                      # recall@5 >= 0.95 gate
+bin/brain/search.go "Matrix federation"                # pointers + snippets, YAML
+bin/brain/search.go "onlyoffice postgres" --root facts # restrict to confirmed
+bin/brain/search.go "where is cs-lexicon" --json | yq '.[].ref'
+bin/kb/get <id> --body                                 # full chunk only when needed
+bin/kb/stats                                           # index health
+bin/kb/eval                                            # recall@5 >= 0.95 gate
 ```
+
+`bin/kb/search` is a deprecated wrapper. `--hop` errors (File/FROM_FILE edges
+are not wired yet); do not treat it as a graph walk.
 
 ## Rules
 
@@ -38,8 +41,6 @@ bin/kb/eval                                      # recall@5 >= 0.95 gate
   facts first, then info leafs clearly marked `(not confirmed)`.
 - If recall looks wrong, run `bin/kb/eval`; it gates control questions and
   should stay at or above 95% recall@5.
-- `--hop N` follows sibling leaves, owning files, `related:` links and
-  vector-neighbours — that is the deduction walk, not random expansion.
 - Escalate to `web-search` (the `web-search` skill) as the independent second
   source when both local roots cannot confirm; never report an unconfirmed
   single-source local answer as fact.
