@@ -79,3 +79,11 @@ fetches Zig + libs (`bin/cgo/zig`). Index/write is still `bin/kb/index`
 (`GET /openapi.json`) and MCP (`POST /mcp` JSON-RPC `tools/list` +
 `tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`.
 Agents should use these endpoints instead of shebang CLIs.
+
+## Reasoner (D18)
+
+Pluggable OpenAI-compatible URL. RAM: `Qwen/Qwen3.5-9B`. Quality:
+`prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B.
+CPU sidecar: compose profile `reasoner` (`OLLAMA_NUM_GPU=0`,
+`127.0.0.1:11435`). Bake-off: `bin/reasoner/bakeoff.go`. Weights stay out
+of the 2dph image. See [docs/reasoner.md](reasoner.md).

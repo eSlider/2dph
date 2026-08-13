@@ -46,7 +46,8 @@ bin/markdown/ import.go (mistune leafs)
 bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
 bin/web/      search.go (SearXNG; Python shim execs it)
-internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog; websearch)
+bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
+internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog; websearch; reasoner)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
@@ -94,6 +95,7 @@ bin/brain/serve.go                               # HTTP :8630; GET /openapi.json
 bin/markdown/import.go [dir]                      # mistune leaves → YAML
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
+bin/reasoner/bakeoff.go [--model ID] [--json]     # D18 CPU tool-call bake-off
 bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
