@@ -126,7 +126,8 @@ bin/brain/search.go "invoice from last week"                            # same s
 
 - **LadybugDB** — single `var/kb.lbug`, Cypher property graph, HNSW + BM25
   in one engine, embedded (no server), ACID, read-only-safe for concurrent
-  readers. **Never `DROP INDEX` FTS/VECTOR** on Ladybug 0.19: DROP leaves
+  readers. Read tools (`get` / `stats` / `eval`) are Go + cgo; Python
+  `bin/kb/{get,stats,eval}` is the CI fallback. **Never `DROP INDEX` FTS/VECTOR** on Ladybug 0.19: DROP leaves
   ghost catalog tables (`_0_Leaf_vec_UPPER`) so recreate fails while
   `SHOW_INDEXES` omits HNSW. Fresh indexes = delete `var/kb.lbug` +
   `bin/brain/index.go --rebuild`. Use `ensure_indexes()` after upserts.

@@ -29,7 +29,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D3 | web search | Go client `bin/web/search.go` (`internal/websearch`). SearXNG URL is config (`BRAIN_SEARCH_URL`). Optional Compose profile `searxng` (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
-| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`); Python remains for index/write until the Go write path is safe. |
+| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`). Read path (`get.go` / `stats.go` / `eval.go`) is Go + cgo. Python `bin/kb/{get,stats,eval}` is the CI fallback (GitHub runners have no ladybug cgo). Index/write stays Python until the Go write path is safe. |
 | D7 | db access | `db-yaml`/`psql-yq`-style, read-only, YAML out. OnlyOffice Postgres via SSH tunnel (`127.0.0.1:5433`). |
 | D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. |
 | D9 | facts/goal model | Who / What / How / Where / When + evidence + confidence on every edge. |
@@ -56,7 +56,8 @@ detective method: **a fact needs ≥2 independent sources or it is
     facts/audit             ["self"|"facts"|"info"|"stale"] 2-source + staleness gate
     kb/index                Python write path (called by bin/brain/index.go)
     brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
-    brain/get.go stats.go eval.go watch.go
+    brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
+    brain/watch.go
     brain/search.go         deduction: facts → info → web-search
     brain/serve.go          HTTP API in-process (internal/httpapi + internal/brain)
     mail/import.go          JSON → markdown (no brain write)
@@ -133,7 +134,9 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
 3. python -m unittest discover -s bin/tools (includes published-docs SoT)
 4. bin/facts/audit self  (lexicon internal consistency)
-5. bin/brain/eval.go       (recall@5 ≥ 0.95, gates index regressions)
+5. `bin/kb/eval` (recall@5 ≥ 0.95). Local SoT is `bin/brain/eval.go`; CI uses
+   the Python twin until the runner has ladybug cgo. Questions live in
+   `internal/brain/rank`.
 6. md-docs build/lint if docs tooling arrives.
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as

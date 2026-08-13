@@ -82,7 +82,9 @@ bin/facts/crm [--dry-run]                         # proof person↔company/compa
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --no-web              # local graph only
-bin/brain/get.go <id> [--body]
+bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI fallback
+bin/brain/stats.go [--json]
+bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
 bin/markdown/import.go [dir]                      # mistune leaves → YAML
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
