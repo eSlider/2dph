@@ -15,12 +15,15 @@ Exit 0 = all checks pass, 1 = audit failures, 2 = could not evaluate.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
+
+MODES = ("self", "db")
 
 
 def audit_db() -> list[str]:
@@ -46,23 +49,113 @@ def audit_db() -> list[str]:
     return problems
 
 
-def audit_self() -> list[str]:
+def check_evidence_rule() -> list[str]:
+    """The gate that matters: run the pairing rule against a fixture where one
+    observation has a second source and one has none. No docker, no network."""
+    import factsrules
+
+    problems: list[str] = []
+    facts = factsrules.pair_all(
+        running=["chat", "lonely"],
+        compose_by_container={
+            "chat": {"/srv/chat/compose.yaml": ["chat"]},
+            "lonely": {},
+        },
+        repo_services=[],
+        repo_compose_name="compose.yaml",
+        ssh_hosts=["arc-2"],
+        doc_terms={"arc-2"},
+    )
+    texts = " | ".join(f.text for f in facts)
+    if "lonely" in texts:
+        problems.append("evidence rule broken: a single-source observation became a fact")
+    if "chat" not in texts:
+        problems.append("evidence rule broken: docker ps x compose no longer pairs")
+    if "arc-2" not in texts:
+        problems.append("evidence rule broken: ssh config x docs no longer pairs")
+    for fact in facts:
+        if len(set(fact.sources)) < factsrules.MIN_SOURCES:
+            problems.append(f"fact with <{factsrules.MIN_SOURCES} sources: {fact.text!r}")
+        if " x " not in fact.source:
+            problems.append(f"fact source is not a pairing: {fact.source!r}")
+    try:
+        factsrules.make_fact("single source", ["docker ps"], "loc")
+        problems.append("make_fact accepted a single source")
+    except ValueError:
+        pass
+    return problems
+
+
+def check_tool_convention() -> list[str]:
+    """AGENTS D14: bin/{subject}/{method}, shebang on line 1, usage from line 2."""
+    problems: list[str] = []
+    for path in sorted((ROOT / "bin").rglob("*")):
+        if not path.is_file() or not os.access(path, os.X_OK):
+            continue
+        if path.parent.name == "tools" or "tools" in path.relative_to(ROOT / "bin").parts:
+            continue  # vendored libraries, not tools
+        rel = path.relative_to(ROOT / "bin")
+        try:
+            head = path.read_text(encoding="utf-8", errors="replace").splitlines()[:5]
+        except OSError as e:
+            problems.append(f"bin/{rel}: unreadable ({e})")
+            continue
+        if not head:
+            problems.append(f"bin/{rel}: empty tool")
+            continue
+        # `#!/usr/bin/env python3` or the Go form `///usr/bin/env go run "$0" "$@"; exit`
+        if not (head[0].startswith("#!") or head[0].startswith("//usr/bin/env")):
+            problems.append(f"bin/{rel}: missing shebang on line 1")
+        ident = str(rel.with_suffix("")) if rel.suffix in (".go",) else str(rel)
+        if not any(ident in line for line in head[1:]):
+            problems.append(f"bin/{rel}: no usage line naming '{ident}' in lines 2-5")
+    return problems
+
+
+def check_documented_modes() -> list[str]:
+    """Docs must name the modes this tool actually has (AGENTS rule 6)."""
+    problems: list[str] = []
+    for name in ("AGENTS.md", "PLAN.md"):
+        text = (ROOT / name).read_text()
+        for line in text.splitlines():
+            if "facts/audit" not in line or '"' not in line:
+                continue
+            documented = set(re.findall(r'"([a-z]+)"', line))
+            if not documented:
+                continue
+            unknown = documented - set(MODES)
+            missing = set(MODES) - documented
+            if unknown:
+                problems.append(f"{name} documents audit modes that do not exist: {sorted(unknown)}")
+            if missing:
+                problems.append(f"{name} omits real audit modes: {sorted(missing)}")
+    return problems
+
+
+def check_docs() -> list[str]:
     problems: list[str] = []
     plan = (ROOT / "PLAN.md").read_text()
-
     if "recall@5" not in plan:
         problems.append("PLAN.md missing recall@5 gate")
-    if re.search(r"(?i)facts must have.*2 sources|2.source", plan) is None:
+    if re.search(r"(?i)(>=|≥)\s*2\s+(independent\s+)?sources", plan) is None:
         problems.append("PLAN.md missing the two-source evidence rule for facts")
     if re.search(r"(?i)HNSW|BM25|deduction", (ROOT / "README.md").read_text()) is None:
         problems.append("README.md missing search/retrieval description")
     return problems
 
 
+def audit_self() -> list[str]:
+    problems: list[str] = []
+    for check in (check_evidence_rule, check_tool_convention,
+                  check_documented_modes, check_docs):
+        problems.extend(check())
+    return problems
+
+
 def main(argv: list[str]) -> int:
     import argparse
     p = argparse.ArgumentParser(description="evidence & lexicon audit")
-    p.add_argument("mode", choices=("self", "db"))
+    p.add_argument("mode", choices=MODES)
     p.add_argument("--json", action="store_true")
     a = p.parse_args(argv)
 
