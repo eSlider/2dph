@@ -1,4 +1,4 @@
-package main
+package chats
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ type ooContact struct {
 	} `json:"commonData"`
 }
 
-func runApply(args []string) int {
+func RunApply(args []string) int {
 	fs := flag.NewFlagSet("chats apply", flag.ContinueOnError)
 	dryRun := fs.Bool("dry-run", false, "show what would be done without writing")
 	help := fs.Bool("help", false, "")
@@ -176,7 +176,7 @@ func runApply(args []string) int {
 }
 
 func loadFacts() ([]ExtractedFact, error) {
-	factsPath := filepath.Join(chatsDir(), "facts", "chat-facts.json")
+	factsPath := filepath.Join(Dir(), "facts", "chat-facts.json")
 	data, err := os.ReadFile(factsPath)
 	if err != nil {
 		if os.IsNotExist(err) {

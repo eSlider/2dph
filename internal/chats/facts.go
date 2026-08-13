@@ -1,13 +1,11 @@
-package main
+package chats
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -77,7 +75,7 @@ type ExtractedFact struct {
 	MessageID string `json:"message_id"`
 }
 
-func runFacts(args []string) int {
+func RunFacts(args []string) int {
 	fs := flag.NewFlagSet("chats facts", flag.ContinueOnError)
 	help := fs.Bool("help", false, "")
 	fs.SetOutput(os.Stderr)
@@ -89,7 +87,7 @@ func runFacts(args []string) int {
 		return 0
 	}
 
-	root := chatsDir()
+	root := Dir()
 	telegramDir := filepath.Join(root, "telegram")
 
 	entries, err := os.ReadDir(telegramDir)
@@ -149,7 +147,7 @@ func runFacts(args []string) int {
 	}
 	fmt.Printf("chats facts: saved to %s\n", factsPath)
 
-	writeFactsToBrain(root, allFacts)
+	writeFactsMarkdown(allFacts)
 
 	return 0
 }
@@ -273,14 +271,10 @@ func filterFacts(facts []ExtractedFact, factType string) []ExtractedFact {
 	return result
 }
 
-func writeFactsToBrain(root string, facts []ExtractedFact) {
-	indexScript := filepath.Join(root, "bin", "kb", "index")
-	if _, err := os.Stat(indexScript); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "chats facts: kb/index not found, skipping brain write\n")
-		return
-	}
-
-	mdDir := filepath.Join(chatsDir(), "facts")
+// writeFactsMarkdown stores a sidecar for humans. Brain ingest is
+// bin/brain/index.go (not this subject).
+func writeFactsMarkdown(facts []ExtractedFact) {
+	mdDir := filepath.Join(Dir(), "facts")
 	if err := os.MkdirAll(mdDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "chats facts: mkdir %s: %v\n", mdDir, err)
 		return
@@ -288,7 +282,7 @@ func writeFactsToBrain(root string, facts []ExtractedFact) {
 
 	var sb strings.Builder
 	sb.WriteString("---\n")
-	sb.WriteString("root: facts\n")
+	sb.WriteString("root: info\n")
 	sb.WriteString("---\n\n")
 	sb.WriteString("# Chat-Derived Facts\n\n")
 	for _, f := range facts {
@@ -302,15 +296,5 @@ func writeFactsToBrain(root string, facts []ExtractedFact) {
 		fmt.Fprintf(os.Stderr, "chats facts: write %s: %v\n", factsMD, err)
 		return
 	}
-
-	cmd := exec.Command(indexScript, "--corpus", mdDir, "--skip-indexes")
-	var outBuf, errBuf bytes.Buffer
-	cmd.Stdout = &outBuf
-	cmd.Stderr = &errBuf
-	cmd.Dir = root
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "chats facts: brain index: %v\n%s", err, errBuf.String())
-		return
-	}
-	fmt.Printf("chats facts: written to brain (%s)\n", strings.TrimSpace(outBuf.String()))
+	fmt.Printf("chats facts: markdown %s (index via brain, not chats)\n", factsMD)
 }

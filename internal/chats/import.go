@@ -1,4 +1,4 @@
-package main
+package chats
 
 import (
 	"bufio"
@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-func runImport(args []string) int {
+func RunImport(args []string) int {
 	fs := flag.NewFlagSet("chats import", flag.ContinueOnError)
 	help := fs.Bool("help", false, "")
 	fs.SetOutput(os.Stderr)
@@ -25,7 +25,7 @@ func runImport(args []string) int {
 		return 0
 	}
 
-	root := chatsDir()
+	root := Dir()
 	mdRoot := filepath.Join(root, "md")
 	glob := filepath.Join(root, "telegram", "*", "messages.jsonl")
 

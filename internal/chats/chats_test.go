@@ -3,7 +3,7 @@
 // These are integration tests using real data and real Telegram API (when
 // credentials are available). They follow the TDD workflow pattern:
 // sync → import → facts → verify.
-package main
+package chats
 
 import (
 	"encoding/json"
@@ -48,7 +48,7 @@ func TestChatsImport(t *testing.T) {
 	t.Cleanup(func() { os.Chdir(cwd) })
 	t.Setenv("KB_ROOT", dir)
 
-	exitCode := runImport([]string{})
+	exitCode := RunImport([]string{})
 	if exitCode != 0 {
 		t.Fatalf("import exit code %d", exitCode)
 	}
@@ -140,7 +140,7 @@ func TestChatsImportEmpty(t *testing.T) {
 	t.Cleanup(func() { os.Chdir(cwd) })
 	t.Setenv("KB_ROOT", dir)
 
-	exitCode := runImport([]string{})
+	exitCode := RunImport([]string{})
 	if exitCode == 0 {
 		t.Fatal("expected non-zero exit for empty data dir")
 	}
@@ -171,7 +171,7 @@ func TestChatsRoundTrip(t *testing.T) {
 	t.Cleanup(func() { os.Chdir(cwd) })
 	t.Setenv("KB_ROOT", dir)
 
-	if code := runImport([]string{}); code != 0 {
+	if code := RunImport([]string{}); code != 0 {
 		t.Fatalf("import exit %d", code)
 	}
 
