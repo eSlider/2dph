@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -33,46 +32,23 @@ const ftsStmt = "CALL QUERY_FTS_INDEX('Leaf', 'id', $q) " +
 const vecStmt = "CALL QUERY_VECTOR_INDEX('Leaf', 'Leaf_vec', $q, $n) " +
 	"RETURN node.id, node.text, node.root, node.source, distance ORDER BY distance LIMIT $n"
 
+// One hop: the other leafs of the file a leaf came from. Mirrors
+// kblib.neighbours_of; the edges are written by kb/index.
+const hopStmt = "MATCH (l:Leaf)-[:FROM_FILE]->(f:File)<-[:FROM_FILE]-(n:Leaf) " +
+	"WHERE list_contains($ids, l.id) AND NOT list_contains($ids, n.id) " +
+	"RETURN DISTINCT n.id, n.text, n.root, n.source"
+
 func runSearch(args []string) int {
-	// Manual flag parsing to allow flags after query (like Python argparse)
-	root := ""
-	repo := ""
-	limit := 20
-	jsonOut := false
-	listModel := false
-
-	var queryArgs []string
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--root":
-			if i+1 < len(args) {
-				root = args[i+1]
-				i++
-			}
-		case "--repo":
-			if i+1 < len(args) {
-				repo = args[i+1]
-				i++
-			}
-		case "-n":
-			if i+1 < len(args) {
-				if n, err := strconv.Atoi(args[i+1]); err == nil {
-					limit = n
-				}
-				i++
-			}
-		case "--json":
-			jsonOut = true
-		case "--list-model":
-			listModel = true
-		default:
-			if !strings.HasPrefix(args[i], "-") {
-				queryArgs = append(queryArgs, args[i])
-			}
-		}
+	// Flags may follow the query, like the python argparse version allowed.
+	opt, err := parseArgs(args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "kbsearch: %v\n%s\n", err, usage)
+		return 2
 	}
+	root, repo, limit, query := opt.root, opt.repo, opt.limit, opt.query
+	jsonOut := opt.jsonOut
 
-	if listModel {
+	if opt.listModel {
 		dir, err := modelDir()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -80,12 +56,6 @@ func runSearch(args []string) int {
 		}
 		fmt.Println(dir)
 		return 0
-	}
-
-	query := strings.TrimSpace(strings.Join(queryArgs, " "))
-	if query == "" {
-		fmt.Fprintln(os.Stderr, "usage: kbsearch \"query\" [--root facts|info] [--repo REPO] [-n N] [--json]")
-		return 1
 	}
 
 	if err := openBrain(); err != nil {
@@ -112,6 +82,14 @@ func runSearch(args []string) int {
 	}
 
 	results := rankAndFilter(fts, vec, root, repo, limit)
+
+	if opt.hops > 0 {
+		walked, err := expandHops(results, opt.hops, limit, neighbours)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "hop: %v\n", err)
+		}
+		results = walked
+	}
 
 	for i := range results {
 		if results[i].Text != "" {
@@ -184,6 +162,41 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 	return hits, nil
 }
 
+// neighbours runs one hop for every leaf id in the frontier.
+func neighbours(ids []string) ([]Hit, error) {
+	anyIDs := make([]any, len(ids))
+	for i, v := range ids {
+		anyIDs[i] = v
+	}
+	stmt, err := conn.Prepare(hopStmt)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	res, err := conn.Execute(stmt, map[string]any{"ids": anyIDs})
+	if err != nil {
+		return nil, err
+	}
+	var hits []Hit
+	for res.HasNext() {
+		row, err := res.Next()
+		if err != nil {
+			return nil, err
+		}
+		vals, err := row.GetAsSlice()
+		if err != nil || len(vals) < 4 {
+			continue
+		}
+		hits = append(hits, Hit{
+			ID:     fmt.Sprint(vals[0]),
+			Text:   fmt.Sprint(vals[1]),
+			Root:   fmt.Sprint(vals[2]),
+			Source: fmt.Sprint(vals[3]),
+		})
+	}
+	return hits, nil
+}
+
 func rowsToHits(res *lbug.QueryResult) ([]Hit, error) {
 	var hits []Hit
 	for res.HasNext() {
@@ -218,6 +231,7 @@ type jsonHit struct {
 	Text    string  `json:"text"`
 	Root    string  `json:"root"`
 	Score   float64 `json:"score"`
+	Hop     int     `json:"hop,omitempty"`
 	Snippet string  `json:"snippet,omitempty"`
 }
 
@@ -229,6 +243,7 @@ func toJSONOut(hits []Hit, query, rootFilter string) *jsonOut {
 			Text:    h.Text,
 			Root:    h.Root,
 			Score:   h.Score,
+			Hop:     h.Hop,
 			Snippet: h.Snippet,
 		}
 	}
@@ -248,6 +263,9 @@ func resultsToDicts(hits []Hit) []any {
 			{"text", h.Text},
 			{"root", h.Root},
 			{"score", h.Score},
+		}
+		if h.Hop > 0 {
+			d = append(d, KV{"hop", h.Hop})
 		}
 		if h.Snippet != "" {
 			d = append(d, KV{"snippet", h.Snippet})

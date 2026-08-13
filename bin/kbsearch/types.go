@@ -13,4 +13,5 @@ type Hit struct {
 	Source  string  `json:"-"` // for repo filtering, not in output
 	Score   float64 `json:"score"`
 	Snippet string  `json:"snippet,omitempty"`
+	Hop     int     `json:"hop,omitempty"` // 0 = ranked hit, N = reached in N graph hops
 }

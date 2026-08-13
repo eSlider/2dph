@@ -23,8 +23,14 @@ bin/kb/search "question"
   3. web-search   — second independent source → upgrade hypothesis to confirmed
 ```
 
-`--hop N` follows graph edges (sibling leaves under a heading, owning file,
-`related:` files, vector-neighbour leaves) — the deduction walk.
+`--hop N` follows graph edges — the deduction walk. Implemented today: the
+`FROM_FILE` edge, so one hop reaches the other leafs of the same file, and N
+hops repeat that from each new frontier (already-seen leafs are never
+re-emitted). Results carry `hop: N`; ranked hits have no `hop` key.
+
+`related:` links and vector-neighbour edges are *not* walked — nothing writes
+those edges yet. `HAS_VERSION`/`AUTHORED` exist in the schema and are written
+only by `bin/git/import`.
 
 ## Who / What / How / Where / When + evidence
 

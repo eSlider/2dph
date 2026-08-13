@@ -38,8 +38,10 @@ bin/kb/eval                                      # recall@5 >= 0.95 gate
   facts first, then info leafs clearly marked `(not confirmed)`.
 - If recall looks wrong, run `bin/kb/eval`; it gates control questions and
   should stay at or above 95% recall@5.
-- `--hop N` follows sibling leaves, owning files, `related:` links and
-  vector-neighbours — that is the deduction walk, not random expansion.
+- `--hop N` walks the `FROM_FILE` edge: one hop adds the other leafs of the
+  same file, N hops repeat from each new frontier. Hop results are marked
+  `hop: N`; ranked hits are unmarked. That is the deduction walk, not random
+  expansion. (`related:` links and vector-neighbour edges are not written yet.)
 - Escalate to `web-search` (the `web-search` skill) as the independent second
   source when both local roots cannot confirm; never report an unconfirmed
   single-source local answer as fact.

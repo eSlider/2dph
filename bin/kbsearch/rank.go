@@ -71,6 +71,46 @@ func hybrid(fts, vec []Hit, limit int) []Hit {
 	return out
 }
 
+// expandHops walks the graph from the ranked hits: each round takes the leafs
+// reached in the previous one and asks fetch() for their neighbours (the other
+// leafs of the same file). Already-seen leafs are never re-emitted, so a round
+// that finds nothing new ends the walk. Each round adds at most `perRound`
+// leafs, tagged with the depth they were found at.
+func expandHops(seed []Hit, hops, perRound int, fetch func([]string) ([]Hit, error)) ([]Hit, error) {
+	if hops <= 0 || len(seed) == 0 {
+		return seed, nil
+	}
+	out := append([]Hit(nil), seed...)
+	seen := make(map[string]bool, len(seed))
+	frontier := make([]string, 0, len(seed))
+	for _, h := range seed {
+		seen[h.ID] = true
+		frontier = append(frontier, h.ID)
+	}
+
+	for depth := 1; depth <= hops; depth++ {
+		found, err := fetch(frontier)
+		if err != nil {
+			return out, err
+		}
+		var next []string
+		for _, h := range found {
+			if seen[h.ID] || (perRound > 0 && len(next) >= perRound) {
+				continue
+			}
+			seen[h.ID] = true
+			h.Hop = depth
+			out = append(out, h)
+			next = append(next, h.ID)
+		}
+		if len(next) == 0 {
+			break
+		}
+		frontier = next
+	}
+	return out, nil
+}
+
 func filterRoot(hits []Hit, root string) []Hit {
 	var out []Hit
 	for _, h := range hits {
