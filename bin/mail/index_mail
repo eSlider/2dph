@@ -121,7 +121,7 @@ def _index_leafs(conn, leafs: list[dict], embed_fn) -> tuple[int, int]:
         upsert_leaf(conn, text=query, root="info", confidence="confirmed",
                     source=lf["source"], source_rev="mail" if lf.get("how") == "mail/import" else "working-tree",
                     how=lf.get("how", "kb/index"), loc=lf["source"], type_=lf.get("type", "reference"),
-                    embedding=emb)
+                    embedding=emb, file_path=lf["source"], repo=lf.get("repo", ""))
         count += 1
     return count, len(leafs)
 

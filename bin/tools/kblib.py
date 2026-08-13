@@ -112,7 +112,8 @@ def leaf_id(text: str, source: str) -> str:
 def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: str,
                 source: str, source_rev: str, how: str, loc: str, type_: str,
                 embedding: list[float] | None,
-                evidence: list[dict] | None = None) -> str:
+                evidence: list[dict] | None = None,
+                file_path: str | None = None, repo: str = "") -> str:
     lid = leaf_id(text, source)
     obs = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     conn.execute(
@@ -130,7 +131,46 @@ def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: s
     )
     for item in evidence or []:
         upsert_evidence(conn, item, lid, obs)
+    if file_path:
+        link_to_file(conn, lid, file_path, repo, obs)
     return lid
+
+
+def link_to_file(conn: ladybug.Connection, leaf: str, path: str, repo: str,
+                 mtime: str) -> str:
+    """Attach a leaf to the file it came from.
+
+    Without these edges the graph is a bag of leafs: `--hop` has nothing to
+    walk and the File->Commit->Person history has nothing to hang off.
+    """
+    fid = sha256_b64(path)[:24]
+    conn.execute(
+        "MERGE (f:File {id:$id}) SET f.path=$path, f.repo=$repo, f.mtime=$mtime",
+        parameters={"id": fid, "path": path, "repo": repo, "mtime": mtime},
+    )
+    conn.execute(
+        "MATCH (l:Leaf {id:$lid}), (f:File {id:$fid}) MERGE (l)-[:FROM_FILE]->(f)",
+        parameters={"lid": leaf, "fid": fid},
+    )
+    return fid
+
+
+def neighbours_of(conn: ladybug.Connection, leaf_ids: list[str]) -> list[dict]:
+    """One hop: the other leafs of the same file, excluding the input set.
+
+    This is the walk `--hop N` repeats; N hops = N rounds from the new
+    frontier.
+    """
+    if not leaf_ids:
+        return []
+    r = conn.execute(
+        "MATCH (l:Leaf)-[:FROM_FILE]->(f:File)<-[:FROM_FILE]-(n:Leaf) "
+        "WHERE list_contains($ids, l.id) AND NOT list_contains($ids, n.id) "
+        "RETURN DISTINCT n.id, n.text, n.root, n.source",
+        parameters={"ids": leaf_ids},
+    )
+    return [{"id": row[0], "text": row[1], "root": row[2], "source": row[3]}
+            for row in r.get_all()]
 
 
 def upsert_evidence(conn: ladybug.Connection, item: dict, leaf: str, observed_at: str) -> None:

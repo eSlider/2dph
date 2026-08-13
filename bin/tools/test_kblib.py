@@ -120,6 +120,52 @@ class KblibTest(unittest.TestCase):
                           embedding=make_emb(0.5))
         self.assertEqual(kblib.facts_lacking_independence(self.conn), [])
 
+    def test_leaf_is_linked_to_its_file(self):
+        lid = kblib.upsert_leaf(self.conn, text="a heading", root="info",
+                                confidence="confirmed", source="docs/design.md",
+                                source_rev="r1", how="kb/index", loc="docs/design.md",
+                                type_="reference", embedding=make_emb(0.5),
+                                file_path="docs/design.md", repo="eSlider/2dph")
+        files = self.conn.execute(
+            "MATCH (l:Leaf {id:$id})-[:FROM_FILE]->(f:File) RETURN f.path, f.repo",
+            parameters={"id": lid}).get_all()
+        self.assertEqual(files, [["docs/design.md", "eSlider/2dph"]])
+
+    def test_leafs_of_one_file_share_a_single_file_node(self):
+        for text in ("first heading", "second heading"):
+            kblib.upsert_leaf(self.conn, text=text, root="info", confidence="confirmed",
+                              source="docs/design.md", source_rev="r1", how="kb/index",
+                              loc="docs/design.md", type_="reference",
+                              embedding=make_emb(0.5), file_path="docs/design.md",
+                              repo="eSlider/2dph")
+        count = self.conn.execute("MATCH (f:File) RETURN count(*)").get_all()[0][0]
+        self.assertEqual(count, 1)
+
+    def test_neighbours_are_the_other_leafs_of_the_same_file(self):
+        first = kblib.upsert_leaf(self.conn, text="first heading", root="info",
+                                  confidence="confirmed", source="docs/design.md",
+                                  source_rev="r1", how="kb/index", loc="d", type_="reference",
+                                  embedding=make_emb(0.5), file_path="docs/design.md",
+                                  repo="eSlider/2dph")
+        second = kblib.upsert_leaf(self.conn, text="second heading", root="info",
+                                   confidence="confirmed", source="docs/design.md",
+                                   source_rev="r1", how="kb/index", loc="d", type_="reference",
+                                   embedding=make_emb(0.5), file_path="docs/design.md",
+                                   repo="eSlider/2dph")
+        kblib.upsert_leaf(self.conn, text="elsewhere", root="info", confidence="confirmed",
+                          source="README.md", source_rev="r1", how="kb/index", loc="r",
+                          type_="reference", embedding=make_emb(0.5),
+                          file_path="README.md", repo="eSlider/2dph")
+        neighbours = kblib.neighbours_of(self.conn, [first])
+        self.assertEqual([n["id"] for n in neighbours], [second])
+
+    def test_neighbours_of_an_unlinked_leaf_are_empty(self):
+        lid = kblib.upsert_leaf(self.conn, text="orphan", root="info",
+                                confidence="confirmed", source="s", source_rev="r1",
+                                how="test", loc="/tmp", type_="reference",
+                                embedding=make_emb(0.5))
+        self.assertEqual(kblib.neighbours_of(self.conn, [lid]), [])
+
     def test_stats_counts_roots(self):
         kblib.upsert_leaf(self.conn, text="a fact leaf", root="facts",
                           confidence="confirmed", source="s", source_rev="r1",
