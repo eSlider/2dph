@@ -112,6 +112,7 @@ type SyncConfig struct {
 	Offset  int                // skip first N messages per source
 	Force   bool               // overwrite existing message.json + attachments
 	DryRun  bool               // list without writing
+	Query   string             // Gmail search query; default in:inbox
 	Policy  RetryPolicy
 }
 
@@ -136,9 +137,17 @@ type ooSource struct {
 	c    *OOClient
 	page int
 }
+// gmailAPI is the Gmail client surface gmailSource needs. *GmailClient implements it.
+type gmailAPI interface {
+	ListIDs(ctx context.Context, q string, maxIDs int, pageToken string) ([]string, string, error)
+	GetMessage(ctx context.Context, id string) (*Message, error)
+	DownloadAttachment(ctx context.Context, msgID, attID string) ([]byte, error)
+}
+
 type gmailSource struct {
-	c   *GmailClient
-	cur string
+	c     gmailAPI
+	cur   string
+	query string
 }
 
 func (s *ooSource) Folder() string      { return "inbox" }
@@ -171,7 +180,11 @@ func (s *ooSource) DownloadAttachment(ctx context.Context, msg *Message, att Att
 }
 
 func (s *gmailSource) ListIDs(ctx context.Context, limit int, cursor string) ([]string, string, error) {
-	ids, next, err := s.c.ListIDs(ctx, "in:inbox", limit, cursor)
+	q := s.query
+	if q == "" {
+		q = "in:inbox"
+	}
+	ids, next, err := s.c.ListIDs(ctx, q, limit, cursor)
 	return ids, next, err
 }
 
@@ -207,7 +220,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 		if err != nil {
 			return nil, fmt.Errorf("gmail init: %w", err)
 		}
-		sources = append(sources, &gmailSource{c: gm})
+		sources = append(sources, &gmailSource{c: gm, query: cfg.Query})
 	}
 	if len(sources) == 0 {
 		return nil, errors.New("sync: no source configured (need OO, Gmail, or both)")

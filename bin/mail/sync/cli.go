@@ -32,6 +32,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		offset = fs.Int("offset", 0, "skip first N messages per source")
 		force  = fs.Bool("force", false, "overwrite existing message.json + attachments")
 		dryRun = fs.Bool("dry-run", false, "list message counts without writing")
+		query  = fs.String("query", "in:inbox", "Gmail search query (gmail source only)")
 		srcs   = fs.String("source", "onlyoffice", "comma list: onlyoffice,gmail (default onlyoffice)")
 		help   = fs.Bool("help", false, "usage")
 	)
@@ -60,6 +61,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		Offset:  *offset,
 		Force:   *force,
 		DryRun:  *dryRun,
+		Query:   *query,
 		Policy:  RetryPolicy{},
 	}
 	cli := CLIConfig{Sync: cfg, Env: *env, Sources: *srcs}
@@ -95,7 +97,7 @@ func Main(args []string) int {
 		return code
 	}
 	if cli.Help {
-		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail] [--limit N] [--offset N] [--workers N] [--force] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--dry-run]")
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
