@@ -1,0 +1,232 @@
+//usr/bin/env go run "$0" "$@"; exit
+//
+// bin/web/search.go - SearXNG as the second independent source (D3).
+//
+//	./bin/web/search.go "LadybugDB vector search"
+//	./bin/web/search.go "model2vec" --category it --json
+//	./bin/web/search.go "postgres" --site github.com --fresh year
+//
+// Empty results mean throttled, not "nothing exists". Exit 2 = PII refuse, 3 = throttled.
+// Config: $BRAIN_SEARCH_ENV (default $HOME/.config/brain/search.env).
+// NOTE: never run `gofmt -w` on this file — it breaks the shebang.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/eSlider/2dph/internal/websearch"
+	"golang.org/x/sys/unix"
+)
+
+func main() {
+	os.Exit(run(os.Args[1:]))
+}
+
+func run(args []string) int {
+	var (
+		query, site, lang, fresh, category, engines string
+		limit                                       = websearch.DefaultLimit
+		jsonOut, refresh, force                     bool
+		ttl                                         = float64(websearch.CacheTTL)
+		timeout                                     = 25
+	)
+	i := 0
+	for i < len(args) {
+		a := args[i]
+		switch {
+		case a == "--json":
+			jsonOut = true
+		case a == "--refresh":
+			refresh = true
+		case a == "--force":
+			force = true
+		case (a == "-n" || a == "--limit") && i+1 < len(args):
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 0 {
+				fmt.Fprintln(os.Stderr, "web/search: --limit must be a non-negative integer")
+				return 2
+			}
+			limit = n
+		case a == "--site" && i+1 < len(args):
+			i++
+			site = args[i]
+		case a == "--lang" && i+1 < len(args):
+			i++
+			lang = args[i]
+		case a == "--fresh" && i+1 < len(args):
+			i++
+			fresh = args[i]
+		case a == "--category" && i+1 < len(args):
+			i++
+			category = args[i]
+		case a == "--engines" && i+1 < len(args):
+			i++
+			engines = args[i]
+		case a == "--ttl" && i+1 < len(args):
+			i++
+			v, err := strconv.ParseFloat(args[i], 64)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "web/search: --ttl must be a number")
+				return 2
+			}
+			ttl = v
+		case a == "--timeout" && i+1 < len(args):
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n <= 0 {
+				fmt.Fprintln(os.Stderr, "web/search: --timeout must be a positive integer")
+				return 2
+			}
+			timeout = n
+		case a == "-h" || a == "--help":
+			fmt.Fprintln(os.Stderr, `usage: bin/web/search.go QUERY [--json] [-n N] [--site HOST] [--lang LANG] [--fresh day|week|month|year] [--category CAT] [--engines LIST] [--refresh] [--force]`)
+			return 0
+		case len(a) > 0 && a[0] != '-' && query == "":
+			query = a
+		default:
+			fmt.Fprintf(os.Stderr, "web/search: unknown flag %s\n", a)
+			return 2
+		}
+		i++
+	}
+	if query == "" {
+		fmt.Fprintln(os.Stderr, "web/search: query required")
+		return 2
+	}
+	if site != "" {
+		query = "site:" + site + " " + query
+	}
+	if reason := websearch.PHIReason(query); reason != "" && !force {
+		fmt.Fprintf(os.Stderr, "refused: %s. This query would leave the host.\n", reason)
+		fmt.Fprintln(os.Stderr, "Rephrase without identifiers, or pass --force if it is genuinely public.")
+		return 2
+	}
+
+	params := map[string]string{}
+	if lang != "" {
+		params["language"] = lang
+	}
+	if fresh != "" {
+		params["time_range"] = fresh
+	}
+	if category != "" {
+		params["categories"] = category
+	}
+	if engines != "" {
+		params["engines"] = engines
+	}
+
+	cachePath := os.Getenv("BRAIN_SEARCH_CACHE")
+	if cachePath == "" {
+		cachePath = os.Getenv("HOME") + "/.cache/brain/web-search.sqlite"
+	}
+	cache, err := websearch.OpenCache(cachePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "web/search: cache: %v\n", err)
+		return 1
+	}
+	defer cache.Close()
+
+	key := websearch.CacheKey(query, params)
+	now := float64(time.Now().Unix())
+	if !refresh {
+		if cached, err := cache.Get(key, ttl, now); err != nil {
+			fmt.Fprintf(os.Stderr, "web/search: cache: %v\n", err)
+			return 1
+		} else if cached != nil {
+			out := websearch.Project(*cached, limit, websearch.DefaultSnippetChars)
+			out.Cached = true
+			return writeOut(out, jsonOut)
+		}
+	}
+
+	envPath := os.Getenv("BRAIN_SEARCH_ENV")
+	if envPath == "" {
+		envPath = os.Getenv("HOME") + "/.config/brain/search.env"
+	}
+	conf, err := websearch.LoadConfig(envPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "web/search: %v\n", err)
+		return 1
+	}
+
+	lockPath := cachePath + ".lock"
+	lock, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "web/search: lock: %v\n", err)
+		return 1
+	}
+	defer lock.Close()
+	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+		fmt.Fprintf(os.Stderr, "web/search: lock: %v\n", err)
+		return 1
+	}
+	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
+
+	var payload websearch.Payload
+	attempts := 1 + len(websearch.RetryBackoff)
+	client := &http.Client{}
+	for attempt := 0; attempt < attempts; attempt++ {
+		last, err := cache.LastCall()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "web/search: cache: %v\n", err)
+			return 1
+		}
+		if delay := websearch.WaitFor(last, float64(time.Now().Unix()), websearch.MinInterval); delay > 0 {
+			time.Sleep(time.Duration(delay * float64(time.Second)))
+		}
+		if err := cache.MarkCall(float64(time.Now().Unix())); err != nil {
+			fmt.Fprintf(os.Stderr, "web/search: cache: %v\n", err)
+			return 1
+		}
+		payload, err = websearch.Fetch(client, conf, query, params, time.Duration(timeout)*time.Second)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "request failed: %v\n", err)
+			return 3
+		}
+		if websearch.Classify(payload) == websearch.StatusOK {
+			break
+		}
+		if attempt < len(websearch.RetryBackoff) {
+			time.Sleep(time.Duration(websearch.RetryBackoff[attempt] * float64(time.Second)))
+		}
+	}
+
+	if websearch.Classify(payload) == websearch.StatusOK {
+		if err := cache.Put(key, payload, float64(time.Now().Unix())); err != nil {
+			fmt.Fprintf(os.Stderr, "web/search: cache: %v\n", err)
+		}
+	}
+	out := websearch.Project(payload, limit, websearch.DefaultSnippetChars)
+	code := writeOut(out, jsonOut)
+	if out.Status != websearch.StatusOK && code == 0 {
+		return 3
+	}
+	return code
+}
+
+func writeOut(out websearch.Output, jsonOut bool) int {
+	if jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(out); err != nil {
+			return 1
+		}
+		if out.Status != websearch.StatusOK {
+			return 3
+		}
+		return 0
+	}
+	fmt.Print(out.YAML())
+	if out.Status != websearch.StatusOK {
+		return 3
+	}
+	return 0
+}

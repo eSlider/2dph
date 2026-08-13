@@ -1,0 +1,28 @@
+use_default_settings: true
+
+general:
+  instance_name: "2dph"
+
+search:
+  formats:
+    - html
+    - json
+  suspended_times:
+    SearxEngineCaptcha: 300
+    SearxEngineTooManyRequests: 120
+    SearxEngineAccessDenied: 300
+
+server:
+  limiter: true
+  image_proxy: false
+  # secret_key comes from SEARXNG_SECRET (never commit a real secret)
+
+engines:
+  - name: bing
+    disabled: false
+  - name: google
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: wikipedia
+    disabled: false
