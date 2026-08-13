@@ -89,6 +89,20 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertFalse((ROOT / "skills" / "db-yaml").exists())
         self.assertTrue((ROOT / "skills" / "postgres" / "SKILL.md").is_file())
 
+    def test_cgo_zig_and_index_profile(self) -> None:
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("D21", plan)
+        self.assertIn("zig cc", plan)
+        dockerfile = (ROOT / "Dockerfile").read_text()
+        self.assertIn("bin/cgo/zcc", dockerfile)
+        self.assertIn("FROM debian:bookworm-slim AS api", dockerfile)
+        self.assertIn("FROM python:3.12-slim AS index", dockerfile)
+        api = dockerfile[dockerfile.index("FROM debian:bookworm-slim AS api") :]
+        self.assertNotIn("pip install", api)
+        compose = (ROOT / "compose.yaml").read_text()
+        self.assertIn('profiles: ["index"]', compose)
+        self.assertIn("target: api", compose)
+
     def test_readme_search_escalates_web(self) -> None:
         text = (ROOT / "README.md").read_text()
         self.assertIn("--no-web", text)

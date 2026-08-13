@@ -1,65 +1,85 @@
 # 2dph — docker composition
 #
-#   docker compose run --rm brain index                     # rebuild graph
-#   docker compose run --rm brain search "Matrix fed"       # one-shot query
-#   docker compose run --rm brain serve                     # async Go server
-#   docker compose up brain-watch                           # auto re-index
+#   docker compose up -d brain                  # API (Zig CGO serve)
+#   docker compose --profile index run --rm index   # Python rebuild
+#   docker compose --profile picoclaw up brain-mcp
+#   docker compose --profile searxng up -d
 #
-# Caching: the 128M model (HF_HOME) and kb.lbug (VAR_DIR) live in named
-# volumes, so rebuilds never redownload the model or re-derive the graph.
-# Secrets are never baked into the image: search.env + db-profiles.yml mount
-# read-only from ~/.config/brain.
+# Secrets never baked in: search.env + db-profiles.yml from ~/.config/brain.
 
 name: 2dph
 
 services:
   brain:
-    image: ghcr.io/eslider/2dph:latest
+    image: ghcr.io/eslider/2dph:api
     build:
       context: .
       dockerfile: Dockerfile
+      target: api
       cache_from:
         - ghcr.io/eslider/2dph:cache
-    command: ["brain", "search", "help"]
+    command: ["serve"]
     environment: &env
       HF_HOME: /data/hf
       BRAIN_SEARCH_CACHE: /data/cache/web-search.sqlite
       BRAIN_DB_PROFILES: /secret/db-profiles.yml
       BRAIN_SEARCH_ENV: /secret/search.env
-      KB_SEARCH_CMD: /app/bin/kb/search
+      KB_ROOT: /data
       KB_WORKERS: "4"
+      KB_PORT: "8630"
     volumes:
       - kb-model:/data/hf
       - kb-var:/data
-      # corpus is read-only on the host, never written from the container
-      - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
+    ports:
+      - "127.0.0.1:8630:8630"
     read_only: true
     tmpfs:
       - /tmp
     healthcheck:
-      test: ["CMD", "python3", "-c", "import ladybug, model2vec, mistune; print('ok')"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8630/health"]
       interval: 30s
       timeout: 5s
       retries: 3
     restart: unless-stopped
     stop_grace_period: 20s
 
-  # watcher: re-index on corpus file change (watchdog script)
   brain-watch:
-    image: ghcr.io/eslider/2dph:latest
+    image: ghcr.io/eslider/2dph:api
     environment: *env
     volumes:
       - kb-model:/data/hf
       - kb-var:/data
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
-    command: ["brain", "watch", "/corpus"]
+    command: ["watch", "/corpus"]
     read_only: true
     tmpfs:
       - /tmp
     restart: unless-stopped
     stop_grace_period: 20s
+
+  # Python write path (Ladybug rebuild). Not in the API image.
+  #   docker compose --profile index run --rm index
+  index:
+    profiles: ["index"]
+    image: ghcr.io/eslider/2dph:index
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: index
+    environment:
+      HF_HOME: /data/hf
+      KB_PY: python3
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/app/var
+      - ..:/corpus:ro
+      - ~/.config/brain:/secret:ro
+    command: ["index"]
+    read_only: true
+    tmpfs:
+      - /tmp
 
   # Optional local SearXNG (D3). Skip if BRAIN_SEARCH_URL already points at a
   # live instance — do not run a second copy on that host.
@@ -78,16 +98,15 @@ services:
 
   # MCP endpoint for an external agent (PicoClaw is not shipped here).
   #   docker compose --profile picoclaw up brain-mcp
-  # Point the agent at http://127.0.0.1:8630/mcp (see deploy/picoclaw/).
   brain-mcp:
     profiles: ["picoclaw"]
-    image: ghcr.io/eslider/2dph:latest
+    image: ghcr.io/eslider/2dph:api
     environment: *env
     volumes:
       - kb-model:/data/hf
       - kb-var:/data
       - ~/.config/brain:/secret:ro
-    command: ["brain", "serve"]
+    command: ["serve"]
     ports:
       - "127.0.0.1:8630:8630"
     read_only: true
