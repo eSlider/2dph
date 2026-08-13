@@ -1,0 +1,155 @@
+#!/usr/bin/env python3
+"""chats/refresh-linkedin-session - refresh LinkedIn MCP session from webtop CDP.
+
+  bin/chats/refresh-linkedin-session [--cdp URL] [--root DIR]
+"""
+
+Reads the current LinkedIn cookies out of the running Thorium browser in the
+work-webtop container via CDP (Network.getAllCookies), copies the live browser
+profile onto the source profile directory, and rewrites the portable
+cookies.json + source-state.json that mcp-server-linkedin requires.
+
+Usage:
+  refresh-linkedin-session [--cdp http://127.0.0.1:9222] [--root /var/tmp/liprofile]
+                           [--container work-webtop] [--profile thorium-profile]
+
+After the headless driver uses a copied profile, LinkedIn rotates the session
+in that copy, so this must run before every sync.
+"""
+
+import asyncio
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+import websockets
+
+
+def cdp_tab(ws_json):
+    for t in ws_json:
+        if t.get("webSocketDebuggerUrl"):
+            return t["webSocketDebuggerUrl"]
+    return None
+
+
+async def get_cookies(ws_url):
+    async with websockets.connect(ws_url, max_size=50_000_000) as ws:
+        await ws.send(json.dumps({"id": 1, "method": "Network.getAllCookies", "params": {}}))
+        resp = await ws.recv()
+        return json.loads(resp).get("result", {}).get("cookies", [])
+
+
+def write_source_state(root, profile_dir):
+    # Reuse the linkedin-mcp-server session_state module to write a valid
+    # source-state.json (same schema the daemon reads).
+    try:
+        from linkedin_mcp_server.session_state import canonical, write_source_state
+
+        write_source_state(canonical(__import__("pathlib").Path(profile_dir)))
+        return
+    except Exception:
+        pass
+    # Fallback: minimal schema-compatible state.
+    import uuid
+
+    state = {
+        "version": 1,
+        "source_runtime_id": "linux-amd64-host",
+        "login_generation": str(uuid.uuid4()),
+        "created_at": None,
+        "profile_path": profile_dir,
+        "cookies_path": os.path.join(root, "cookies.json"),
+    }
+    from datetime import datetime, timezone
+
+    state["created_at"] = datetime.now(timezone.utc).isoformat()
+    with open(os.path.join(root, "source-state.json"), "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def main():
+    args = sys.argv[1:]
+    cdp = "http://127.0.0.1:9222"
+    root = "/var/tmp/liprofile"
+    container = "work-webtop"
+    cprofile = "thorium-profile"
+    for i in range(0, len(args), 2):
+        k = args[i]
+        v = args[i + 1] if i + 1 < len(args) else ""
+        if k == "--cdp":
+            cdp = v
+        elif k == "--root":
+            root = v
+        elif k == "--container":
+            container = v
+        elif k == "--profile":
+            cprofile = v
+
+    profile_dir = os.path.join(root, "profile")
+    os.makedirs(profile_dir, exist_ok=True)
+
+    # 1. Clear stale daemon/browser locks so the server can claim the profile.
+    for lock in ("profile-claim.lock", "profile.lock", "daemon.lock", "lease.lock"):
+        p = os.path.join(root, lock)
+        if os.path.exists(p):
+            os.remove(p)
+    for name in os.listdir(profile_dir):
+        if name.startswith("Singleton"):
+            os.remove(os.path.join(profile_dir, name))
+    for name in os.listdir(root):
+        if name.startswith("invalid-state-"):
+            shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+
+    # 1. Copy the live browser profile (cookies DB + Local State) so the
+    #    session the driver launches carries the current login.
+    subprocess.run(
+        ["docker", "cp", f"{container}:/config/{cprofile}/Default", os.path.join(profile_dir, "Default")],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["docker", "cp", f"{container}:/config/{cprofile}/Local State", os.path.join(profile_dir, "Local State")],
+        check=True, capture_output=True,
+    )
+    for lock in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        p = os.path.join(profile_dir, lock)
+        if os.path.exists(p):
+            os.remove(p)
+
+    # 2. Pull the live cookies out of the running browser.
+    with urllib.request.urlopen(f"{cdp}/json", timeout=5) as r:
+        tabs = json.loads(r.read())
+    ws_url = cdp_tab(tabs)
+    if not ws_url:
+        sys.stderr.write("refresh-linkedin-session: no CDP tab\n")
+        sys.exit(1)
+    cookies = asyncio.run(get_cookies(ws_url))
+
+    li = [c for c in cookies if "linkedin" in c.get("domain", "")]
+    out = []
+    for c in li:
+        domain = c.get("domain", "")
+        if domain in (".www.linkedin.com", "www.linkedin.com"):
+            domain = ".linkedin.com"
+        out.append({
+            "name": c["name"],
+            "value": c["value"].strip('"'),
+            "domain": domain,
+            "path": c.get("path", "/"),
+            "expires": c.get("expires", -1),
+            "httpOnly": c.get("httpOnly", False),
+            "secure": c.get("secure", False),
+            "sameSite": c.get("sameSite", "None"),
+        })
+    with open(os.path.join(root, "cookies.json"), "w") as f:
+        json.dump(out, f, indent=2)
+
+    write_source_state(root, profile_dir)
+    sys.stderr.write(f"refresh-linkedin-session: {len(out)} cookies, profile refreshed\n")
+
+
+if __name__ == "__main__":
+    main()
