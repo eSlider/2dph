@@ -28,7 +28,7 @@ bin/brain/search.go "onlyoffice postgres" --root facts # restrict to confirmed
 bin/brain/search.go "where is cs-lexicon" --json | yq '.[].ref'
 bin/brain/get.go <id> --body                           # full chunk only when needed
 bin/brain/stats.go                                     # index health
-bin/brain/eval.go                                      # recall@5 >= 0.95 gate
+bin/brain/eval.go                                      # recall@5 >= 0.95 gate (Go; Python bin/kb/eval is CI fallback)
 ```
 
 `bin/kb/search` is a deprecated wrapper. `--hop` errors (File/FROM_FILE edges
