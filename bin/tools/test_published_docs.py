@@ -30,6 +30,15 @@ class PublishedDocsTest(unittest.TestCase):
             "README deduction search must name bin/brain/search.go",
         )
 
+    def test_readme_index_is_brain_not_index_mail(self) -> None:
+        text = (ROOT / "README.md").read_text()
+        self.assertIn("bin/brain/index.go", text)
+        self.assertNotIn(
+            "bin/mail/index_mail",
+            text,
+            "mail index is a brain write; README must name bin/brain/index.go",
+        )
+
     def test_docs_do_not_claim_hop_walks(self) -> None:
         paths = [
             ROOT / "README.md",

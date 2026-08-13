@@ -6,7 +6,7 @@
 //	./bin/mail/sync.go --dry-run
 //
 // Writes raw message.json + attachments under var/mail/<folder>/<id>/; run
-// bin/mail/import --from-raw afterwards to convert everything to markdown.
+// bin/mail/import.go --from-raw afterwards to convert everything to markdown.
 //
 // Shebang trick: first line is a Go `//` comment; the real code lives in the
 // importable package (module path, never a relative import).

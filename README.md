@@ -30,8 +30,8 @@ graph TB
     subgraph dph["2dph tools"]
         EX["bin/facts/extract<br/>2-source pairing"]
         AU["bin/facts/audit<br/>confidence + staleness"]
-        IDX["bin/kb/index<br/>chunk + embed"]
-        MD["bin/md/import<br/>mistune leaves"]
+        IDX["bin/brain/index.go<br/>chunk + embed"]
+        MD["bin/markdown/import.go<br/>mistune leaves"]
         SR["bin/brain/search.go<br/>deduction"]
     end
 
@@ -88,9 +88,9 @@ fact; conflicting sources or a single source → `hypothesis` → `(not confirme
 bin/brain/search.go "Matrix federation over HTTPS"   # facts → info → web-search
 bin/brain/search.go "onlyoffice postgres" --root facts
 bin/brain/search.go "where is cs-lexicon" --json | yq '.'
-bin/kb/get <id> --body                               # full chunk on demand
-bin/kb/stats                                         # index health
-bin/kb/eval                                          # recall@5 gate
+bin/brain/get.go <id> --body                         # full chunk on demand
+bin/brain/stats.go                                   # index health
+bin/brain/eval.go                                    # recall@5 gate
 ```
 
 `--hop` is not implemented (needs File/FROM_FILE edges); the flag errors instead of walking. `bin/kb/search` is a deprecated wrapper around `bin/brain/search.go`.
@@ -99,8 +99,8 @@ Mail is a first-class corpus (retrievable through the same search):
 
 ```bash
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
-bin/mail/import --from-raw var/mail                                     # JSON → markdown
-bin/mail/index_mail                                                     # rebuild brain incl. mail
+bin/mail/import.go --from-raw var/mail                                  # JSON → markdown
+bin/brain/index.go --rebuild                                            # rebuild brain (incl. mail)
 bin/brain/search.go "invoice from last week"                            # same search over mail leafs
 ```
 
@@ -111,7 +111,7 @@ bin/brain/search.go "invoice from last week"                            # same s
   readers. **Never `DROP INDEX` FTS/VECTOR** on Ladybug 0.19: DROP leaves
   ghost catalog tables (`_0_Leaf_vec_UPPER`) so recreate fails while
   `SHOW_INDEXES` omits HNSW. Fresh indexes = delete `var/kb.lbug` +
-  `bin/kb/index --rebuild`. Use `ensure_indexes()` after upserts.
+  `bin/brain/index.go --rebuild`. Use `ensure_indexes()` after upserts.
 - **model2vec** — `potion-multilingual-128M` static embeddings (256-dim),
   CPU-fast, deterministic, no Ollama runtime dependency.
 - facts and info split semantically by `root` column but written inside the
