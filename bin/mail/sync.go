@@ -1,8 +1,9 @@
 //usr/bin/env go run "$0" "$@"; exit
-// bin/mail/sync.go - async download of OnlyOffice and Gmail mail to var/mail/.
+// bin/mail/sync.go - async download of OnlyOffice, Gmail and M365 mail to var/mail/.
 //
-//	./bin/mail/sync.go --source onlyoffice,gmail --limit 50 --workers 8
+//	./bin/mail/sync.go --source onlyoffice,gmail,m365 --limit 50 --workers 8
 //	./bin/mail/sync.go --source gmail --force
+//	./bin/mail/sync.go --source m365 --env .secrets/m365.env
 //	./bin/mail/sync.go --dry-run
 //
 // Writes raw message.json + attachments under var/mail/<folder>/<id>/; run

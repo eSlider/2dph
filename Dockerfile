@@ -6,6 +6,15 @@
 # API: Go + ladybug via Zig CGO (no CPython).
 # Index: Python write path (profile `index` until brain/add is v2).
 
+# --- mail-sync: standalone M365/OnlyOffice/Gmail puller (pure Go, no CGO) ---
+FROM golang:1.26-bookworm AS mail-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY bin/mail ./bin/mail
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -o /mail-sync ./bin/mail/sync.go
+
 # --- Python sidecar (Ladybug write / rebuild) ---
 FROM python:3.12-slim AS index
 
@@ -28,6 +37,7 @@ RUN python -m pip install --no-cache-dir -r /tmp/requirements.lock.txt \
 COPY . .
 RUN chmod +x /app/bin/docker-entrypoint \
     && chown -R 2dph:2dph /app
+COPY --from=mail-build /mail-sync /app/bin/mail-sync
 USER 2dph
 
 ENV PATH="/app/bin:${PATH}" \

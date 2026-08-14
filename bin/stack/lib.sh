@@ -143,12 +143,17 @@ ensure_picoclaw() {
 	wait_health "$PICOCLAW_URL/health" || stack_die "picoclaw health failed at $PICOCLAW_URL/health"
 }
 
+mail_sync_running() {
+	compose ps --status running --services 2>/dev/null | grep -qx mail-sync
+}
+
 stack_status() {
-	local bh=down mcp=down ph=down present=false
+	local bh=down mcp=down ph=down present=false ms=down
 	health_ok "$BRAIN_URL/health" && bh=ok
 	mcp_ok && mcp=ok
 	reasoner_has_model && present=true
 	health_ok "$PICOCLAW_URL/health" && ph=ok
+	mail_sync_running && ms=ok
 	cat <<EOF
 brain:
   url: $BRAIN_URL
@@ -161,11 +166,19 @@ reasoner:
 picoclaw:
   url: $PICOCLAW_URL
   health: $ph
+mail_sync:
+  service: mail-sync
+  running: $ms
 EOF
 }
 
 stack_start() {
 	ensure_brain
+}
+
+stack_start_mail_sync() {
+	echo "mail-sync: compose up (ETL sync→import; index only if MAIL_SYNC_INDEX=1)" >&2
+	compose up -d mail-sync
 }
 
 stack_attach_agent() {
@@ -230,6 +243,6 @@ stack_stop() {
 		return 0
 		;;
 	esac
-	echo "stack: stop brain brain-mcp reasoner picoclaw (volumes kept)" >&2
-	compose --profile picoclaw --profile reasoner stop picoclaw brain-mcp reasoner brain
+	echo "stack: stop brain brain-mcp reasoner picoclaw mail-sync (volumes kept)" >&2
+	compose --profile picoclaw --profile reasoner stop picoclaw brain-mcp reasoner brain mail-sync
 }

@@ -71,7 +71,8 @@ delete `var/kb.lbug` then `--rebuild`.
 
 ```bash
 bin/stack/start                 # brain :8630, wait until MCP search/get/audit
-bin/stack/status                # YAML: brain / reasoner / picoclaw
+bin/stack/status                # YAML: brain / reasoner / picoclaw / mail_sync
+bin/stack/start-mail-sync       # compose ETL: OO+Gmail sync→import (300s; no auto-rebuild)
 bin/stack/start-assistant       # + qwen3.5:9b + PicoClaw agent (ask the brain)
 bin/stack/start-assistant --no-attach
 bin/stack/stop                  # compose stop; volumes kept
@@ -81,6 +82,7 @@ Same Compose services by hand:
 
 ```bash
 docker compose up -d brain                       # :8630 Zig CGO serve
+docker compose up -d mail-sync                   # ETL loop into kb-var
 docker compose --profile index run --rm index    # rebuild
 docker compose --profile picoclaw up brain-mcp   # MCP 127.0.0.1:8630
 ```

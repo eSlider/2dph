@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-METHODS = ("start", "start-assistant", "stop", "status")
+METHODS = ("start", "start-assistant", "start-mail-sync", "stop", "status")
 
 
 class StackLayoutTest(unittest.TestCase):
@@ -32,8 +32,10 @@ class StackLayoutTest(unittest.TestCase):
         lib = (ROOT / "bin" / "stack" / "lib.sh").read_text()
         self.assertIn("stack_start", lib)
         self.assertIn("stack_start_assistant", lib)
+        self.assertIn("stack_start_mail_sync", lib)
         self.assertIn("stack_stop", lib)
         self.assertIn("stack_status", lib)
+        self.assertIn("mail-sync", lib)
         self.assertIn("qwen3.5:9b", lib)
         self.assertIn("picoclaw agent", lib)
         self.assertIn("--no-deps", lib)
@@ -48,6 +50,16 @@ class StackLayoutTest(unittest.TestCase):
         self.assertIn("stack_start", start)
         self.assertNotIn("stack_start_assistant", start)
         self.assertNotIn("picoclaw agent", start)
+
+    def test_start_mail_sync_is_etl_only(self) -> None:
+        src = (ROOT / "bin" / "stack" / "start-mail-sync").read_text()
+        self.assertIn("stack_start_mail_sync", src)
+        self.assertNotIn("stack_start_assistant", src)
+        ep = (ROOT / "bin" / "docker-entrypoint").read_text()
+        self.assertIn('MAIL_SYNC_SRC:=onlyoffice,gmail', ep)
+        self.assertIn('MAIL_SYNC_INDEX:=0', ep)
+        self.assertIn('interval="${1:-300}"', ep)
+        self.assertIn('MAIL_SYNC_INDEX" = "1"', ep)
 
     def test_start_assistant_attaches_agent(self) -> None:
         src = (ROOT / "bin" / "stack" / "start-assistant").read_text()
@@ -151,7 +163,10 @@ exit 0
                 check=False,
             )
             self.assertEqual(r.returncode, 0, r.stderr)
-            self.assertFalse(log.exists(), "healthy brain must not docker compose up")
+            if log.exists():
+                logged = log.read_text()
+                self.assertNotIn("up -d", logged, "healthy brain must not docker compose up")
+                self.assertIn("ps", logged)  # status probes mail-sync via compose ps
 
     def test_start_ups_brain_when_unhealthy(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
@@ -190,7 +205,7 @@ exit 0
             logged = log.read_text()
             self.assertIn("stop", logged)
             self.assertNotIn(" down", logged)
-            for svc in ("brain", "brain-mcp", "reasoner", "picoclaw"):
+            for svc in ("brain", "brain-mcp", "reasoner", "picoclaw", "mail-sync"):
                 self.assertIn(svc, logged)
 
     def test_start_assistant_no_attach_starts_picoclaw(self) -> None:

@@ -92,6 +92,38 @@ services:
     tmpfs:
       - /tmp
 
+  # mail-sync ETL: sync → import every 300s into shared var. Full brain rebuild
+  # only when MAIL_SYNC_INDEX=1 (expensive on large mail corpora). Default
+  # sources: onlyoffice,gmail. For M365 set MAIL_SYNC_SRC=m365 and put
+  # M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in ~/.config/brain/mail.env
+  # (or m365.env + MAIL_SYNC_ENV). Gmail OAuth: mount ~/.gmail-mcp.
+  #   docker compose up -d mail-sync
+  #   bin/stack/start-mail-sync
+  mail-sync:
+    image: ghcr.io/eslider/2dph:index
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: index
+    environment:
+      HF_HOME: /data/hf
+      KB_PY: python3
+      MAIL_SYNC_SRC: onlyoffice,gmail
+      MAIL_SYNC_ENV: /secret/mail.env
+      MAIL_SYNC_INDEX: "0"
+      HOME: /home/2dph
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/app/var
+      - ~/.config/brain:/secret:ro
+      - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
+    command: ["mail-sync", "300"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    stop_grace_period: 20s
+
   # Optional local SearXNG (D3). Skip if BRAIN_SEARCH_URL already points at a
   # live instance — do not run a second copy on that host.
   #   SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile searxng up -d

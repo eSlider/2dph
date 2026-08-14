@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bin/stack/stop - stop compose brain / brain-mcp / reasoner / picoclaw.
+# bin/stack/stop - stop compose brain / brain-mcp / reasoner / picoclaw / mail-sync.
 #
 #   bin/stack/stop
 #
