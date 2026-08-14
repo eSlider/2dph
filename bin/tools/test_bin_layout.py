@@ -217,6 +217,32 @@ class BinLayoutTest(unittest.TestCase):
             if "go-git/go-git" in line:
                 self.assertNotIn("indirect", line)
 
+    def test_duckdb_go_is_direct_require(self) -> None:
+        text = (ROOT / "go.mod").read_text()
+        first = text.split("require (")[1].split(")")[0]
+        self.assertRegex(first, r"github.com/duckdb/duckdb-go/v2\s+v")
+        for line in first.splitlines():
+            if "duckdb/duckdb-go" in line:
+                self.assertNotIn("indirect", line)
+        skill = (ROOT / "skills" / "duckdb" / "SKILL.md").read_text()
+        self.assertIn("github.com/duckdb/duckdb-go", skill)
+        self.assertIn("Ladybug", skill)
+        self.assertIn("sqlite", skill.lower())
+        self.assertIn("gcc", skill.lower())
+        self.assertIn("Zig", skill)
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("D22", plan)
+        self.assertIn("duckdb-go", plan)
+        self._assert_shebang("bin/qa/stats.go")
+        reasoner = (ROOT / "internal" / "reasoner" / "client.go").read_text()
+        self.assertNotIn("duckdb", reasoner)
+        self.assertNotIn("duckstats", reasoner)
+        bakeoff = (ROOT / "bin" / "reasoner" / "bakeoff.go").read_text()
+        self.assertIn("internal/duckstats", bakeoff)
+        webcache = (ROOT / "internal" / "websearch" / "cache.go").read_text()
+        self.assertNotIn("duckdb", webcache)
+        self.assertIn("modernc.org/sqlite", webcache)
+
     def test_cgo_uses_zig_not_gcc(self) -> None:
         for rel in ("bin/cgo/zig", "bin/cgo/zcc", "bin/cgo/zc++"):
             p = ROOT / rel

@@ -36,14 +36,14 @@ Epic [#16](https://git.produktor.io/eSlider/2dph/issues/16) closed.
 
 ## v2
 
-[#6](https://git.produktor.io/eSlider/2dph/issues/6) OCR — `pdftotext` then
-`pdftoppm` + tesseract `eng+deu`. Optional `ocr-paddle`.
+[#6](https://git.produktor.io/eSlider/2dph/issues/6) OCR — **in**.
+[#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 duckdb-go — **in**.
 [#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1 contradiction
-resolution. [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 duckdb-md.
+resolution.
 
 ## Blockers
 
-None for epic #16 (closed). Remaining v2: OQ1, OQ3, OQ4.
+None for epic #16 (closed). Remaining v2: OQ1, OQ4.
 
 ```
 question
@@ -58,8 +58,8 @@ question
 
 ## Not v1
 
-OQ1 contradiction resolution, OQ3 duckdb-md export, OQ4 YAML-first leafs.
-OCR (OQ2) is in: tesseract, not docling.
+OQ1 contradiction resolution, OQ4 YAML-first leafs.
+OCR (OQ2) and duckdb-go (OQ3/D22) are in.
 
 ## Close epic #16 when
 

@@ -105,15 +105,17 @@ type Client struct {
 }
 
 type Report struct {
-	Model      string   `json:"model"`
-	HF         string   `json:"hf_id"`
-	Device     string   `json:"device"`
-	ToolCallOK int      `json:"tool_call_ok"`
-	ToolCallN  int      `json:"tool_call_n"`
-	XMLLeak    int      `json:"xml_leak"`
-	RSSMB      int      `json:"rss_mb"`
-	VRAMMB     int      `json:"vram_mb"`
-	Prompts    []Result `json:"prompts"`
+	Model        string   `json:"model"`
+	HF           string   `json:"hf_id"`
+	Device       string   `json:"device"`
+	ToolCallOK   int      `json:"tool_call_ok"`
+	ToolCallN    int      `json:"tool_call_n"`
+	XMLLeak      int      `json:"xml_leak"`
+	RSSMB        int      `json:"rss_mb"`
+	VRAMMB       int      `json:"vram_mb"`
+	LatencyP50MS float64  `json:"latency_p50_ms,omitempty"`
+	LatencyP95MS float64  `json:"latency_p95_ms,omitempty"`
+	Prompts      []Result `json:"prompts"`
 }
 
 func HFFor(model string) string {
