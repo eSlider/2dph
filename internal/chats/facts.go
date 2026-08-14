@@ -3,12 +3,13 @@ package chats
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	cliparse "github.com/eSlider/2dph/internal/cli"
 )
 
 var (
@@ -76,15 +77,8 @@ type ExtractedFact struct {
 }
 
 func RunFacts(args []string) int {
-	fs := flag.NewFlagSet("chats facts", flag.ContinueOnError)
-	help := fs.Bool("help", false, "")
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *help {
-		fmt.Fprintln(os.Stderr, "usage: chats facts")
-		return 0
+	if err := parseNoFlags("chats-facts", args); err != nil {
+		return cliparse.Fail(err)
 	}
 
 	root := Dir()

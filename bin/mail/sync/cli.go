@@ -5,74 +5,103 @@ package sync
 
 import (
 	"context"
-	"flag"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	cliparse "github.com/eSlider/2dph/internal/cli"
+	"github.com/integrii/flaggy"
 )
 
 // CLIConfig is a superset of SyncConfig plus flag parsing results.
 type CLIConfig struct {
-	Sync SyncConfig
-	Env  string // .env path; default <cwd>/.env
+	Sync    SyncConfig
+	Env     string // .env path; default <cwd>/.env
 	Sources string
-	Help bool
+	Help    bool
 }
 
-// ParseCLI reads os.Args into a CLIConfig. Exit codes: 0 ok, 2 usage.
+type flagVals struct {
+	env, out, srcs, query string
+	workers, limit, offset int
+	force, dryRun         bool
+}
+
+func Parser() *flaggy.Parser {
+	v := flagVals{workers: 4, query: "in:inbox", srcs: "onlyoffice"}
+	return bind(&v)
+}
+
+func bind(v *flagVals) *flaggy.Parser {
+	if v.workers == 0 {
+		v.workers = 4
+	}
+	if v.query == "" {
+		v.query = "in:inbox"
+	}
+	if v.srcs == "" {
+		v.srcs = "onlyoffice"
+	}
+	p := cliparse.New("mail-sync")
+	p.Description = "download mail to var/mail"
+	p.String(&v.env, "", "env", ".env file")
+	p.String(&v.out, "", "out", "var/mail root")
+	p.Int(&v.workers, "", "workers", "concurrent downloads")
+	p.Int(&v.limit, "", "limit", "max messages per source (0 = all)")
+	p.Int(&v.offset, "", "offset", "skip first N messages per source")
+	p.Bool(&v.force, "", "force", "overwrite existing message.json")
+	p.Bool(&v.dryRun, "", "dry-run", "list counts without writing")
+	p.String(&v.query, "", "query", "Gmail search query")
+	p.String(&v.srcs, "", "source", "comma list: onlyoffice,gmail")
+	return p
+}
+
+// ParseCLI reads args into a CLIConfig. Exit codes: 0 ok, 2 usage.
 func ParseCLI(args []string) (CLIConfig, int, error) {
-	fs := flag.NewFlagSet("mail/sync", flag.ContinueOnError)
-	var (
-		env    = fs.String("env", "", ".env file (default: <cwd>/.env)")
-		out    = fs.String("out", "", "var/mail root (default: <cwd>/var/mail)")
-		workers = fs.Int("workers", 4, "concurrent downloads")
-		limit  = fs.Int("limit", 0, "max messages per source (0 = all)")
-		offset = fs.Int("offset", 0, "skip first N messages per source")
-		force  = fs.Bool("force", false, "overwrite existing message.json + attachments")
-		dryRun = fs.Bool("dry-run", false, "list message counts without writing")
-		query  = fs.String("query", "in:inbox", "Gmail search query (gmail source only)")
-		srcs   = fs.String("source", "onlyoffice", "comma list: onlyoffice,gmail (default onlyoffice)")
-		help   = fs.Bool("help", false, "usage")
-	)
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
+	v := flagVals{workers: 4, query: "in:inbox", srcs: "onlyoffice"}
+	p := bind(&v)
+	if err := cliparse.Parse(p, args); err != nil {
+		if errors.Is(err, cliparse.ErrHelp) {
+			return CLIConfig{Help: true}, 0, nil
+		}
 		return CLIConfig{}, 2, err
 	}
-	if *help || fs.NArg() > 0 {
+	if len(p.TrailingArguments) > 0 {
 		return CLIConfig{Help: true}, 0, nil
 	}
 	wd, err := os.Getwd()
 	if err != nil {
 		return CLIConfig{}, 2, err
 	}
-	if *env == "" {
-		*env = filepath.Join(wd, ".env")
+	if v.env == "" {
+		v.env = filepath.Join(wd, ".env")
 	}
-	if *out == "" {
-		*out = filepath.Join(wd, "var", "mail")
+	if v.out == "" {
+		v.out = filepath.Join(wd, "var", "mail")
 	}
-	envVars := readEnv(*env)
+	envVars := readEnv(v.env)
 	cfg := SyncConfig{
-		Out:     *out,
-		Workers: *workers,
-		Limit:   *limit,
-		Offset:  *offset,
-		Force:   *force,
-		DryRun:  *dryRun,
-		Query:   *query,
+		Out:     v.out,
+		Workers: v.workers,
+		Limit:   v.limit,
+		Offset:  v.offset,
+		Force:   v.force,
+		DryRun:  v.dryRun,
+		Query:   v.query,
 		Policy:  RetryPolicy{},
 	}
-	cli := CLIConfig{Sync: cfg, Env: *env, Sources: *srcs}
-	for _, s := range strings.Split(*srcs, ",") {
+	out := CLIConfig{Sync: cfg, Env: v.env, Sources: v.srcs}
+	for _, s := range strings.Split(v.srcs, ",") {
 		switch strings.TrimSpace(s) {
 		case "onlyoffice":
 			u := pick(envVars["ONLYOFFICE_URL"], envVars["OO_URL"])
 			user := pick(envVars["ONLYOFFICE_USER"], envVars["OO_USER"])
 			pass := pick(envVars["ONLYOFFICE_PASS"], envVars["OO_PASSWORD"])
 			if u == "" || user == "" || pass == "" {
-				return CLIConfig{}, 2, fmt.Errorf("onlyoffice source needs ONLYOFFICE_URL/USER/PASS in %s", *env)
+				return CLIConfig{}, 2, fmt.Errorf("onlyoffice source needs ONLYOFFICE_URL/USER/PASS in %s", v.env)
 			}
 			cfg.OO = &OOConfig{URL: u, User: user, Password: pass}
 		case "gmail":
@@ -85,30 +114,30 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 			return CLIConfig{}, 2, fmt.Errorf("unknown source %q", s)
 		}
 	}
-	cli.Sync = cfg
-	return cli, 0, nil
+	out.Sync = cfg
+	return out, 0, nil
 }
 
 // Main is the CLI entry: returns process exit code.
 func Main(args []string) int {
-	cli, code, err := ParseCLI(args)
+	cfg, code, err := ParseCLI(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mail/sync:", err)
 		return code
 	}
-	if cli.Help {
+	if cfg.Help {
 		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--dry-run]")
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
 	defer cancel()
 	start := time.Now()
-	stats, err := Run(ctx, cli.Sync)
+	stats, err := Run(ctx, cfg.Sync)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mail/sync:", err)
 		return 1
 	}
-	if cli.Sync.DryRun {
+	if cfg.Sync.DryRun {
 		fmt.Printf("mail/sync: dry-run checked=%d (no writes)\n", stats.Checked)
 		return 0
 	}
@@ -135,7 +164,6 @@ func readEnv(path string) map[string]string {
 		k, v, _ := strings.Cut(line, "=")
 		out[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), "\"'")
 	}
-	// env overrides file
 	for _, kv := range os.Environ() {
 		k, v, ok := strings.Cut(kv, "=")
 		if !ok {

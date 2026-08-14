@@ -3,21 +3,22 @@ package chats
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	cliparse "github.com/eSlider/2dph/internal/cli"
 )
 
 type ooContact struct {
-	ID         int    `json:"id"`
+	ID          int    `json:"id"`
 	DisplayName string `json:"displayName"`
-	FirstName  string `json:"firstName"`
-	LastName   string `json:"lastName"`
-	About      string `json:"about"`
-	CommonData []struct {
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+	About       string `json:"about"`
+	CommonData  []struct {
 		InfoType int    `json:"infoType"`
 		Data     string `json:"data"`
 		Category string `json:"categoryName"`
@@ -25,16 +26,9 @@ type ooContact struct {
 }
 
 func RunApply(args []string) int {
-	fs := flag.NewFlagSet("chats apply", flag.ContinueOnError)
-	dryRun := fs.Bool("dry-run", false, "show what would be done without writing")
-	help := fs.Bool("help", false, "")
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *help {
-		fmt.Fprintln(os.Stderr, "usage: chats apply [--dry-run]")
-		return 0
+	dryRun, err := parseApplyFlags(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
 
 	ooCLI := findOO()
@@ -60,10 +54,10 @@ func RunApply(args []string) int {
 	emailFacts = dedupeFacts(emailFacts)
 
 	type resolvedFact struct {
-		Fact       ExtractedFact
-		OoID       int
-		OoName     string
-		Action     string // "info-add" or "persons-create"
+		Fact   ExtractedFact
+		OoID   int
+		OoName string
+		Action string // "info-add" or "persons-create"
 	}
 
 	var resolved []resolvedFact
@@ -128,7 +122,7 @@ func RunApply(args []string) int {
 
 	fmt.Printf("\nchats apply: %d actions to apply\n", len(resolved))
 
-	if *dryRun {
+	if dryRun {
 		for _, r := range resolved {
 			switch r.Action {
 			case "info-add":

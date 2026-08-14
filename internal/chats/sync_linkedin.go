@@ -2,12 +2,13 @@ package chats
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	cliparse "github.com/eSlider/2dph/internal/cli"
 )
 
 func checkLinkedInSession(userDataDir string) (bool, error) {
@@ -29,18 +30,12 @@ func checkLinkedInSession(userDataDir string) (bool, error) {
 }
 
 func RunSyncLinkedIn(args []string) int {
-	fs := flag.NewFlagSet("chats sync linkedin", flag.ContinueOnError)
-	limit := fs.Int("limit", 0, "max messages per conversation (0 = all)")
-	refresh := fs.Bool("refresh", false, "refresh session from live webtop browser before sync")
-	help := fs.Bool("help", false, "")
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
-		return 2
+	f, err := parseLinkedInFlags(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
-	if *help {
-		fmt.Fprintln(os.Stderr, "usage: chats sync linkedin [--limit N] [--refresh]")
-		return 0
-	}
+	limit := f.Limit
+	refresh := f.Refresh
 
 	userDataDir := envVar("LINKEDIN_USER_DATA_DIR", "")
 	if userDataDir == "" {
@@ -48,7 +43,7 @@ func RunSyncLinkedIn(args []string) int {
 		userDataDir = home + "/.linkedin-mcp/profile"
 	}
 
-	if *refresh {
+	if refresh {
 		if code := refreshLinkedInSession(userDataDir); code != 0 {
 			return code
 		}
@@ -72,7 +67,7 @@ func RunSyncLinkedIn(args []string) int {
 	defer cancel()
 
 	start := time.Now()
-	if err := src.Sync(ctx, Dir(), *limit); err != nil {
+	if err := src.Sync(ctx, Dir(), limit); err != nil {
 		fmt.Fprintf(os.Stderr, "chats sync linkedin: %v\n", err)
 		return 1
 	}
