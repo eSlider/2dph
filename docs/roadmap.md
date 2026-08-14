@@ -40,6 +40,7 @@ Epic [#16](https://git.produktor.io/eSlider/2dph/issues/16) closed.
 [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 duckdb-go — **in**.
 [#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1 contradiction
 resolution — **in** (`temporal_freshness`, `authority_pairing`).
+[#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 flaggy CLI — **in**.
 
 ## Blockers
 

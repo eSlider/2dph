@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 
+	cliparse "github.com/eSlider/2dph/internal/cli"
 	"github.com/eSlider/2dph/internal/mdleaves"
 )
 
@@ -23,29 +24,13 @@ func main() {
 }
 
 func run(args []string) int {
-	jsonOut := false
-	files := ""
-	root := "."
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--json":
-			jsonOut = true
-		case a == "--files" && i+1 < len(args):
-			i++
-			files = args[i]
-		case strings.HasPrefix(a, "--files="):
-			files = strings.TrimPrefix(a, "--files=")
-		case a == "-h" || a == "--help":
-			fmt.Fprintln(os.Stderr, "bin/markdown/import.go [dir] [--files a.md,b.md] [--json]")
-			return 0
-		case strings.HasPrefix(a, "-"):
-			fmt.Fprintln(os.Stderr, "unknown arg:", a)
-			return 2
-		default:
-			root = a
-		}
+	c, err := mdleaves.ParseArgs(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
+	jsonOut := c.JSONOut
+	files := c.Files
+	root := c.Root
 
 	var paths []string
 	if files != "" {

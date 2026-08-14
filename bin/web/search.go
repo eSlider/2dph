@@ -16,9 +16,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
+	"github.com/eSlider/2dph/internal/cli"
 	"github.com/eSlider/2dph/internal/websearch"
 	"golang.org/x/sys/unix"
 )
@@ -28,77 +28,15 @@ func main() {
 }
 
 func run(args []string) int {
-	var (
-		query, site, lang, fresh, category, engines string
-		limit                                       = websearch.DefaultLimit
-		jsonOut, refresh, force                     bool
-		ttl                                         = float64(websearch.CacheTTL)
-		timeout                                     = 25
-	)
-	i := 0
-	for i < len(args) {
-		a := args[i]
-		switch {
-		case a == "--json":
-			jsonOut = true
-		case a == "--refresh":
-			refresh = true
-		case a == "--force":
-			force = true
-		case (a == "-n" || a == "--limit") && i+1 < len(args):
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n < 0 {
-				fmt.Fprintln(os.Stderr, "web/search: --limit must be a non-negative integer")
-				return 2
-			}
-			limit = n
-		case a == "--site" && i+1 < len(args):
-			i++
-			site = args[i]
-		case a == "--lang" && i+1 < len(args):
-			i++
-			lang = args[i]
-		case a == "--fresh" && i+1 < len(args):
-			i++
-			fresh = args[i]
-		case a == "--category" && i+1 < len(args):
-			i++
-			category = args[i]
-		case a == "--engines" && i+1 < len(args):
-			i++
-			engines = args[i]
-		case a == "--ttl" && i+1 < len(args):
-			i++
-			v, err := strconv.ParseFloat(args[i], 64)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "web/search: --ttl must be a number")
-				return 2
-			}
-			ttl = v
-		case a == "--timeout" && i+1 < len(args):
-			i++
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n <= 0 {
-				fmt.Fprintln(os.Stderr, "web/search: --timeout must be a positive integer")
-				return 2
-			}
-			timeout = n
-		case a == "-h" || a == "--help":
-			fmt.Fprintln(os.Stderr, `usage: bin/web/search.go QUERY [--json] [-n N] [--site HOST] [--lang LANG] [--fresh day|week|month|year] [--category CAT] [--engines LIST] [--refresh] [--force]`)
-			return 0
-		case len(a) > 0 && a[0] != '-' && query == "":
-			query = a
-		default:
-			fmt.Fprintf(os.Stderr, "web/search: unknown flag %s\n", a)
-			return 2
-		}
-		i++
+	c, err := websearch.ParseArgs(args)
+	if err != nil {
+		return cli.Fail(err)
 	}
-	if query == "" {
-		fmt.Fprintln(os.Stderr, "web/search: query required")
-		return 2
-	}
+	query, site, lang, fresh, category, engines := c.Query, c.Site, c.Lang, c.Fresh, c.Category, c.Engines
+	limit := c.Limit
+	jsonOut, refresh, force := c.JSONOut, c.Refresh, c.Force
+	ttl := c.TTL
+	timeout := c.Timeout
 	if site != "" {
 		query = "site:" + site + " " + query
 	}

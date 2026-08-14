@@ -15,8 +15,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
+	cliparse "github.com/eSlider/2dph/internal/cli"
 	"github.com/eSlider/2dph/internal/duckstats"
 	"github.com/eSlider/2dph/internal/reasoner"
 )
@@ -26,42 +26,13 @@ func main() {
 }
 
 func run(args []string) int {
-	base := os.Getenv("REASONER_BASE_URL")
-	if base == "" {
-		base = "http://127.0.0.1:11435/v1"
+	c, err := reasoner.ParseArgs(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
-	model := os.Getenv("REASONER_MODEL")
-	if model == "" {
-		model = reasoner.OllamaRAM
-	}
-	jsonOut := false
-	device := "cpu"
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--json":
-			jsonOut = true
-		case a == "--model" && i+1 < len(args):
-			i++
-			model = args[i]
-		case strings.HasPrefix(a, "--model="):
-			model = strings.TrimPrefix(a, "--model=")
-		case a == "--base-url" && i+1 < len(args):
-			i++
-			base = args[i]
-		case a == "--device" && i+1 < len(args):
-			i++
-			device = args[i]
-		case a == "-h" || a == "--help":
-			fmt.Fprintln(os.Stderr, "bin/reasoner/bakeoff.go [--model ID] [--base-url URL] [--device cpu] [--json]")
-			return 0
-		default:
-			fmt.Fprintln(os.Stderr, "unknown arg:", a)
-			return 2
-		}
-	}
-	c := reasoner.Client{BaseURL: base, Model: model, Device: device}
-	rep := reasoner.Run(c)
+	base, model, jsonOut, device := c.Base, c.Model, c.JSONOut, c.Device
+	client := reasoner.Client{BaseURL: base, Model: model, Device: device}
+	rep := reasoner.Run(client)
 	lat := make([]float64, 0, len(rep.Prompts))
 	for _, p := range rep.Prompts {
 		lat = append(lat, float64(p.LatencyMS))

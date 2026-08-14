@@ -11,30 +11,15 @@ import (
 	"unicode/utf8"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/cli"
 )
 
 func MainGet(args []string) int {
-	id, body, jsonOut := "", false, false
-	for _, a := range args {
-		switch {
-		case a == "--body":
-			body = true
-		case a == "--json":
-			jsonOut = true
-		case a == "-h" || a == "--help":
-			fmt.Fprintln(os.Stderr, `usage: bin/brain/get.go <id> [--body] [--json]`)
-			return 0
-		case strings.HasPrefix(a, "-"):
-			fmt.Fprintf(os.Stderr, "brain/get: unknown flag %s\n", a)
-			return 2
-		default:
-			id = a
-		}
+	opt, err := rank.ParseGet(args)
+	if err != nil {
+		return cli.Fail(err)
 	}
-	if id == "" {
-		fmt.Fprintln(os.Stderr, "brain/get: id required")
-		return 2
-	}
+	id, body, jsonOut := opt.ID, opt.Body, opt.JSONOut
 	if err := openBrain(); err != nil {
 		fmt.Fprintf(os.Stderr, "open brain: %v\n", err)
 		return 1
@@ -72,21 +57,11 @@ func MainGet(args []string) int {
 }
 
 func MainStats(args []string) int {
-	jsonOut := false
-	for _, a := range args {
-		switch a {
-		case "--json":
-			jsonOut = true
-		case "-h", "--help":
-			fmt.Fprintln(os.Stderr, `usage: bin/brain/stats.go [--json]`)
-			return 0
-		default:
-			if strings.HasPrefix(a, "-") {
-				fmt.Fprintf(os.Stderr, "brain/stats: unknown flag %s\n", a)
-				return 2
-			}
-		}
+	opt, err := rank.ParseJSONFlag("brain-stats", args)
+	if err != nil {
+		return cli.Fail(err)
 	}
+	jsonOut := opt.JSONOut
 	if err := openBrain(); err != nil {
 		fmt.Fprintf(os.Stderr, "open brain: %v\n", err)
 		return 1
@@ -124,21 +99,11 @@ func MainStats(args []string) int {
 }
 
 func MainEval(args []string) int {
-	jsonOut := false
-	for _, a := range args {
-		switch a {
-		case "--json":
-			jsonOut = true
-		case "-h", "--help":
-			fmt.Fprintln(os.Stderr, `usage: bin/brain/eval.go [--json]`)
-			return 0
-		default:
-			if strings.HasPrefix(a, "-") {
-				fmt.Fprintf(os.Stderr, "brain/eval: unknown flag %s\n", a)
-				return 2
-			}
-		}
+	opt, err := rank.ParseJSONFlag("brain-eval", args)
+	if err != nil {
+		return cli.Fail(err)
 	}
+	jsonOut := opt.JSONOut
 	if err := openBrain(); err != nil {
 		fmt.Fprintf(os.Stderr, "open brain: %v\n", err)
 		return 1

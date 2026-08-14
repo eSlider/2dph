@@ -4,25 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"html"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	cliparse "github.com/eSlider/2dph/internal/cli"
 )
 
 func RunImport(args []string) int {
-	fs := flag.NewFlagSet("chats import", flag.ContinueOnError)
-	help := fs.Bool("help", false, "")
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *help {
-		fmt.Fprintln(os.Stderr, "usage: chats import")
-		return 0
+	if err := parseNoFlags("chats-import", args); err != nil {
+		return cliparse.Fail(err)
 	}
 
 	root := Dir()

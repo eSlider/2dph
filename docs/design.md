@@ -38,6 +38,10 @@ bin/brain/search.go "question"
 from each hit (1=File, 2=Commit, 3=Person). Rebuild writes FROM_FILE;
 git import writes HAS_VERSION/AUTHORED ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
+Go CLIs parse with **flaggy** via `internal/cli` (D23). Flags may appear
+after positionals (`search q --hop 1`). Completions:
+`source <(./bin/cli/complete.go bash)`.
+
 ## Who / What / How / Where / When + evidence
 
 Every assertion edge carries:
