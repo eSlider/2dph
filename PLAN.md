@@ -159,13 +159,12 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 4. .venv: ladybug + model2vec + mistune
 5. schema + tools with TDD (kb + md + facts + brain)
 6. ~/.config/brain config
-7. corpus extraction (facts/info) — **open**: [#18](https://git.produktor.io/eSlider/2dph/issues/18)
+7. corpus extraction (facts/info) — **in**: [#18](https://git.produktor.io/eSlider/2dph/issues/18)
 8. verify: web-search smoke, onlyoffice pg, md-db round-trip, eval, audit
 
 ## Gap to v1 (epic #16)
 
-Read path + MCP are in. Incremental `brain/add` and `--hop` are in. Remaining:
-facts+chats corpus on rebuild, and CI eval SoT. Board:
+Remaining: CI eval SoT. Board:
 [epic #16](https://git.produktor.io/eSlider/2dph/issues/16),
 milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12).
 Narrative: [docs/roadmap.md](docs/roadmap.md).
@@ -174,7 +173,7 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 |-------|-------|-----|
 | 1 | [#14](https://git.produktor.io/eSlider/2dph/issues/14) | **in** — `bin/brain/add.go` / `POST /ingest` write facts+info without deleting `kb.lbug`. Bulk corpus still `--rebuild`. Leftover Python (mail/facts) is not the living-graph blocker. |
 | 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | **in** — `--hop N` walks `FROM_FILE` → `HAS_VERSION` → `AUTHORED` (max 3). |
-| 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | Rebuild is mostly `info` (repo md + mail). `facts/extract` and chats are not a first-class index input. WhatsApp sync is a stub. |
+| 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | **in** — `--with-facts` / `--facts-json` land `root=facts`; `--with-chats` indexes `var/chats/md`. WhatsApp sync is out of v1. |
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | GitHub CI recall still runs Python `bin/kb/eval`. |
 

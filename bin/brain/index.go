@@ -3,7 +3,7 @@
 //
 // bin/brain/index.go - rebuild the Ladybug graph (Python write path).
 //
-//	./bin/brain/index.go --rebuild
+//	./bin/brain/index.go --rebuild --with-facts --with-chats
 //	./bin/brain/index.go --rebuild --with-mail
 //	./bin/brain/index.go --dry-run --with-mail
 //

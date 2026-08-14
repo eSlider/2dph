@@ -65,7 +65,7 @@ var/          kb.lbug, var/mail/*, caches (gitignored)
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail   # raw message.json + attachments
 bin/mail/sync.go --source gmail --query 'from:example.com' --out var/mail  # Gmail search (default in:inbox)
 bin/mail/import.go --from-raw var/mail                                  # message.json → message.md (convert only)
-bin/brain/index.go --rebuild                                            # rebuild brain incl. all mail (fresh DB)
+bin/brain/index.go --rebuild --with-facts --with-chats
 ```
 
 - `sync` (Go) downloads messages + attachments; Gmail uses paginated list +
@@ -89,6 +89,7 @@ bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/b
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --no-web              # local graph only
 eval "$(bin/cgo/zig env)"                         # Zig cc + liblbug (not gcc)
+bin/brain/index.go --rebuild [--with-mail] [--with-facts] [--with-chats]
 bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
 bin/brain/add.go --json                                      # stdin leaf or {leafs:[...]}
 bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI fallback
