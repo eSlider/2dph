@@ -9,7 +9,7 @@ description: >-
 # postgres
 
 `bin/postgres/query.go` wraps vendored `bin/db/psql-yq`. Output is YAML
-(cheaper than psql ASCII, easy to slice with `yq`).
+(cheaper than psql ASCII, easy to slice with mikefarah/yq).
 
 ```bash
 bin/postgres/query.go --profile onlyoffice -s document_asset   # column list

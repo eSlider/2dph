@@ -7,7 +7,7 @@
 //	./bin/reasoner/bakeoff.go --model MichelRosselli/bonsai-27b:Q1_0 --json
 //
 // Measures OpenAI tool_calls (search/get/audit) and RSS from Ollama /api/ps, not VRAM.
-// PicoClaw is not in this repo; the tool names match internal/httpapi MCP ops.
+// PicoClaw is compose profile picoclaw; tool names match internal/httpapi MCP ops.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/eSlider/2dph/internal/duckstats"
 	"github.com/eSlider/2dph/internal/reasoner"
 )
 
@@ -61,6 +62,14 @@ func run(args []string) int {
 	}
 	c := reasoner.Client{BaseURL: base, Model: model, Device: device}
 	rep := reasoner.Run(c)
+	lat := make([]float64, 0, len(rep.Prompts))
+	for _, p := range rep.Prompts {
+		lat = append(lat, float64(p.LatencyMS))
+	}
+	if st, err := duckstats.Quantiles(lat); err == nil {
+		rep.LatencyP50MS = st.P50
+		rep.LatencyP95MS = st.P95
+	}
 	raw, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -76,6 +85,8 @@ func run(args []string) int {
 		fmt.Printf("xml_leak: %d\n", rep.XMLLeak)
 		fmt.Printf("rss_mb: %d\n", rep.RSSMB)
 		fmt.Printf("vram_mb: %d\n", rep.VRAMMB)
+		fmt.Printf("latency_p50_ms: %g\n", rep.LatencyP50MS)
+		fmt.Printf("latency_p95_ms: %g\n", rep.LatencyP95MS)
 		for _, p := range rep.Prompts {
 			status := "fail"
 			if p.OK {

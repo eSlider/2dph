@@ -45,10 +45,10 @@ jobs:
         run: |
           uv run python -m unittest discover -s bin/tools -t .
 
-      - name: Go tests (root module, no ladybug cgo)
+      - name: Go tests (root module; duckdb-go CGO via gcc, no ladybug)
         run: |
-          go vet ./...
-          go test ./... -count=1
+          CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go vet ./...
+          CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go test ./... -count=1
 
       - name: brain ranking tests (no cgo / no ladybug)
         run: go test ./internal/brain/rank -count=1

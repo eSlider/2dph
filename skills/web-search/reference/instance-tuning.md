@@ -43,7 +43,7 @@ found" unless the client refuses to call it absence.
 
 ```bash
 for i in $(seq 10); do
-  bin/web/search.go "test $i" -n 1 --refresh --json | jq -r .status
+  bin/web/search.go "test $i" -n 1 --refresh --json | yq -r '.status'
 done
 ```
 

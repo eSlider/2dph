@@ -11,7 +11,7 @@ description: >-
 ```bash
 bin/web/search.go "LadybugDB vector index"
 bin/web/search.go "model2vec multilingual" --category it
-bin/web/search.go "hypervisor" --site example.com --json | jq -r '.results[].url'
+bin/web/search.go "hypervisor" --site example.com --json | yq -r '.results[].url'
 bin/web/search.go "postgres partial index" --lang en --fresh year
 ```
 

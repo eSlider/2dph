@@ -20,7 +20,7 @@ Evidence-first knowledge graph. Facts need proof or they are
 | explanation | [roadmap](roadmap.md) — gap to v1 (epic #16) |
 | howto | [picoclaw](picoclaw.md) — MCP agent profile |
 | howto | [reasoner](reasoner.md) — CPU bake-off (D18) |
-| reference | [PLAN.md](../PLAN.md) — decisions D1–D21 |
+| reference | [PLAN.md](../PLAN.md) — decisions D1–D22 |
 
 Decisions the public face must name: **D3** SearXNG compose, **D6** Go service /
 Python write sidecar, **D14** `bin/{subject}/{method}.go`, **D15** Gitea origin,

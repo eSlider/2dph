@@ -2,7 +2,7 @@
 #
 #   docker compose up -d brain                  # API (Zig CGO serve)
 #   docker compose --profile index run --rm index   # Python rebuild
-#   docker compose --profile picoclaw up brain-mcp
+#   docker compose --profile picoclaw up -d     # brain-mcp + CPU reasoner + PicoClaw gateway
 #   docker compose --profile reasoner up -d reasoner   # CPU Ollama :11435
 #   docker compose --profile searxng up -d
 #   OCR_ENGINE=paddle docker compose --profile ocr-paddle run --rm ocr-paddle
@@ -10,6 +10,14 @@
 # Secrets never baked in: search.env + db-profiles.yml from ~/.config/brain.
 
 name: 2dph
+
+networks:
+  default:
+    name: 2dph_sys
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.23.42.0/24
 
 services:
   brain:
@@ -98,8 +106,8 @@ services:
       - ./deploy/searxng/limiter.toml:/etc/searxng/limiter.toml:ro
     restart: unless-stopped
 
-  # MCP endpoint for an external agent (PicoClaw is not shipped here).
-  #   docker compose --profile picoclaw up brain-mcp
+  # MCP endpoint for PicoClaw (and any MCP client).
+  #   docker compose --profile picoclaw up -d
   brain-mcp:
     profiles: ["picoclaw"]
     image: ghcr.io/eslider/2dph:api
@@ -121,7 +129,7 @@ services:
   #   docker compose --profile reasoner up -d reasoner
   #   docker compose --profile reasoner exec reasoner ollama pull qwen3.5:9b
   reasoner:
-    profiles: ["reasoner"]
+    profiles: ["reasoner", "picoclaw"]
     image: docker.io/ollama/ollama:latest
     environment:
       OLLAMA_NUM_GPU: "0"
@@ -130,6 +138,26 @@ services:
       - "127.0.0.1:11435:11434"
     volumes:
       - reasoner-ollama:/root/.ollama
+    restart: unless-stopped
+
+  # Official PicoClaw gateway. Config has no secrets (Ollama + HTTP MCP).
+  # Host network: brain/reasoner bind 127.0.0.1 only, so host.docker.internal
+  # (docker0) cannot reach them. Gateway 127.0.0.1:18790 (not the 18800 launcher).
+  # If :8630/:11435 are already bound, do not start brain-mcp/reasoner:
+  #   docker compose --profile picoclaw up -d --no-deps picoclaw
+  picoclaw:
+    profiles: ["picoclaw"]
+    image: docker.io/sipeed/picoclaw:v0.3.1
+    network_mode: host
+    depends_on:
+      - brain-mcp
+      - reasoner
+    environment:
+      PICOCLAW_GATEWAY_HOST: "127.0.0.1"
+    entrypoint: ["picoclaw", "gateway"]
+    volumes:
+      - picoclaw-home:/root/.picoclaw
+      - ./deploy/picoclaw/config.json:/root/.picoclaw/config.json:ro
     restart: unless-stopped
 
   # Optional PP-OCRv5 (not default). Default OCR is tesseract eng+deu.
@@ -145,3 +173,4 @@ volumes:
   kb-model:
   kb-var:
   reasoner-ollama:
+  picoclaw-home:
