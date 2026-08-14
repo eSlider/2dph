@@ -119,6 +119,8 @@ Mail is a first-class corpus (retrievable through the same search):
 
 ```bash
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
+bin/mail/sync.go --source m365 --env ~/.config/brain/mail.env          # Microsoft 365 Graph
+bin/stack/start-mail-sync                                              # compose ETL (300s; no auto-rebuild)
 bin/mail/import.go --from-raw var/mail                                  # JSON → markdown
 bin/brain/add.go --text T --root facts --source "a.md x b.md"
 bin/brain/index.go --rebuild --with-facts --with-chats                  # facts extract + chats md

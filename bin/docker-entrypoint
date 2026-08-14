@@ -5,7 +5,7 @@
 #   serve | search | watch
 # Index image (Python write path, compose profile `index`):
 #   index | extract | audit | search (deprecated python wrapper)
-#   mail-sync [N]   pull loop: sync -> import -> index every N s (default 10)
+#   mail-sync [N]   ETL loop: sync -> import; optional index (default 300s)
 #
 # Usage comment starts at line 2 (self-describing convention).
 set -euo pipefail
@@ -36,20 +36,23 @@ case "$CMD" in
 	extract) exec "$KB_PY" /app/bin/facts/extract "$@" ;;
 	audit) exec "$KB_PY" /app/bin/facts/audit "$@" ;;
 	mail-sync)
-		# loop: pull mail (M365/OnlyOffice/Gmail) every N s, convert to md,
-		# rebuild the brain index. Index only when something new arrived.
-		interval="${1:-10}"
-		[ "$interval" -gt 0 ] 2>/dev/null || interval=10
-		: "${MAIL_SYNC_ENV:=/secret/m365.env}"
-		: "${MAIL_SYNC_SRC:=m365}"
+		# ETL: pull mail, convert to md when new>0. Full --rebuild is opt-in
+		# (MAIL_SYNC_INDEX=1) — ~29k leaf rebuild is minutes, not a 10s loop.
+		interval="${1:-300}"
+		[ "$interval" -gt 0 ] 2>/dev/null || interval=300
+		: "${MAIL_SYNC_ENV:=/secret/mail.env}"
+		: "${MAIL_SYNC_SRC:=onlyoffice,gmail}"
 		: "${MAIL_SYNC_OUT:=/app/var/mail}"
+		: "${MAIL_SYNC_INDEX:=0}"
 		while true; do
-			out="$("/app/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)"
+			out="$("/app/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)" || true
 			echo "$out"
 			new="$(printf '%s\n' "$out" | sed -n 's/.*new=\([0-9]*\).*/\1/p' | tail -1)"
 			if [ -n "$new" ] && [ "$new" -gt 0 ] 2>/dev/null; then
 				"$KB_PY" /app/bin/mail/import --from-raw "$MAIL_SYNC_OUT" 2>&1 | tail -1
-				"$KB_PY" /app/bin/kb/index --rebuild --with-mail 2>&1 | tail -1
+				if [ "$MAIL_SYNC_INDEX" = "1" ]; then
+					"$KB_PY" /app/bin/kb/index --rebuild --with-mail 2>&1 | tail -1
+				fi
 			fi
 			sleep "$interval"
 		done

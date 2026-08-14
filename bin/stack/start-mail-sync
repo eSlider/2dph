@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# bin/stack/start-mail-sync - compose up mail-sync ETL (sync → import; optional index).
+#
+#   bin/stack/start-mail-sync
+#
+# Default: onlyoffice,gmail every 300s into kb-var. Full --rebuild only if
+# MAIL_SYNC_INDEX=1 in compose/env. Secrets: ~/.config/brain/mail.env +
+# ~/.gmail-mcp (mounted). Does not start brain/picoclaw.
+set -euo pipefail
+
+STACK_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+# shellcheck source=lib.sh
+source "$STACK_DIR/lib.sh"
+case "${1:-}" in
+-h | --help)
+	stack_usage "$0"
+	exit 0
+	;;
+esac
+stack_start_mail_sync "$@"
+stack_status
