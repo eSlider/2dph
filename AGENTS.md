@@ -42,7 +42,7 @@ skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}.go (shebang)
 bin/brain/    search.go serve.go index.go add.go get.go stats.go eval.go watch.go
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
-bin/mail/     sync.go import.go (index_mail → brain/index.go)
+bin/mail/     sync.go import.go ocr.go (index_mail → brain/index.go)
 bin/markdown/ import.go (H2 leaf split; Python bin/md/import fallback)
 bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
@@ -71,9 +71,9 @@ bin/brain/index.go --rebuild --with-facts --with-chats
 - `sync` (Go) downloads messages + attachments; Gmail uses paginated list +
   `body.attachmentId` (not partId) for attachments.
 - `import` converts body + attachments to markdown. PDFs use poppler
-  `pdftotext -layout` fast path (~15ms); textless/scanned PDFs fall back to
-  docling (isolated subprocess — its native onnx can segfault the parent).
-  Conversion never touches the brain DB (crash safety).
+  `pdftotext -layout` fast path (~15ms); textless/scanned PDFs use
+  `pdftoppm` + tesseract `eng+deu` (`bin/mail/ocr.go`). Optional
+  `OCR_ENGINE=paddle`. Conversion never touches the brain DB (crash safety).
 - `index_mail` is a deprecation shim for `bin/brain/index.go --rebuild`. Bulk
   rebuild still deletes `var/kb.lbug` and creates FTS/HNSW last. Single-leaf
   write is `bin/brain/add.go` (safe while indexes exist; do not DROP INDEX).
@@ -101,6 +101,7 @@ bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit le
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
 bin/reasoner/bakeoff.go [--model ID] [--json]     # D18 CPU tool-call bake-off
 bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
+bin/mail/ocr.go <image|pdf>                      # tesseract eng+deu (scans)
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
 ```

@@ -136,6 +136,33 @@ class BinLayoutTest(unittest.TestCase):
             "index_mail must point at bin/brain/index.go",
         )
 
+    def test_mail_ocr_is_tesseract_not_docling(self) -> None:
+        self._assert_shebang("bin/mail/ocr.go")
+        ocr = (ROOT / "bin" / "mail" / "ocr.go").read_text()
+        self.assertIn("internal/ocr", ocr)
+        self.assertIn("mail_ocr", ocr)
+        self.assertNotIn("github.com/otiai10/gosseract", ocr)
+        py = (ROOT / "bin" / "mail" / "import").read_text()
+        self.assertNotIn("from docling", py)
+        self.assertNotIn("import docling", py)
+        self.assertIn("convert_pdf", py)
+        conv = (ROOT / "bin" / "tools" / "mailconv.py").read_text()
+        self.assertIn("pdftotext", conv)
+        self.assertIn("pdftoppm", conv)
+        self.assertIn("tesseract", conv)
+        self.assertIn("eng+deu", conv)
+        self.assertNotIn("from docling", conv)
+        self.assertNotIn("import docling", conv)
+        self.assertNotIn("gocv", conv.lower())
+        proj = (ROOT / "pyproject.toml").read_text()
+        self.assertNotIn("docling", proj)
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("tesseract-ocr", ci)
+        self.assertIn("./internal/ocr", ci)
+        compose = (ROOT / "compose.yaml").read_text()
+        self.assertIn("ocr-paddle", compose)
+        self.assertIn("OCR_ENGINE", compose)
+
     def test_markdown_import_is_go_not_python_exec(self) -> None:
         self._assert_shebang("bin/markdown/import.go")
         text = (ROOT / "bin" / "markdown" / "import.go").read_text()
