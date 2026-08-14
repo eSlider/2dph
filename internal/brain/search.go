@@ -55,7 +55,7 @@ func runSearch(args []string) int {
 	}
 	defer closeBrain()
 
-	hits, err := searchHits(query, root, repo, limit)
+	hits, err := searchHits(query, root, repo, limit, opt.AsOf)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "search: %v\n", err)
 		return 1
@@ -85,6 +85,7 @@ func runSearch(args []string) int {
 	out := Dict{
 		{"query", query},
 		{"root_filter", root},
+		{"as_of", opt.AsOf},
 		{"count", len(results)},
 		{"results", resultsToDicts(results)},
 	}
@@ -96,13 +97,13 @@ func runSearch(args []string) int {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.SetEscapeHTML(false)
-		return b2i(enc.Encode(toJSONOut(results, query, root, webOut)))
+		return b2i(enc.Encode(toJSONOut(results, query, root, opt.AsOf, webOut)))
 	}
 	fmt.Print(toYAML(out, 0))
 	return 0
 }
 
-func searchHits(query, root, repo string, limit int) ([]Hit, error) {
+func searchHits(query, root, repo string, limit int, asOf string) ([]Hit, error) {
 	emb, err := embedQuery(query)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
@@ -115,7 +116,7 @@ func searchHits(query, root, repo string, limit int) ([]Hit, error) {
 	if vec, err = queryVector(emb, limit*3); err != nil {
 		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
 	}
-	return rank.RankAndFilter(fts, vec, root, repo, limit), nil
+	return rank.RankAndFilterAsOf(fts, vec, root, repo, asOf, limit), nil
 }
 
 func attachHops(hits []Hit, n int) error {
@@ -220,15 +221,35 @@ func rowsToHits(res *lbug.QueryResult) ([]Hit, error) {
 		if len(vals) >= 6 {
 			conf = fmt.Sprint(vals[5])
 		}
-		hits = append(hits, Hit{ID: id, Text: text, Root: root, Source: source, Score: score, Confidence: conf})
+		vf, vt := "", ""
+		if len(vals) >= 8 {
+			vf = nullStr(vals[6])
+			vt = nullStr(vals[7])
+		}
+		hits = append(hits, Hit{
+			ID: id, Text: text, Root: root, Source: source, Score: score,
+			Confidence: conf, ValidFrom: vf, ValidTo: vt,
+		})
 	}
 	return hits, nil
+}
+
+func nullStr(v any) string {
+	if v == nil {
+		return ""
+	}
+	s := fmt.Sprint(v)
+	if s == "<nil>" {
+		return ""
+	}
+	return s
 }
 
 // JSON output types
 type jsonOut struct {
 	Query      string             `json:"query"`
 	RootFilter string             `json:"root_filter"`
+	AsOf       string             `json:"as_of,omitempty"`
 	Count      int                `json:"count"`
 	Results    []jsonHit          `json:"results"`
 	Web        *rank.SecondSource `json:"web,omitempty"`
@@ -241,10 +262,12 @@ type jsonHit struct {
 	Confidence string         `json:"confidence,omitempty"`
 	Score      float64        `json:"score"`
 	Snippet    string         `json:"snippet,omitempty"`
+	ValidFrom  string         `json:"valid_from,omitempty"`
+	ValidTo    string         `json:"valid_to,omitempty"`
 	Hops       []rank.HopNode `json:"hops,omitempty"`
 }
 
-func toJSONOut(hits []Hit, query, rootFilter string, web *rank.SecondSource) *jsonOut {
+func toJSONOut(hits []Hit, query, rootFilter, asOf string, web *rank.SecondSource) *jsonOut {
 	out := make([]jsonHit, len(hits))
 	for i, h := range hits {
 		out[i] = jsonHit{
@@ -254,12 +277,15 @@ func toJSONOut(hits []Hit, query, rootFilter string, web *rank.SecondSource) *js
 			Confidence: h.Confidence,
 			Score:      h.Score,
 			Snippet:    h.Snippet,
+			ValidFrom:  h.ValidFrom,
+			ValidTo:    h.ValidTo,
 			Hops:       h.Hops,
 		}
 	}
 	return &jsonOut{
 		Query:      query,
 		RootFilter: rootFilter,
+		AsOf:       asOf,
 		Count:      len(hits),
 		Results:    out,
 		Web:        web,
@@ -277,6 +303,12 @@ func resultsToDicts(hits []Hit) []any {
 		}
 		if h.Confidence != "" {
 			d = append(d, KV{"confidence", h.Confidence})
+		}
+		if h.ValidFrom != "" {
+			d = append(d, KV{"valid_from", h.ValidFrom})
+		}
+		if h.ValidTo != "" {
+			d = append(d, KV{"valid_to", h.ValidTo})
 		}
 		if h.Snippet != "" {
 			d = append(d, KV{"snippet", h.Snippet})

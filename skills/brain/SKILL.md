@@ -26,6 +26,7 @@ second independent source when local roots cannot confirm. An answer is
 bin/brain/search.go "Matrix federation"                # pointers + snippets, YAML
 bin/brain/search.go "onlyoffice postgres" --root facts # restrict to confirmed
 bin/brain/search.go "where is cs-lexicon" --json | yq '.[].ref'
+bin/brain/search.go "who works where" --as-of 2025-01-01  # D24 intervals
 bin/brain/add.go --text T --root facts --source "a.md x b.md"
 bin/brain/get.go <id> --body                           # full chunk only when needed
 bin/brain/stats.go                                     # index health
@@ -34,6 +35,8 @@ bin/brain/eval.go                                      # recall@5 >= 0.95 gate (
 
 `bin/kb/search` is a deprecated wrapper. `--hop N` walks
 `FROM_FILE` / `HAS_VERSION` / `AUTHORED` from each hit (1=File, 3=Person).
+`--as-of YYYY-MM-DD` keeps leafs whose `valid_from`/`valid_to` cover that day
+(empty interval = always; not D16 source staleness).
 
 ## Rules
 

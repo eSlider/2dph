@@ -35,6 +35,7 @@ var Ops = []Op{
 		Params: []Param{
 			{Name: "q", In: "query", Type: "string", Description: "search query", Required: true},
 			{Name: "n", In: "query", Type: "integer", Description: "hit limit 1..100 (default 10)"},
+			{Name: "as_of", In: "query", Type: "string", Description: "YYYY-MM-DD; keep facts active on that day (D24)"},
 		},
 	},
 	{
@@ -54,6 +55,8 @@ var Ops = []Op{
 			{Name: "text", In: "query", Type: "string", Description: "leaf text (omit for CLI hint)"},
 			{Name: "root", In: "query", Type: "string", Description: "facts or info (default info)"},
 			{Name: "source", In: "query", Type: "string", Description: "evidence pointer; facts need two sources"},
+			{Name: "valid_from", In: "query", Type: "string", Description: "fact interval start YYYY-MM-DD (D24)"},
+			{Name: "valid_to", In: "query", Type: "string", Description: "fact interval end YYYY-MM-DD inclusive (D24)"},
 		},
 	},
 	{Path: PathOpenAPI, Method: "get", ID: "openapi", Summary: "OpenAPI 3 document for this server"},

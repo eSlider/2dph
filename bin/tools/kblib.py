@@ -62,7 +62,9 @@ def init_schema(conn: ladybug.Connection) -> None:
         "CREATE NODE TABLE IF NOT EXISTS Leaf ("
         " id STRING, text STRING, root STRING, confidence STRING, "
         " sha256 STRING, source STRING, source_rev STRING, observed_at STRING, "
-        " how STRING, loc STRING, type STRING, embedding FLOAT[256], "
+        " how STRING, loc STRING, type STRING, "
+        " valid_from STRING, valid_to STRING, "
+        " embedding FLOAT[256], "
         " PRIMARY KEY(id))"
     )
     conn.execute(
@@ -91,6 +93,46 @@ def init_schema(conn: ladybug.Connection) -> None:
     conn.execute(
         "CREATE REL TABLE IF NOT EXISTS AUTHORED (FROM Commit TO Person)"
     )
+    ensure_interval_columns(conn)
+
+
+def ensure_interval_columns(conn: ladybug.Connection) -> None:
+    """D24: add valid_from/valid_to on older Leaf tables (idempotent ALTER)."""
+    for col in ("valid_from", "valid_to"):
+        try:
+            conn.execute(f"ALTER TABLE Leaf ADD {col} STRING")
+        except Exception:
+            pass
+
+
+def normalize_day(s: str) -> str:
+    s = (s or "").strip()
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    return s
+
+
+def active_at(valid_from: str, valid_to: str, as_of: str) -> bool:
+    """D24: fact interval of truth. Empty ends = always; empty as_of = no filter."""
+    as_of = normalize_day(as_of)
+    if not as_of:
+        return True
+    fro = normalize_day(valid_from)
+    to = normalize_day(valid_to)
+    if fro and as_of < fro:
+        return False
+    if to and as_of > to:
+        return False
+    return True
+
+
+def filter_as_of(hits: list[dict], as_of: str) -> list[dict]:
+    if not as_of:
+        return hits
+    return [
+        h for h in hits
+        if active_at(str(h.get("valid_from") or ""), str(h.get("valid_to") or ""), as_of)
+    ]
 
 
 def leaf_id(text: str, source: str) -> str:
@@ -99,19 +141,24 @@ def leaf_id(text: str, source: str) -> str:
 
 def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: str,
                 source: str, source_rev: str, how: str, loc: str, type_: str,
-                embedding: list[float] | None) -> str:
+                embedding: list[float] | None,
+                valid_from: str = "", valid_to: str = "") -> str:
     lid = leaf_id(text, source)
     obs = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    vf = normalize_day(valid_from)
+    vt = normalize_day(valid_to)
     conn.execute(
         "MERGE (l:Leaf {id:$id}) "
         "SET l.text=$text, l.root=$root, l.confidence=$confidence, "
         "    l.sha256=$sha, l.source=$source, l.source_rev=$rev, l.observed_at=$obs, "
-        "    l.how=$how, l.loc=$location, l.type=$type"
+        "    l.how=$how, l.loc=$location, l.type=$type, "
+        "    l.valid_from=$vf, l.valid_to=$vt"
         + (", l.embedding=$emb" if embedding else ""),
         parameters={
             "id": lid, "text": text, "root": root, "confidence": confidence,
             "sha": sha256_b64(text), "source": source, "rev": source_rev,
             "obs": obs, "how": how, "location": loc, "type": type_,
+            "vf": vf, "vt": vt,
             "emb": (embedding if embedding else None),
         },
     )
@@ -121,9 +168,10 @@ def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: s
 def add_leafs(conn: ladybug.Connection, leafs: list[dict]) -> list[str]:
     """Write facts+info leafs in one transaction. Safe while FTS/HNSW exist.
 
-    Each leaf dict: text, source, optional root/confidence/source_rev/how/loc/type/embedding.
-    Does not delete the database file. Measured on Ladybug 0.19: MERGE of new
-    ids (and updates) stays FTS+HNSW queryable; DROP INDEX is the fatal path.
+    Each leaf dict: text, source, optional root/confidence/source_rev/how/loc/type/
+    embedding/valid_from/valid_to. Does not delete the database file. Measured on
+    Ladybug 0.19: MERGE of new ids (and updates) stays FTS+HNSW queryable; DROP
+    INDEX is the fatal path.
     """
     if not leafs:
         return []
@@ -148,6 +196,8 @@ def add_leafs(conn: ladybug.Connection, leafs: list[dict]) -> list[str]:
                     loc=str(lf.get("loc") or lf.get("source") or ""),
                     type_=str(lf.get("type") or lf.get("type_") or "reference"),
                     embedding=lf.get("embedding"),
+                    valid_from=str(lf.get("valid_from") or ""),
+                    valid_to=str(lf.get("valid_to") or ""),
                 )
             )
         if started:
@@ -285,29 +335,39 @@ def drop_indexes(conn: ladybug.Connection) -> None:
 def query_fts(conn: ladybug.Connection, text: str, limit: int = 10) -> list[dict]:
     r = conn.execute(
         "CALL QUERY_FTS_INDEX('Leaf', 'id', $q) "
-        "RETURN node.id, node.text, node.root, score ORDER BY score DESC LIMIT $n",
+        "RETURN node.id, node.text, node.root, score, node.valid_from, node.valid_to "
+        "ORDER BY score DESC LIMIT $n",
         parameters={"q": text, "n": limit},
     )
-    return [{"id": row[0], "text": row[1], "root": row[2], "score": row[3]} for row in r.get_all()]
+    return [
+        {
+            "id": row[0], "text": row[1], "root": row[2], "score": row[3],
+            "valid_from": row[4] or "", "valid_to": row[5] or "",
+        }
+        for row in r.get_all()
+    ]
 
 
 def query_vector(conn: ladybug.Connection, embedding: list[float], limit: int = 10) -> list[dict]:
     r = conn.execute(
         "CALL QUERY_VECTOR_INDEX('Leaf', 'Leaf_vec', $q, $n) "
-        "RETURN node.id, node.text, node.root, distance ORDER BY distance LIMIT $n",
+        "RETURN node.id, node.text, node.root, distance, node.valid_from, node.valid_to "
+        "ORDER BY distance LIMIT $n",
         parameters={"q": embedding, "n": limit},
     )
     out = []
     for row in r.get_all():
-        # distance -> similarity reasonable for cosine
         score = 1.0 - row[3] if row[3] is not None else 0.0
-        out.append({"id": row[0], "text": row[1], "root": row[2], "score": score})
+        out.append({
+            "id": row[0], "text": row[1], "root": row[2], "score": score,
+            "valid_from": row[4] or "", "valid_to": row[5] or "",
+        })
     return out
 
 
 def hybrid_search(conn: ladybug.Connection, embedding: list[float], fts_hits: list[dict],
-                  limit: int = 10) -> list[dict]:
-    """Merge FTS + vector by reciprocal rank fusion."""
+                  limit: int = 10, as_of: str = "") -> list[dict]:
+    """Merge FTS + vector by reciprocal rank fusion; optional D24 as-of filter."""
     fused: dict[str, dict] = {}
     for rank, hit in enumerate(fts_hits):
         fused.setdefault(hit["id"], {**hit, "rrf": 0.0})["rrf"] = 1.0 / (60 + rank + 1)
@@ -315,8 +375,10 @@ def hybrid_search(conn: ladybug.Connection, embedding: list[float], fts_hits: li
         entry = fused.setdefault(hit["id"], {**hit, "rrf": 0.0})
         entry["rrf"] += 1.0 / (60 + rank + 1)
         entry.setdefault("score", hit.get("score", 0.0))
+        entry.setdefault("valid_from", hit.get("valid_from") or "")
+        entry.setdefault("valid_to", hit.get("valid_to") or "")
     ranked = sorted(fused.values(), key=lambda h: h.get("rrf", 0.0), reverse=True)
-    return ranked[:limit]
+    return filter_as_of(ranked, as_of)[:limit]
 
 
 def stats(conn: ladybug.Connection) -> dict:

@@ -1,5 +1,6 @@
 # 2dph — docker composition
 #
+#   bin/stack/start / start-assistant / status / stop
 #   docker compose up -d brain                  # API (Zig CGO serve)
 #   docker compose --profile index run --rm index   # Python rebuild
 #   docker compose --profile picoclaw up -d     # brain-mcp + CPU reasoner + PicoClaw gateway
