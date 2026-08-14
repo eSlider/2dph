@@ -169,6 +169,9 @@ docker compose up brain-watch                  # auto re-index on change
 
 ## Related
 
+eSlider DevOps engineer practice: ops, OnlyOffice, and mail feed the facts
+root through `bin/facts/extract` (two-source pairing).
+
 - [go-second-brain](https://github.com/eSlider/go-second-brain) — the earlier
   Neo4j + Qdrant + Matrix RAG brain
 - [agent-skills](https://github.com/eSlider/agent-skills) — upstream

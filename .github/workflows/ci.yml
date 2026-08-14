@@ -62,10 +62,15 @@ jobs:
           bin/cgo/zig go build -tags system_ladybug -o /tmp/brain-search ./bin/brain/search.go
           bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-hf-potion-multilingual-128M
+
       - name: recall@5 SoT (Zig bin/brain/eval.go)
         run: |
           uv run python bin/kb/index --rebuild --json
-          /tmp/brain-eval --json
+          KB_ROOT="$PWD" /tmp/brain-eval --json
 
   release:
     name: Release (semver)
