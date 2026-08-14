@@ -16,8 +16,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
+	cliparse "github.com/eSlider/2dph/internal/cli"
 	"github.com/eSlider/2dph/internal/duckstats"
 )
 
@@ -26,23 +26,11 @@ func main() {
 }
 
 func run(args []string) int {
-	jsonl := ""
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--jsonl" && i+1 < len(args):
-			i++
-			jsonl = args[i]
-		case strings.HasPrefix(a, "--jsonl="):
-			jsonl = strings.TrimPrefix(a, "--jsonl=")
-		case a == "-h" || a == "--help":
-			fmt.Fprintln(os.Stderr, "bin/qa/stats.go [--jsonl FILE]  # stdin = JSON [float,…]")
-			return 0
-		default:
-			fmt.Fprintln(os.Stderr, "unknown arg:", a)
-			return 2
-		}
+	c, err := cliparse.ParseQAStats(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
+	jsonl := c.JSONL
 	if jsonl != "" {
 		n, err := duckstats.CountJSONL(jsonl)
 		if err != nil {

@@ -53,6 +53,7 @@ bin/brain/add.go --text "arc-1 runs Matrix" --root facts --source "compose.yml x
 bin/brain/index.go --rebuild --with-facts --with-chats
 bin/brain/search.go "LadybugDB vector index"     # facts → info → web (D17)
 bin/brain/search.go "upstream flag" --no-web
+source <(./bin/cli/complete.go bash)            # D23 flaggy complete
 bin/brain/get.go <id> --body
 bin/brain/stats.go
 ```

@@ -143,6 +143,22 @@ class BinLayoutTest(unittest.TestCase):
         shebang = (ROOT / "bin" / "facts" / "audit.go").read_text()
         self.assertIn("contradict", shebang)
 
+    def test_d23_flaggy_cli(self) -> None:
+        self.assertTrue((ROOT / "internal" / "cli" / "cli.go").is_file())
+        self.assertIn("github.com/integrii/flaggy", (ROOT / "go.mod").read_text())
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("D23", plan)
+        self.assertIn("flaggy", plan)
+        complete = (ROOT / "bin" / "cli" / "complete.go").read_text()
+        first = complete.splitlines()[0]
+        self.assertTrue(first.startswith("//usr/bin/env go run"), first)
+        self.assertIn("complete.go bash", complete)
+        self.assertIn("brain-search", complete)
+        chats_import = (ROOT / "internal" / "chats" / "import.go").read_text()
+        self.assertNotIn("flag.NewFlagSet", chats_import)
+        args = (ROOT / "internal" / "brain" / "rank" / "args.go").read_text()
+        self.assertIn("internal/cli", args)
+
     def test_mail_import_is_shebang_not_brain_write(self) -> None:
         self._assert_shebang("bin/mail/import.go")
         index_mail = (ROOT / "bin" / "mail" / "index_mail").read_text()

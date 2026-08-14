@@ -48,7 +48,7 @@ bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
 bin/web/      search.go (SearXNG; Python shim execs it)
 bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
-internal/     shared Go (brain/rank is cgo-free; facts D16; chats; gitlog; websearch; reasoner; duckstats)
+internal/     shared Go (brain/rank is cgo-free; facts D16; cli flaggy D23; chats; gitlog; websearch; reasoner; duckstats)
 bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
@@ -89,6 +89,7 @@ bin/facts/crm.go [--dry-run]                       # proof person↔company/comp
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --no-web              # local graph only
+source <(./bin/cli/complete.go bash)              # flaggy completions (D23)
 eval "$(bin/cgo/zig env)"                         # Zig cc + liblbug (not gcc)
 bin/brain/index.go --rebuild [--with-mail] [--with-facts] [--with-chats]
 bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
