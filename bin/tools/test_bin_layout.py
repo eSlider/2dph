@@ -127,6 +127,22 @@ class BinLayoutTest(unittest.TestCase):
             self.assertIn("cmdbin.ExecFile", text)
             self.assertIn(f"bin/facts/{method.removesuffix('.go')}", text)
 
+    def test_d16_adjudication_is_cgo_free(self) -> None:
+        self.assertTrue((ROOT / "internal" / "facts" / "contradict.go").is_file())
+        go = (ROOT / "internal" / "facts" / "contradict.go").read_text()
+        py = (ROOT / "bin" / "tools" / "contradict.py").read_text()
+        audit = (ROOT / "bin" / "facts" / "audit").read_text()
+        for token in ("temporal_freshness", "authority_pairing", "unresolved"):
+            self.assertIn(token, go)
+            self.assertIn(token, py)
+        self.assertIn("contradict", audit)
+        self.assertIn(" vs ", py)
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("temporal_freshness", plan)
+        self.assertIn("authority_pairing", plan)
+        shebang = (ROOT / "bin" / "facts" / "audit.go").read_text()
+        self.assertIn("contradict", shebang)
+
     def test_mail_import_is_shebang_not_brain_write(self) -> None:
         self._assert_shebang("bin/mail/import.go")
         index_mail = (ROOT / "bin" / "mail" / "index_mail").read_text()

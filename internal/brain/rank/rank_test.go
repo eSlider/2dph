@@ -172,4 +172,7 @@ func TestFTSQueryOrdersByScoreDescending(t *testing.T) {
 	if !strings.Contains(FTSStmt, "ORDER BY score DESC") {
 		t.Fatalf("FTS query must order by score DESC, got:\n%s", FTSStmt)
 	}
+	if !strings.Contains(FTSStmt, "node.confidence") {
+		t.Fatal("FTS must return confidence for D16")
+	}
 }

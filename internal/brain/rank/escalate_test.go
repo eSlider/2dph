@@ -14,6 +14,16 @@ func TestShouldEscalateWhenNoFacts(t *testing.T) {
 	}
 }
 
+func TestShouldEscalateWhenHypothesisFacts(t *testing.T) {
+	hyp := Hit{ID: "c", Root: "facts", Confidence: "hypothesis", Source: "a x b vs c x d"}
+	if !ShouldEscalate([]Hit{hyp}, "") {
+		t.Fatal("hypothesis facts are (not confirmed); escalate")
+	}
+	if ConfirmedFact(hyp) {
+		t.Fatal("hypothesis is not confirmed")
+	}
+}
+
 func TestShouldNotEscalateWhenFactsConfirm(t *testing.T) {
 	hits := []Hit{h("f", "facts", "docker ps x compose"), h("i", "info", "docs/a.md")}
 	if ShouldEscalate(hits, "") {

@@ -48,7 +48,7 @@ bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
 bin/web/      search.go (SearXNG; Python shim execs it)
 bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
-internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog; websearch; reasoner; duckstats)
+internal/     shared Go (brain/rank is cgo-free; facts D16; chats; gitlog; websearch; reasoner; duckstats)
 bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
@@ -84,7 +84,7 @@ bin/brain/index.go --rebuild --with-facts --with-chats
 ## Tools
 
 ```bash
-bin/facts/audit.go ["self"|"facts"|"info"|"stale"]  # 2-source + staleness gate
+bin/facts/audit.go ["self"|"db"|"contradict"]     # 2-source + D16 adjudication
 bin/facts/crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML

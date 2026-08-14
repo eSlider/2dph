@@ -5,8 +5,10 @@ RAG over the operational Brain/ops/eSlider stack. Built like Sherlock
 Holmes: nothing is asserted unless it has proof.
 
 Status: **v1 in** (epic [#16](https://git.produktor.io/eSlider/2dph/issues/16) closed).
-v2 board: milestone [v2](https://git.produktor.io/eSlider/2dph/milestone/13) — OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6),
-[#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1, [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3.
+v2 board: milestone [v2](https://git.produktor.io/eSlider/2dph/milestone/13) —
+OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
+[#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1 in,
+[#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 in.
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
@@ -42,7 +44,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D13 | portfolio | start graph `(Person:eslider)-[:HAS]->(Portfolio)`, associate other natural/juristic persons later. |
 | D14 | tooling style | `bin/{subject}/{method}.go` shebang (e.g. `bin/brain/search.go`). Shared code in `internal/`. One root `go.mod` + `go.work`. No `bin/*/main.go`, no nested modules. |
 | D15 | repo | Gitea [`eSlider/2dph`](https://git.produktor.io/eSlider/2dph) is origin + [issues](https://git.produktor.io/eSlider/2dph/issues). GitHub `eSlider/2dph` is the public clone (PRs + Actions CI). No direct `main` pushes. TDD → PR → CI green → merge. |
-| D16 | contradictions | ≥2 yes vs ≥2 no → unrelated sources conflict → hypothesis → `(not confirmed)`. Resolution (authority, staleness adjudication) = **v2**, tracked as open question. |
+| D16 | contradictions | ≥2 yes vs ≥2 no → hypothesis → `(not confirmed)` until a rule fires. Order: **temporal_freshness** (fresh ≥2 vs stale minority), then **authority_pairing** (runtime/config A×B beats narrative C). Store as `a x b vs c x d` on hypothesis leafs. `bin/facts/audit contradict`. [#29](https://git.produktor.io/eSlider/2dph/issues/29). |
 | D17 | assertion gate | Fact-check every *claim* (facts → info → live → web), not every edit. `bin/brain/search.go` adds a `web` block when there is no facts hit (`throttled`/`skipped`/`refused` ≠ absence). `--root` and `--no-web` stay local. Missing graph ≠ “does not exist”. |
 | D18 | reasoner | Pluggable OpenAI-compatible URL (`REASONER_BASE_URL`). RAM: `Qwen/Qwen3.5-9B`. Quality: `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B. CPU bake-off: `bin/reasoner/bakeoff.go` + compose profile `reasoner` (`OLLAMA_NUM_GPU=0`, `:11435`). PicoClaw is compose profile `picoclaw`; tools are `search`/`get`/`audit`. Weights are not copied into the 2dph image. Agent lever/loop: [#15](https://git.produktor.io/eSlider/2dph/issues/15). |
 | D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
@@ -117,8 +119,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 ## Open questions (v2)
 
-- OQ1: mutually-contradicting evidence — how to resolve (authority weighting,
-  temporal freshness, audit adjudication). **v2**; [#29](https://git.produktor.io/eSlider/2dph/issues/29).
+- OQ1: **in** — D16 adjudication: `temporal_freshness` then `authority_pairing`.
+  Unresolved 2v2 stays hypothesis. [#29](https://git.produktor.io/eSlider/2dph/issues/29).
 - OQ2: OCR — **in**. `pdftotext -layout` first; scans `pdftoppm` + tesseract
   `eng+deu` (`bin/mail/ocr.go`, `internal/ocr`). No gocv, no gosseract CGO
   (D21 Zig owns Ladybug CGO). Optional `OCR_ENGINE=paddle` / compose profile
@@ -184,4 +186,4 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. Python `bin/kb/eval` stays as an explicit fallback. |
 
-Does **not** block epic close: OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30), OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) is **in**.
+Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.

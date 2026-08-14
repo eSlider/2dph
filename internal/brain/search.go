@@ -212,7 +212,11 @@ func rowsToHits(res *lbug.QueryResult) ([]Hit, error) {
 		root := fmt.Sprint(vals[2])
 		source := fmt.Sprint(vals[3])
 		score := float64(vals[4].(float64))
-		hits = append(hits, Hit{ID: id, Text: text, Root: root, Source: source, Score: score})
+		conf := ""
+		if len(vals) >= 6 {
+			conf = fmt.Sprint(vals[5])
+		}
+		hits = append(hits, Hit{ID: id, Text: text, Root: root, Source: source, Score: score, Confidence: conf})
 	}
 	return hits, nil
 }
@@ -227,24 +231,26 @@ type jsonOut struct {
 }
 
 type jsonHit struct {
-	ID      string         `json:"id"`
-	Text    string         `json:"text"`
-	Root    string         `json:"root"`
-	Score   float64        `json:"score"`
-	Snippet string         `json:"snippet,omitempty"`
-	Hops    []rank.HopNode `json:"hops,omitempty"`
+	ID         string         `json:"id"`
+	Text       string         `json:"text"`
+	Root       string         `json:"root"`
+	Confidence string         `json:"confidence,omitempty"`
+	Score      float64        `json:"score"`
+	Snippet    string         `json:"snippet,omitempty"`
+	Hops       []rank.HopNode `json:"hops,omitempty"`
 }
 
 func toJSONOut(hits []Hit, query, rootFilter string, web *rank.SecondSource) *jsonOut {
 	out := make([]jsonHit, len(hits))
 	for i, h := range hits {
 		out[i] = jsonHit{
-			ID:      h.ID,
-			Text:    h.Text,
-			Root:    h.Root,
-			Score:   h.Score,
-			Snippet: h.Snippet,
-			Hops:    h.Hops,
+			ID:         h.ID,
+			Text:       h.Text,
+			Root:       h.Root,
+			Confidence: h.Confidence,
+			Score:      h.Score,
+			Snippet:    h.Snippet,
+			Hops:       h.Hops,
 		}
 	}
 	return &jsonOut{
@@ -264,6 +270,9 @@ func resultsToDicts(hits []Hit) []any {
 			{"text", h.Text},
 			{"root", h.Root},
 			{"score", h.Score},
+		}
+		if h.Confidence != "" {
+			d = append(d, KV{"confidence", h.Confidence})
 		}
 		if h.Snippet != "" {
 			d = append(d, KV{"snippet", h.Snippet})
