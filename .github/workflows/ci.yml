@@ -54,13 +54,23 @@ jobs:
         run: go test ./internal/brain/rank -count=1
 
       - name: facts/audit self (lexicon consistency, no network)
-        run: |
-          ./bin/facts/audit self 2>/dev/null || echo "audit: not yet implemented; gate skipped"
+        run: ./bin/facts/audit self
 
-      - name: CGO via Zig (compile brain/search)
+      - name: CGO via Zig (compile brain/search + eval)
         run: |
           chmod +x bin/cgo/zig bin/cgo/zcc bin/cgo/zc++
           bin/cgo/zig go build -tags system_ladybug -o /tmp/brain-search ./bin/brain/search.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-hf-potion-multilingual-128M
+
+      - name: recall@5 SoT (Zig bin/brain/eval.go)
+        run: |
+          uv run python bin/kb/index --rebuild --json
+          KB_ROOT="$PWD" /tmp/brain-eval --json
 
   release:
     name: Release (semver)

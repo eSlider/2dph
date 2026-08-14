@@ -144,8 +144,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
 3. python -m unittest discover -s bin/tools (includes published-docs SoT)
 4. `bin/facts/audit self` (lexicon internal consistency; `bin/facts/audit.go` is the D14 wrapper)
-5. `bin/kb/eval` (recall@5 ≥ 0.95). Local SoT is `bin/brain/eval.go` via Zig CGO.
-   CI SoT switch: [#19](https://git.produktor.io/eSlider/2dph/issues/19).
+5. `bin/brain/eval.go` via Zig (recall@5 ≥ 0.95). Python `bin/kb/eval` is an
+   explicit fallback, not the CI SoT.
 6. `bin/cgo/zig go build -tags system_ladybug` (compile search with zig cc; fetches pinned zig+libs).
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
@@ -164,7 +164,7 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 
 ## Gap to v1 (epic #16)
 
-Remaining: CI eval SoT. Board:
+Remaining: none for epic #16 (v1). Board:
 [epic #16](https://git.produktor.io/eSlider/2dph/issues/16),
 milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12).
 Narrative: [docs/roadmap.md](docs/roadmap.md).
@@ -175,6 +175,6 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | **in** — `--hop N` walks `FROM_FILE` → `HAS_VERSION` → `AUTHORED` (max 3). |
 | 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | **in** — `--with-facts` / `--facts-json` land `root=facts`; `--with-chats` indexes `var/chats/md`. WhatsApp sync is out of v1. |
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
-| 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | GitHub CI recall still runs Python `bin/kb/eval`. |
+| 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. Python `bin/kb/eval` stays as an explicit fallback. |
 
 Does **not** block epic close: [#6](https://git.produktor.io/eSlider/2dph/issues/6) OCR, OQ1, OQ3, OQ4.
