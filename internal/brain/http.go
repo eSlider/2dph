@@ -21,8 +21,8 @@ func Ready() error {
 // HTTP is the in-process API used by bin/brain/serve.go.
 type HTTP struct{}
 
-func (HTTP) Search(ctx context.Context, query string, limit int) ([]byte, error) {
-	hits, err := searchHits(query, "", "", limit)
+func (HTTP) Search(ctx context.Context, query string, limit int, asOf string) ([]byte, error) {
+	hits, err := searchHits(query, "", "", limit, asOf)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (HTTP) Search(ctx context.Context, query string, limit int) ([]byte, error)
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(toJSONOut(hits, query, "", webOut)); err != nil {
+	if err := enc.Encode(toJSONOut(hits, query, "", asOf, webOut)); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil

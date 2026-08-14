@@ -194,6 +194,38 @@ class KblibTest(unittest.TestCase):
         self.assertEqual(person["name"], "Ada Lovelace")
         self.assertEqual(person["depth"], 3)
 
+    def test_as_of_keeps_x_drops_y(self) -> None:
+        """OQ5/#36: as of 2025-01-01 → works-at-X, not works-at-Y."""
+        kblib.upsert_leaf(
+            self.conn, text="Andrey works at X", root="facts",
+            confidence="confirmed", source="crm.md x contract.md",
+            source_rev="r1", how="test", loc="/tmp", type_="fact",
+            embedding=make_emb(0.5),
+            valid_from="2024-03-01", valid_to="2025-07-15",
+        )
+        kblib.upsert_leaf(
+            self.conn, text="Andrey works at Y", root="facts",
+            confidence="confirmed", source="offer.md x payroll.md",
+            source_rev="r1", how="test", loc="/tmp", type_="fact",
+            embedding=make_emb(0.6),
+            valid_from="2025-07-16", valid_to="",
+        )
+        kblib.ensure_indexes(self.conn)
+        hits = kblib.query_fts(self.conn, "Andrey works", 10)
+        kept = kblib.filter_as_of(hits, "2025-01-01")
+        texts = [h["text"] for h in kept]
+        self.assertTrue(any("works at X" in t for t in texts), texts)
+        self.assertFalse(any("works at Y" in t for t in texts), texts)
+        later = kblib.filter_as_of(hits, "2025-08-01")
+        later_texts = [h["text"] for h in later]
+        self.assertTrue(any("works at Y" in t for t in later_texts), later_texts)
+        self.assertFalse(any("works at X" in t for t in later_texts), later_texts)
+
+    def test_active_at_pure(self) -> None:
+        self.assertTrue(kblib.active_at("2024-03-01", "2025-07-15", "2025-01-01"))
+        self.assertFalse(kblib.active_at("2025-07-16", "", "2025-01-01"))
+        self.assertTrue(kblib.active_at("", "", "2025-01-01"))
+
 
 if __name__ == "__main__":
     unittest.main()

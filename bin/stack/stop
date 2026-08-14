@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# bin/stack/stop - stop compose brain / brain-mcp / reasoner / picoclaw.
+#
+#   bin/stack/stop
+#
+# Volumes kept (kb, reasoner weights, picoclaw-home). Does not kill a host
+# bin/brain/serve.go that is not a compose service.
+set -euo pipefail
+
+STACK_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+# shellcheck source=lib.sh
+source "$STACK_DIR/lib.sh"
+stack_stop "$@"

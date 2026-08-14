@@ -7,6 +7,18 @@ in the reasoner volume, not in the 2dph image.
 No secrets in git: Ollama needs no key; MCP is local HTTP.
 
 ```bash
+bin/stack/start-assistant
+bin/stack/start-assistant --no-attach
+bin/stack/start-assistant -- -m "search the 2dph brain for LadybugDB"
+bin/stack/status
+bin/stack/stop
+```
+
+`start-assistant` reuses a healthy brain on `:8630`, starts the CPU reasoner,
+pulls `qwen3.5:9b` if missing, brings up the gateway with `--no-deps picoclaw`,
+then `picoclaw agent` (MCP `search` → `get` → `audit`). Gateway-only Compose:
+
+```bash
 docker compose --profile picoclaw up -d
 # already serving :8630 / :11435:
 docker compose --profile picoclaw up -d --no-deps picoclaw

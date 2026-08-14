@@ -21,10 +21,10 @@ type fakeSearcher struct {
 	calls    int
 	active   atomic.Int32
 	maxSeen  atomic.Int32
-	callback func(q string, limit int) ([]byte, error)
+	callback func(q string, limit int, asOf string) ([]byte, error)
 }
 
-func (f *fakeSearcher) Search(ctx context.Context, query string, limit int) ([]byte, error) {
+func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf string) ([]byte, error) {
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()
@@ -44,7 +44,7 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit int) ([]b
 		}
 	}
 	if f.callback != nil {
-		return f.callback(query, limit)
+		return f.callback(query, limit, asOf)
 	}
 	return []byte(`{"query":"` + query + `","count":0,"results":[]}`), nil
 }
@@ -109,7 +109,7 @@ func TestSearchMissingQuery(t *testing.T) {
 }
 
 func TestSearchReturnsSearcherResult(t *testing.T) {
-	fs := &fakeSearcher{callback: func(q string, limit int) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf string) ([]byte, error) {
 		return []byte(`{"query":"` + q + `","count":1,"results":[{"id":"x"}]}`), nil
 	}}
 	h := NewServer(fs, 1)
@@ -168,7 +168,7 @@ func TestSearchRejectsBadLimit(t *testing.T) {
 }
 
 func TestGetLeaf(t *testing.T) {
-	fs := &fakeSearcher{callback: func(q string, limit int) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf string) ([]byte, error) {
 		return []byte(`{}`), nil
 	}}
 	h := NewServer(fs, 1)

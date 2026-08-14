@@ -160,6 +160,10 @@ go test ./... && uv run python -m unittest discover -s bin/tools -t .
 Docker (optional, cached model + var volumes):
 
 ```bash
+bin/stack/start                                # brain HTTP/MCP :8630
+bin/stack/start-assistant                      # + qwen3.5:9b + PicoClaw agent
+bin/stack/status
+bin/stack/stop
 docker compose up -d brain                     # API (Zig CGO serve :8630)
 docker compose --profile index run --rm index  # Python Ladybug rebuild
 docker compose --profile picoclaw up brain-mcp # MCP on 127.0.0.1:8630

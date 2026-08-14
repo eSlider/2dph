@@ -65,6 +65,10 @@ def main(argv: list[str]) -> int:
     p.add_argument("--how", default="brain/add")
     p.add_argument("--loc", default="")
     p.add_argument("--type", default="reference", dest="type_")
+    p.add_argument("--valid-from", default="", dest="valid_from",
+                   help="fact interval start YYYY-MM-DD (D24)")
+    p.add_argument("--valid-to", default="", dest="valid_to",
+                   help="fact interval end YYYY-MM-DD inclusive; empty=open (D24)")
     args = p.parse_args(argv)
 
     if args.json:
@@ -86,6 +90,8 @@ def main(argv: list[str]) -> int:
             "how": args.how,
             "loc": args.loc or args.source,
             "type": args.type_,
+            "valid_from": args.valid_from,
+            "valid_to": args.valid_to,
         }]
 
     for lf in leafs:
