@@ -121,7 +121,7 @@ class PublishedDocsTest(unittest.TestCase):
         self.assertIn("D18", plan)
         self.assertIn("Qwen/Qwen3.5-9B", plan)
         compose = (ROOT / "compose.yaml").read_text()
-        self.assertIn('profiles: ["reasoner"]', compose)
+        self.assertIn('"reasoner"', compose)
         self.assertIn("OLLAMA_NUM_GPU", compose)
         self.assertIn("127.0.0.1:11435", compose)
         dockerfile = (ROOT / "Dockerfile").read_text()

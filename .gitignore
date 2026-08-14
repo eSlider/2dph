@@ -12,3 +12,5 @@ __pycache__/
 lib-ladybug/
 go.work.local
 models/
+# Purged from git history. Do not re-add.
+docs/crm-associations-proof.md

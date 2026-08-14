@@ -48,7 +48,8 @@ bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
 bin/web/      search.go (SearXNG; Python shim execs it)
 bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
-internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog; websearch; reasoner)
+internal/     shared Go (brain/rank is cgo-free; chats parsers; gitlog; websearch; reasoner; duckstats)
+bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
@@ -101,13 +102,16 @@ bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit le
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
 bin/reasoner/bakeoff.go [--model ID] [--json]     # D18 CPU tool-call bake-off
 bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
+bin/qa/stats.go                                  # D22 DuckDB quantiles / JSONL (gcc CGO)
 bin/mail/ocr.go <image|pdf>                      # tesseract eng+deu (scans)
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
 ```
 
 Never start a shell command with `cd` — use the tool working-directory
-parameter. Search before reading whole files.
+parameter. Search before reading whole files. For YAML/JSON/XML/CSV/TOML/HCL
+prefer mikefarah/yq (`skills/yq/SKILL.md`). For bulk rows and quantiles use
+duckdb-go (`internal/duckstats`, `skills/duckdb/SKILL.md`), not Ladybug.
 
 ## GitHub safety rules (ABSOLUTE — never violate)
 

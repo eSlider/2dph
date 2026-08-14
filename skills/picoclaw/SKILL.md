@@ -1,15 +1,15 @@
 ---
 name: picoclaw
 description: >-
-  2dph is the memory/fact gate, not the agent loop. Use when wiring PicoClaw
-  or any MCP client: call brain search/get/audit before a factual reply.
-  throttled is not a negative finding.
+  2dph is the memory/fact gate. Compose runs the official PicoClaw gateway.
+  Use when wiring PicoClaw or any MCP client: call brain search/get/audit
+  before a factual reply. throttled is not a negative finding.
 ---
 
 # PicoClaw — fact-check before assert
 
-PicoClaw (or any agent) speaks MCP at `POST /mcp` on `bin/brain/serve.go`.
-2dph does not run the agent loop. Compose: `docker compose --profile picoclaw up brain-mcp`
+PicoClaw speaks MCP at `POST /mcp` on `bin/brain/serve.go`. Compose profile
+`picoclaw` runs the official `sipeed/picoclaw` gateway plus `brain-mcp`
 (see [docs/picoclaw.md](../../docs/picoclaw.md)).
 
 ## Tool order (before a factual reply)

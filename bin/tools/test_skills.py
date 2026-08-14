@@ -47,3 +47,17 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("throttled", skill.lower())
         self.assertIn("not a negative finding", agents)
         self.assertIn("Fact-check every", agents)
+
+    def test_yq_is_mikefarah_for_structured_data(self) -> None:
+        skill = (ROOT / "skills" / "yq" / "SKILL.md").read_text()
+        self.assertIn("https://github.com/mikefarah/yq", skill)
+        for fmt in ("YAML", "JSON", "XML", "CSV", "TOML", "HCL"):
+            self.assertIn(fmt, skill)
+        self.assertIn("not kislyuk", skill.lower())
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("mikefarah/yq", plan)
+        agents = (ROOT / "AGENTS.md").read_text()
+        self.assertIn("mikefarah/yq", agents)
+        web = (ROOT / "skills" / "web-search" / "SKILL.md").read_text()
+        self.assertIn("| yq ", web)
+        self.assertNotIn("| jq ", web)
