@@ -144,7 +144,15 @@ func (s *Server) mcpCall(r *http.Request, params json.RawMessage) (any, error) {
 			return nil, fmt.Errorf("cancelled")
 		}
 		defer s.release()
-		body, err = s.api.Ingest(r.Context())
+		var payload []byte
+		text := strings.TrimSpace(fmt.Sprint(p.Arguments["text"]))
+		if text != "" && text != "<nil>" {
+			payload, err = json.Marshal(p.Arguments)
+			if err != nil {
+				return nil, err
+			}
+		}
+		body, err = s.api.Ingest(r.Context(), payload)
 	default:
 		return nil, fmt.Errorf("unknown tool %s", p.Name)
 	}

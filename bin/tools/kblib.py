@@ -4,7 +4,7 @@ Single embedded graph `var/kb.lbug`. Two roots: facts (assertions backed by
 >=2 independent sources) and info (narrative leafs). Hybrid retrieval: BM25
 (FTS extension) + HNSW cosine (VECTOR extension) + Cypher graph hops.
 
-All access is read-only unless `--rebuild` is passed to kb/index.
+All access is read-only unless `--rebuild` (kb/index) or `kb/add`.
 """
 from __future__ import annotations
 
@@ -116,6 +116,50 @@ def upsert_leaf(conn: ladybug.Connection, *, text: str, root: str, confidence: s
         },
     )
     return lid
+
+
+def add_leafs(conn: ladybug.Connection, leafs: list[dict]) -> list[str]:
+    """Write facts+info leafs in one transaction. Safe while FTS/HNSW exist.
+
+    Each leaf dict: text, source, optional root/confidence/source_rev/how/loc/type/embedding.
+    Does not delete the database file. Measured on Ladybug 0.19: MERGE of new
+    ids (and updates) stays FTS+HNSW queryable; DROP INDEX is the fatal path.
+    """
+    if not leafs:
+        return []
+    started = False
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        started = True
+    except Exception:
+        started = False
+    ids: list[str] = []
+    try:
+        for lf in leafs:
+            ids.append(
+                upsert_leaf(
+                    conn,
+                    text=str(lf["text"]),
+                    root=str(lf.get("root") or ROOT_INFO),
+                    confidence=str(lf.get("confidence") or CONF_CONFIRMED),
+                    source=str(lf["source"]),
+                    source_rev=str(lf.get("source_rev") or "working-tree"),
+                    how=str(lf.get("how") or "brain/add"),
+                    loc=str(lf.get("loc") or lf.get("source") or ""),
+                    type_=str(lf.get("type") or lf.get("type_") or "reference"),
+                    embedding=lf.get("embedding"),
+                )
+            )
+        if started:
+            conn.execute("COMMIT")
+    except Exception:
+        if started:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+        raise
+    return ids
 
 
 def leaf_index_names(conn: ladybug.Connection) -> set[str]:

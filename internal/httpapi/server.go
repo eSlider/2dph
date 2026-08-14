@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -27,7 +28,7 @@ type API interface {
 	Get(ctx context.Context, id string, body bool) ([]byte, error)
 	Stats(ctx context.Context) ([]byte, error)
 	Audit(ctx context.Context) ([]byte, error)
-	Ingest(ctx context.Context) ([]byte, error)
+	Ingest(ctx context.Context, body []byte) ([]byte, error)
 }
 
 type Server struct {
@@ -59,7 +60,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case PathAudit:
 		s.handleJSON(w, r, s.api.Audit)
 	case PathIngest:
-		s.handleJSON(w, r, s.api.Ingest)
+		s.handleIngest(w, r)
 	case PathOpenAPI:
 		s.handleOpenAPI(w, r)
 	case PathMCP:
@@ -113,6 +114,24 @@ func (s *Server) handleJSON(w http.ResponseWriter, r *http.Request, fn func(cont
 	}
 	defer s.release()
 	body, err := fn(r.Context())
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	var raw []byte
+	if r.Method == http.MethodPost {
+		b, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body"})
+			return
+		}
+		raw = b
+	}
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.Ingest(r.Context(), raw)
 	writeAPI(w, body, err)
 }
 
@@ -191,11 +210,30 @@ func (ExecSearcher) Get(context.Context, string, bool) ([]byte, error) {
 }
 func (ExecSearcher) Stats(context.Context) ([]byte, error) { return nil, errUnimplemented }
 func (ExecSearcher) Audit(context.Context) ([]byte, error) { return nil, errUnimplemented }
-func (ExecSearcher) Ingest(context.Context) ([]byte, error) {
-	return json.Marshal(map[string]any{
-		"mode":    "rebuild",
-		"command": "bin/brain/index.go --rebuild",
-	})
+func (b ExecSearcher) Ingest(ctx context.Context, body []byte) ([]byte, error) {
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return json.Marshal(map[string]any{
+			"mode":    "add",
+			"command": "bin/brain/add.go",
+			"rebuild": "bin/brain/index.go --rebuild",
+		})
+	}
+	root := os.Getenv("KB_ROOT")
+	if root == "" {
+		root = "."
+	}
+	cmd := exec.CommandContext(ctx, filepath.Join(root, "bin/kb/add"), "--json")
+	cmd.Stdin = strings.NewReader(string(body))
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, errors.New("add failed: " + strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, err
+	}
+	return out, nil
 }
 
 func defaultSearchCmd(root string) string {

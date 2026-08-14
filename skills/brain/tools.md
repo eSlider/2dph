@@ -8,4 +8,4 @@ Serve: `bin/brain/serve.go` (`GET /openapi.json`, `POST /mcp`).
 - `get` — read one leaf by id
 - `stats` — index health
 - `audit` — facts confidence histogram
-- `ingest` — rebuild hint (write is v2)
+- `ingest` — add a leaf without rebuild
