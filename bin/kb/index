@@ -2,12 +2,15 @@
 """kb/index - build the 2dph brain from markdown + factual leafs.
 
   bin/kb/index [--corpus DIR] [--rebuild] [--limit N]
+  bin/kb/index --rebuild --with-facts --with-chats
   bin/kb/index --json                 # emit stats as JSON
 
 Reads every .md under the corpus (default: repo root docs, skills, READMEs)
 as `info` leafs, embeds them with model2vec (potion-multilingual-128M), and
 writes them into var/kb.lbug with FTS + HNSW indexes. `facts` leafs come
-from bin/facts/extract (docker x compose x ssh-config pairing).
+from bin/facts/extract (docker × compose × ssh-config pairing) when
+`--with-facts` is set. `--with-chats` indexes markdown under var/chats/md
+(or a given dir) as info. WhatsApp sync stays out of v1.
 
 --rebuild drops the database file and indexes from scratch. Without it a run
 is idempotent (MERGE by (source,text) id).
@@ -22,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 from kblib import (  # noqa: E402
-    connect, ensure_indexes, init_schema, upsert_leaf, link_from_file,
+    add_leafs, connect, ensure_indexes, init_schema, upsert_leaf, link_from_file,
     open_readonly, stats,
 )
 from mdleaves import read_markdown, to_all, walk_markdown  # noqa: E402
@@ -96,12 +99,65 @@ def embedder():
     return lambda text: model.encode([text])[0].astype(float).tolist()
 
 
+def index_fact_dicts(conn, facts: list[dict], embed_fn) -> int:
+    """Write extract-shaped dicts as root=facts leafs (2-source source field)."""
+    leafs = []
+    for f in facts:
+        text = str(f.get("text") or "")
+        source = str(f.get("source") or "")
+        if not text or not source:
+            continue
+        leafs.append({
+            "text": text,
+            "root": "facts",
+            "confidence": "confirmed",
+            "source": source,
+            "source_rev": f.get("source_rev") or "working-tree",
+            "how": f.get("how") or "facts/extract",
+            "loc": f.get("loc") or source,
+            "type": "fact",
+            "embedding": embed_fn(text) if text else None,
+        })
+    return len(add_leafs(conn, leafs))
+
+
+def facts_from_extract() -> list[dict]:
+    import subprocess
+    proc = subprocess.run(
+        [sys.executable, str(ROOT / "bin" / "facts" / "extract"), "--json", "--dry-run"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        print(f"kb/index: facts/extract failed: {proc.stderr}", file=sys.stderr)
+        return []
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        print("kb/index: facts/extract produced non-JSON", file=sys.stderr)
+        return []
+    return list(payload.get("facts") or [])
+
+
 def main(argv: list[str]) -> int:
     import argparse
     p = argparse.ArgumentParser(description="build the 2dph brain index")
     p.add_argument("--corpus", action="append", help="extra markdown dir/file to index (may repeat)")
     p.add_argument("--rebuild", action="store_true", help="fresh db + indexes")
+    p.add_argument("--db", default="", help="path to kb.lbug (default var/kb.lbug)")
+    p.add_argument("--no-defaults", action="store_true", help="do not index repo README/docs/skills")
     p.add_argument("--with-mail", action="store_true", help="include var/mail message.md leafs")
+    p.add_argument("--with-facts", action="store_true", help="run facts/extract into root=facts")
+    p.add_argument("--facts-json", default="", help="JSON list (or {facts:[...]}) of fact dicts")
+    p.add_argument(
+        "--with-chats",
+        nargs="?",
+        const=str(ROOT / "var" / "chats" / "md"),
+        default="",
+        help="index chat markdown as info (default var/chats/md)",
+    )
     p.add_argument("--since", default="", help="with --with-mail, only messages dated >= YYYY-MM-DD")
     p.add_argument("--dry-run", action="store_true", help="count leafs, write nothing")
     p.add_argument(
@@ -115,44 +171,71 @@ def main(argv: list[str]) -> int:
 
     from kblib import DB_PATH, VAR
 
-    leafs = load_corpus(ROOT)
+    dbpath = Path(a.db) if a.db else DB_PATH
+    leafs: list[dict] = [] if a.no_defaults else load_corpus(ROOT)
     if a.corpus:
         for source in a.corpus:
             leafs.extend(load_corpus_glob(source))
+    chat_n = 0
+    if a.with_chats:
+        chats = load_corpus_glob(a.with_chats)
+        chat_n = len(chats)
+        leafs.extend(chats)
     mail_n = 0
     if a.with_mail:
         mail = from_mail_root(ROOT / "var" / "mail", since=a.since)
         mail_n = len(mail)
         leafs.extend(mail)
 
+    facts: list[dict] = []
+    if a.facts_json:
+        raw = Path(a.facts_json).read_text(encoding="utf-8")
+        payload = json.loads(raw)
+        facts = list(payload.get("facts") if isinstance(payload, dict) else payload)
+    if a.with_facts:
+        facts.extend(facts_from_extract())
+
     if a.dry_run:
-        msg = {"indexed": 0, "corpus_total": len(leafs), "mail_leafs": mail_n, "dry_run": True}
+        msg = {
+            "indexed": 0,
+            "corpus_total": len(leafs),
+            "mail_leafs": mail_n,
+            "chat_leafs": chat_n,
+            "facts_leafs": len(facts),
+            "dry_run": True,
+        }
         print(json.dumps(msg, indent=2) if a.json else
-              f"brain/index: {len(leafs)} leafs would be indexed (mail={mail_n})")
+              f"brain/index: {len(leafs)} info + {len(facts)} facts would be indexed")
         return 0
 
     VAR.mkdir(exist_ok=True)
-    if a.rebuild and DB_PATH.exists():
-        DB_PATH.unlink()
+    dbpath.parent.mkdir(parents=True, exist_ok=True)
+    if a.rebuild and dbpath.exists():
+        dbpath.unlink()
 
-    db, conn = connect(DB_PATH, read_only=False)
+    db, conn = connect(dbpath, read_only=False)
     init_schema(conn)
 
-    # Never DROP FTS/VECTOR (ghost catalog). Write leafs, then ensure indexes
-    # unless --skip-indexes (seed facts first — MERGE under live FTS corrupts it).
-    # --rebuild already deleted kb.lbug above, so CREATE runs on a clean DB.
     embed = embedder()
     done, total = index_leafs(conn, leafs, embed, a.limit)
+    fact_n = index_fact_dicts(conn, facts, embed) if facts else 0
     if not a.skip_indexes:
         ensure_indexes(conn)
     s = stats(conn)
     conn.close()
     db.close()
 
-    result = {"indexed": done, "corpus_total": total, **{k: v for k, v in s.items() if k in ("total", "by_root")}}
+    result = {
+        "indexed": done,
+        "corpus_total": total,
+        "facts_leafs": fact_n,
+        "chat_leafs": chat_n,
+        **{k: v for k, v in s.items() if k in ("total", "by_root")},
+    }
     if a.skip_indexes:
         result["indexes"] = "skipped"
-    print(json.dumps(result, indent=2) if a.json else f"indexed {done}/{total} leafs; db total {s['total']}")
+    print(json.dumps(result, indent=2) if a.json else
+          f"indexed {done}/{total} info + {fact_n} facts; db total {s['total']}")
     return 0
 
 
