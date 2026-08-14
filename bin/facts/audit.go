@@ -5,6 +5,7 @@
 //
 //	./bin/facts/audit.go self
 //	./bin/facts/audit.go db
+//	./bin/facts/audit.go contradict --json < claim.json
 //
 // Python bin/facts/audit is the implementation (CI runs it directly).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
