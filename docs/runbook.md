@@ -16,6 +16,7 @@ No laptop-absolute paths. Config lives in env files under `$HOME/.config/brain/`
 - Go (see `go.mod`)
 - Python 3.12 + [uv](https://docs.astral.sh/uv)
 - Optional: Docker, Zig CGO via `bin/cgo/zig` (not gcc)
+- Optional: poppler (`pdftotext`/`pdftoppm`) + tesseract `eng+deu` for mail OCR
 
 ```bash
 uv venv .venv

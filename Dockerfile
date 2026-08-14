@@ -16,6 +16,10 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 RUN id -u 2dph 2>/dev/null || useradd --create-home --uid 1001 2dph
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+         poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.lock.txt /tmp/requirements.lock.txt
 RUN python -m pip install --no-cache-dir -r /tmp/requirements.lock.txt \
