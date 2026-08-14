@@ -28,6 +28,7 @@ RUN python -m pip install --no-cache-dir -r /tmp/requirements.lock.txt \
 COPY . .
 RUN chmod +x /app/bin/docker-entrypoint \
     && chown -R 2dph:2dph /app
+COPY --from=mail-build /mail-sync /app/bin/mail-sync
 USER 2dph
 
 ENV PATH="/app/bin:${PATH}" \
@@ -36,6 +37,14 @@ ENV PATH="/app/bin:${PATH}" \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import model2vec, ladybug, mistune; print('ok')" || exit 1
 ENTRYPOINT ["/app/bin/docker-entrypoint"]
+
+# --- mail-sync: standalone M365/OnlyOffice/Gmail puller (pure Go, no CGO) ---
+FROM golang:1.26-bookworm AS mail-build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY bin/mail ./bin/mail
+RUN CGO_ENABLED=0 go build -o /mail-sync ./bin/mail/sync.go
 
 # --- Go API: CGO with Zig, not gcc ---
 FROM golang:1.26-bookworm AS api-build

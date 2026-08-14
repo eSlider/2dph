@@ -5,6 +5,7 @@
 #   serve | search | watch
 # Index image (Python write path, compose profile `index`):
 #   index | extract | audit | search (deprecated python wrapper)
+#   mail-sync [N]   pull loop: sync -> import -> index every N s (default 10)
 #
 # Usage comment starts at line 2 (self-describing convention).
 set -euo pipefail
@@ -34,5 +35,24 @@ case "$CMD" in
 	serve) exec /app/bin/serve "$@" ;;
 	extract) exec "$KB_PY" /app/bin/facts/extract "$@" ;;
 	audit) exec "$KB_PY" /app/bin/facts/audit "$@" ;;
+	mail-sync)
+		# loop: pull mail (M365/OnlyOffice/Gmail) every N s, convert to md,
+		# rebuild the brain index. Index only when something new arrived.
+		interval="${1:-10}"
+		[ "$interval" -gt 0 ] 2>/dev/null || interval=10
+		: "${MAIL_SYNC_ENV:=/secret/m365.env}"
+		: "${MAIL_SYNC_SRC:=m365}"
+		: "${MAIL_SYNC_OUT:=/app/var/mail}"
+		while true; do
+			out="$("/app/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)"
+			echo "$out"
+			new="$(printf '%s\n' "$out" | sed -n 's/.*new=\([0-9]*\).*/\1/p' | tail -1)"
+			if [ -n "$new" ] && [ "$new" -gt 0 ] 2>/dev/null; then
+				"$KB_PY" /app/bin/mail/import --from-raw "$MAIL_SYNC_OUT" 2>&1 | tail -1
+				"$KB_PY" /app/bin/kb/index --rebuild --with-mail 2>&1 | tail -1
+			fi
+			sleep "$interval"
+		done
+		;;
 	*) echo "unknown command: $CMD" >&2; exit 2 ;;
 esac

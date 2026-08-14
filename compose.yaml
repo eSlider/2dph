@@ -92,6 +92,33 @@ services:
     tmpfs:
       - /tmp
 
+  # mail-sync: pull M365 (and OnlyOffice/Gmail) mail every 10 s into the shared
+  # var volume, then rebuild the brain index. Runs on the index image so it can
+  # convert + index in-process. Needs ~/.config/brain/m365.env for the M365
+  # source; override MAIL_SYNC_SRC / MAIL_SYNC_ENV for other providers.
+  #   docker compose up -d mail-sync
+  mail-sync:
+    image: ghcr.io/eslider/2dph:index
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: index
+    environment:
+      HF_HOME: /data/hf
+      KB_PY: python3
+      MAIL_SYNC_SRC: m365
+      MAIL_SYNC_ENV: /secret/m365.env
+    volumes:
+      - kb-model:/data/hf
+      - kb-var:/app/var
+      - ~/.config/brain:/secret:ro
+    command: ["mail-sync", "10"]
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    stop_grace_period: 20s
+
   # Optional local SearXNG (D3). Skip if BRAIN_SEARCH_URL already points at a
   # live instance — do not run a second copy on that host.
   #   SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile searxng up -d

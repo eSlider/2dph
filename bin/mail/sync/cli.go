@@ -55,7 +55,7 @@ func bind(v *flagVals) *flaggy.Parser {
 	p.Bool(&v.force, "", "force", "overwrite existing message.json")
 	p.Bool(&v.dryRun, "", "dry-run", "list counts without writing")
 	p.String(&v.query, "", "query", "Gmail search query")
-	p.String(&v.srcs, "", "source", "comma list: onlyoffice,gmail")
+	p.String(&v.srcs, "", "source", "comma list: onlyoffice,gmail,m365")
 	return p
 }
 
@@ -110,6 +110,24 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 				CredentialsPath: filepath.Join(home, ".gmail-mcp", "credentials.json"),
 				KeysPath:        filepath.Join(home, ".gmail-mcp", "gcp-oauth.keys.json"),
 			}
+		case "m365":
+			tenant := pick(envVars["M365_TENANT"], envVars["MS_TENANT"])
+			cid := pick(envVars["M365_CLIENT_ID"], envVars["MS_CLIENT_ID"])
+			sec := pick(envVars["M365_CLIENT_SECRET"], envVars["MS_CLIENT_SECRET"])
+			users := pick(envVars["M365_USERS"], envVars["MS_USERS"])
+			if tenant == "" || cid == "" || sec == "" || users == "" {
+				return CLIConfig{}, 2, fmt.Errorf("m365 source needs M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in %s", v.env)
+			}
+			var userList []string
+			for _, u := range strings.Split(users, ",") {
+				if u = strings.TrimSpace(u); u != "" {
+					userList = append(userList, u)
+				}
+			}
+			if len(userList) == 0 {
+				return CLIConfig{}, 2, fmt.Errorf("m365 source: M365_USERS empty")
+			}
+			cfg.M365 = &M365Credentials{Tenant: tenant, ClientID: cid, ClientSecret: sec, Users: userList}
 		default:
 			return CLIConfig{}, 2, fmt.Errorf("unknown source %q", s)
 		}
@@ -126,7 +144,7 @@ func Main(args []string) int {
 		return code
 	}
 	if cfg.Help {
-		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--dry-run]")
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
@@ -169,7 +187,8 @@ func readEnv(path string) map[string]string {
 		if !ok {
 			continue
 		}
-		if strings.HasPrefix(k, "ONLYOFFICE_") || strings.HasPrefix(k, "OO_") {
+		if strings.HasPrefix(k, "ONLYOFFICE_") || strings.HasPrefix(k, "OO_") ||
+			strings.HasPrefix(k, "M365_") || strings.HasPrefix(k, "MS_") {
 			out[k] = v
 		}
 	}
