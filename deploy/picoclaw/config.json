@@ -1,0 +1,33 @@
+{
+  "agents": {
+    "defaults": {
+      "model_name": "qwen3.5-9b",
+      "max_tool_iterations": 8,
+      "max_tokens": 512,
+      "context_window": 8192
+    }
+  },
+  "model_list": [
+    {
+      "model_name": "qwen3.5-9b",
+      "model": "ollama/qwen3.5:9b",
+      "api_base": "http://127.0.0.1:11435/v1",
+      "request_timeout": 600
+    }
+  ],
+  "tools": {
+    "web": {
+      "enabled": false
+    },
+    "mcp": {
+      "enabled": true,
+      "servers": {
+        "2dph": {
+          "enabled": true,
+          "type": "http",
+          "url": "http://127.0.0.1:8630/mcp"
+        }
+      }
+    }
+  }
+}

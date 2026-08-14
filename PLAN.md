@@ -48,6 +48,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
 | D20 | agent API | OpenAPI + MCP are generated from the same `internal/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`/`ingest`). |
 | D21 | CGO | Ladybug/tokenizers CGO is compiled with **Zig** (`bin/cgo/zcc` → `zig cc -target …-linux-gnu`), not gcc. `bin/cgo/zig` pins Zig 0.14.1 + liblbug 0.19.1 + libtokenizers 1.27.0. Compose `target: api` has no CPython; write/rebuild is profile `index`. |
+| D22 | analytics | **duckdb-go** in-process (`internal/duckstats`, `bin/qa/stats.go`) for quantiles/JSONL. Links with **gcc/g++**, not Zig. Ladybug stays the graph; web-search cache stays modernc sqlite. Slice small structured docs with **mikefarah/yq**, not kislyuk/jq. [#30](https://git.produktor.io/eSlider/2dph/issues/30). |
 
 ## Architecture
 
@@ -110,7 +111,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 - `bin/{subject}/{method}` — line 2 is a usage comment (mirrors `psql-yq`).
 - bash + python primary; golang via Go shebang when a compiled helper is right.
-- YAML default output, `--json` for machines. Slice with `yq`.
+- YAML default output, `--json` for machines. Slice with mikefarah/yq.
 - Everything that touches the network / DB is read-only, throttled, cached.
 - Tests (TDD) gate every commit; `gh` + CI/CD on every push.
 
@@ -122,8 +123,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
   `eng+deu` (`bin/mail/ocr.go`, `internal/ocr`). No gocv, no gosseract CGO
   (D21 Zig owns Ladybug CGO). Optional `OCR_ENGINE=paddle` / compose profile
   `ocr-paddle`. Docling left the default path. [#6](https://git.produktor.io/eSlider/2dph/issues/6).
-- OQ3: optional duckdb-md layer for `SELECT … FORMAT MARKDOWN` export/write-back.
-  [#30](https://git.produktor.io/eSlider/2dph/issues/30).
+- OQ3: **in** — duckdb-go (`internal/duckstats`, `bin/qa/stats.go`) for
+  quantiles / JSONL count. Not a second graph. [#30](https://git.produktor.io/eSlider/2dph/issues/30).
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.
 
