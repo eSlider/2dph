@@ -71,7 +71,9 @@ corpus HEAD.
 - C: narrative — READMEs, AGENTS.md, docs
 
 Confirmed = A×B or B×C agreement. Single source = hypothesis + `(not confirmed)`.
-Conflicting pairings (≥2 yes vs ≥2 no) = hypothesis (OQ1 → v2 resolution).
+Conflicting pairings (≥2 yes vs ≥2 no) stay hypothesis until
+`temporal_freshness` or `authority_pairing` fires (`bin/facts/audit contradict`,
+[#29](https://git.produktor.io/eSlider/2dph/issues/29)).
 
 ## Read path
 

@@ -45,6 +45,8 @@ bin/brain/eval.go                                      # recall@5 >= 0.95 gate (
   are not evidence of absence. `--root facts|info` and `--no-web` skip the web.
 - If recall looks wrong, run `bin/brain/eval.go`; it gates control questions and
   should stay at or above 95% recall@5.
+- Contradictions (≥2 yes vs ≥2 no) stay `(not confirmed)` until
+  `bin/facts/audit contradict` fires `temporal_freshness` or `authority_pairing`.
 - Agents: `GET /openapi.json` and `POST /mcp` on `bin/brain/serve.go` (same
   handlers; tool names match paths `search`/`get`/`stats`/`audit`). Generated
   list: [tools.md](tools.md).

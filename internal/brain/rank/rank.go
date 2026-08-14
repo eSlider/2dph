@@ -16,13 +16,14 @@ type HopNode struct {
 
 // Hit is one search result, mirroring the python script's dict shape.
 type Hit struct {
-	ID      string    `json:"id"`
-	Text    string    `json:"text"`
-	Root    string    `json:"root"`
-	Source  string    `json:"-"`
-	Score   float64   `json:"score"`
-	Snippet string    `json:"snippet,omitempty"`
-	Hops    []HopNode `json:"hops,omitempty"`
+	ID         string    `json:"id"`
+	Text       string    `json:"text"`
+	Root       string    `json:"root"`
+	Confidence string    `json:"confidence,omitempty"`
+	Source     string    `json:"-"`
+	Score      float64   `json:"score"`
+	Snippet    string    `json:"snippet,omitempty"`
+	Hops       []HopNode `json:"hops,omitempty"`
 }
 
 // rrfK dampens the contribution of low ranks; same constant as kblib.py.
