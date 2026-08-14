@@ -207,3 +207,12 @@ class BinLayoutTest(unittest.TestCase):
         search = (ROOT / "bin" / "kb" / "search").read_text()
         self.assertIn("bin/cgo/zig", search)
         self.assertNotIn("command -v gcc", search)
+
+    def test_ci_recall_sot_is_zig_brain_eval(self) -> None:
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("bin/brain/eval.go", ci)
+        self.assertIn("system_ladybug,brain_eval", ci)
+        self.assertIn("/tmp/brain-eval", ci)
+        self.assertNotIn("bin/kb/eval", ci)
+        self.assertNotIn("gate skipped", ci)
+        self.assertIn("./bin/facts/audit self", ci)
