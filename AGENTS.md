@@ -40,7 +40,7 @@ PLAN.md       decisions + execution + open questions
 docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}.go (shebang)
-bin/brain/    search.go serve.go index.go get.go stats.go eval.go watch.go
+bin/brain/    search.go serve.go index.go add.go get.go stats.go eval.go watch.go
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
 bin/mail/     sync.go import.go (index_mail → brain/index.go)
 bin/markdown/ import.go (H2 leaf split; Python bin/md/import fallback)
@@ -74,9 +74,9 @@ bin/brain/index.go --rebuild                                            # rebuil
   `pdftotext -layout` fast path (~15ms); textless/scanned PDFs fall back to
   docling (isolated subprocess — its native onnx can segfault the parent).
   Conversion never touches the brain DB (crash safety).
-- `index_mail` is a deprecation shim for `bin/brain/index.go --rebuild`. Ladybug
-  corrupts its WAL when brand-new leafs are bulk-inserted while FTS/vector
-  indexes exist; a fresh DB with indexes created last is the only safe path.
+- `index_mail` is a deprecation shim for `bin/brain/index.go --rebuild`. Bulk
+  rebuild still deletes `var/kb.lbug` and creates FTS/HNSW last. Single-leaf
+  write is `bin/brain/add.go` (safe while indexes exist; do not DROP INDEX).
   Keep conversion + indexing separate so a conversion crash can't leave the
   DB mid-transaction.
 
@@ -89,6 +89,8 @@ bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/b
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --no-web              # local graph only
 eval "$(bin/cgo/zig env)"                         # Zig cc + liblbug (not gcc)
+bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
+bin/brain/add.go --json                                      # stdin leaf or {leafs:[...]}
 bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI fallback
 bin/brain/stats.go [--json]
 bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank

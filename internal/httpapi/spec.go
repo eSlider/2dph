@@ -47,7 +47,15 @@ var Ops = []Op{
 	},
 	{Path: PathStats, Method: "get", ID: "stats", Summary: "index health", MCP: true},
 	{Path: PathAudit, Method: "get", ID: "audit", Summary: "facts confidence histogram", MCP: true},
-	{Path: PathIngest, Method: "get", ID: "ingest", Summary: "rebuild hint (write is v2)", MCP: true},
+	{
+		Path: PathIngest, Method: "post", ID: "ingest", Summary: "add a leaf without rebuild",
+		MCP: true,
+		Params: []Param{
+			{Name: "text", In: "query", Type: "string", Description: "leaf text (omit for CLI hint)"},
+			{Name: "root", In: "query", Type: "string", Description: "facts or info (default info)"},
+			{Name: "source", In: "query", Type: "string", Description: "evidence pointer; facts need two sources"},
+		},
+	},
 	{Path: PathOpenAPI, Method: "get", ID: "openapi", Summary: "OpenAPI 3 document for this server"},
 }
 
