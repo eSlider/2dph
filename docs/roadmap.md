@@ -26,6 +26,8 @@ Compose `api` (no CPython) / `index` (Python write). Issues #1–#5, #7–#13.
 [#15](https://git.produktor.io/eSlider/2dph/issues/15) lever/loop.
 [#14](https://git.produktor.io/eSlider/2dph/issues/14) `bin/brain/add.go` /
 `POST /ingest` (Python `kblib.add_leafs`; no Go upsert port).
+[#17](https://git.produktor.io/eSlider/2dph/issues/17) `--hop N` walks
+FROM_FILE / HAS_VERSION / AUTHORED.
 
 ## Blockers
 
@@ -36,17 +38,14 @@ question
     ├─ facts / info roots  ← in
     ├─ web (D17)           ← in
     ├─ brain/add ACID      ← in
-    ├─ Cypher hop          ← #17  schema yes, search no
+    ├─ Cypher hop          ← in
     └─ facts+chats corpus  ← #18
 ```
 
-1. **[#17](https://git.produktor.io/eSlider/2dph/issues/17) hops** —
-   `Leaf-[:FROM_FILE]->File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`
-   exists; `--hop` still errors. Without a walk, D9/D10 are paper.
-2. **[#18](https://git.produktor.io/eSlider/2dph/issues/18) corpus** —
+1. **[#18](https://git.produktor.io/eSlider/2dph/issues/18) corpus** —
    rebuild loads repo markdown + mail as `info`. `facts/extract` pairing
    and `bin/chats` are not indexed. WhatsApp is a stub. PII stays in `var/`.
-3. **[#19](https://git.produktor.io/eSlider/2dph/issues/19) CI eval** —
+2. **[#19](https://git.produktor.io/eSlider/2dph/issues/19) CI eval** —
    recall SoT should be `bin/brain/eval.go` via Zig, not Python `bin/kb/eval`.
 
 ## Not v1
@@ -56,6 +55,6 @@ contradiction resolution, OQ3 duckdb-md export, OQ4 YAML-first leafs.
 
 ## Close epic #16 when
 
-- `--hop` stops erroring and runs a Cypher path from search hits
 - ops pairing + chat import land as leafs on rebuild
 - MCP tool order is documented and still gated by tests
+- CI recall SoT is `bin/brain/eval.go` via Zig

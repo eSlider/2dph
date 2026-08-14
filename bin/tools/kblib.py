@@ -162,6 +162,53 @@ def add_leafs(conn: ladybug.Connection, leafs: list[dict]) -> list[str]:
     return ids
 
 
+def file_id(repo: str, path: str) -> str:
+    """Stable File.id matching gitimport (`repo:path`)."""
+    return f"{repo}:{path}" if repo else path
+
+
+def link_from_file(conn: ladybug.Connection, leaf_id: str, path: str,
+                   repo: str = "", mtime: str = "") -> str:
+    """MERGE File and Leaf-[:FROM_FILE]->File so --hop 1 can walk."""
+    fid = file_id(repo, path)
+    conn.execute(
+        "MERGE (f:File {id:$id}) SET f.path=$path, f.repo=$repo, f.mtime=$mtime",
+        parameters={"id": fid, "path": path, "repo": repo, "mtime": mtime},
+    )
+    conn.execute(
+        "MATCH (l:Leaf {id:$lid}), (f:File {id:$fid}) "
+        "MERGE (l)-[:FROM_FILE]->(f)",
+        parameters={"lid": leaf_id, "fid": fid},
+    )
+    return fid
+
+
+HOP_STMTS = {
+    1: "MATCH (l:Leaf {id:$id})-[:FROM_FILE]->(f:File) RETURN f.id, f.path, 1",
+    2: ("MATCH (l:Leaf {id:$id})-[:FROM_FILE]->(f:File)-[:HAS_VERSION]->(c:Commit) "
+        "RETURN c.id, c.subject, 2"),
+    3: ("MATCH (l:Leaf {id:$id})-[:FROM_FILE]->(f:File)-[:HAS_VERSION]->(c:Commit)"
+        "-[:AUTHORED]->(p:Person) RETURN p.id, p.name, 3"),
+}
+HOP_LABELS = {1: "File", 2: "Commit", 3: "Person"}
+
+
+def hop_walk(conn: ladybug.Connection, leaf_id: str, n: int) -> list[dict]:
+    """Walk Leaf → File → Commit → Person up to n hops (max 3)."""
+    depth = min(max(int(n), 0), 3)
+    out: list[dict] = []
+    for d in range(1, depth + 1):
+        rows = conn.execute(HOP_STMTS[d], parameters={"id": leaf_id}).get_all()
+        for row in rows:
+            out.append({
+                "id": row[0],
+                "label": HOP_LABELS[d],
+                "name": row[1],
+                "depth": int(row[2]),
+            })
+    return out
+
+
 def leaf_index_names(conn: ladybug.Connection) -> set[str]:
     """Return index names on the Leaf table (e.g. {'id', 'Leaf_vec', '_PK'})."""
     rows = conn.execute("CALL SHOW_INDEXES() RETURN *").get_all()

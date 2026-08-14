@@ -27,9 +27,9 @@ Python write sidecar, **D14** `bin/{subject}/{method}.go`, **D15** Gitea origin,
 **D17** assertion gate (facts → info → web), **D18** pluggable reasoner.
 
 Search: `bin/brain/search.go "query"` (HTTP: `bin/brain/serve.go` —
-`/health` `/search` `/get` `/stats` `/audit` `/ingest`). `--hop` is
-not a walk; the flag errors. Schema has `FROM_FILE`; search does not
-use it ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
+`/health` `/search` `/get` `/stats` `/audit` `/ingest`). `--hop N` walks
+`FROM_FILE` → Commit → Person from each hit (max 3). Rebuild writes
+File edges ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
 Work board: [Gitea issues](https://git.produktor.io/eSlider/2dph/issues)
 ([epic #16](https://git.produktor.io/eSlider/2dph/issues/16)).
