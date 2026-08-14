@@ -3,7 +3,7 @@
 //
 // bin/brain/search.go - deduction search over the 2dph brain.
 //
-//	./bin/brain/search.go "query" [--root facts|info] [--repo P] [-n N] [--json] [--no-web]
+//	./bin/brain/search.go "query" [--root facts|info] [--repo P] [-n N] [--hop N] [--json] [--no-web]
 //	./bin/brain/search.go serve [port]
 //	./bin/brain/search.go --list-model
 //

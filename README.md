@@ -96,7 +96,7 @@ bin/brain/stats.go                                   # index health
 bin/brain/eval.go                                    # recall@5 gate
 ```
 
-`--hop` is not implemented (needs File/FROM_FILE edges); the flag errors instead of walking. `bin/kb/search` is a deprecated wrapper around `bin/brain/search.go`.
+`--hop N` walks File/Commit/Person from each hit (max 3). `bin/kb/search` is a deprecated wrapper around `bin/brain/search.go`.
 
 Git history is read with [go-git](https://github.com/go-git/go-git) (no git binary):
 
