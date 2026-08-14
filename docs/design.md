@@ -68,6 +68,15 @@ binary); conversion prints leafs, brain write is `bin/brain/index.go`.
 `bin/facts/audit stale` flags leafs whose observed revision is behind the
 corpus HEAD.
 
+Fact **interval of truth** (D24 / OQ5): leaf props `valid_from` /
+`valid_to` (YYYY-MM-DD, inclusive; empty end = open; both empty = legacy
+always-active). `bin/brain/search.go --as-of YYYY-MM-DD` and MCP/HTTP
+`as_of` keep hits whose interval covers that day. This is not D16
+`temporal_freshness` (source freshness vs HEAD). [#36](https://git.produktor.io/eSlider/2dph/issues/36).
+Existing `kb.lbug` without the columns: open/search/add runs an idempotent
+`ALTER TABLE Leaf ADD …` (no full rebuild required). Fresh `--rebuild` still
+creates them in `CREATE NODE TABLE`.
+
 ## Sources (auto-pairing)
 
 - A: runtime state — `docker ps` (container running), ports actually bound

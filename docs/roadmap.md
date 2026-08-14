@@ -41,10 +41,12 @@ Epic [#16](https://git.produktor.io/eSlider/2dph/issues/16) closed.
 [#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1 contradiction
 resolution — **in** (`temporal_freshness`, `authority_pairing`).
 [#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 flaggy CLI — **in**.
+[#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 fact intervals /
+as-of — **in** (not D16 `temporal_freshness`).
 
 ## Blockers
 
-None for epic #16 (closed). Remaining v2: OQ4.
+None for epic #16 (closed). Remaining v2: OQ4 (deferred).
 
 ```
 question
@@ -60,6 +62,8 @@ question
 ## Not v1
 
 OQ4 YAML-first leafs.
+OQ5/D24 fact intervals + as-of — **in**
+([#36](https://git.produktor.io/eSlider/2dph/issues/36)).
 OCR (OQ2), duckdb-go (OQ3/D22), and D16 adjudication (OQ1) are in.
 
 ## Close epic #16 when

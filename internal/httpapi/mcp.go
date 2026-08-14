@@ -105,11 +105,18 @@ func (s *Server) mcpCall(r *http.Request, params json.RawMessage) (any, error) {
 		if limit < 1 || limit > 100 {
 			return mcpText(`{"error":"n must be int 1..100"}`, true), nil
 		}
+		asOf := ""
+		if raw, ok := p.Arguments["as_of"]; ok {
+			asOf = strings.TrimSpace(fmt.Sprint(raw))
+			if asOf == "<nil>" {
+				asOf = ""
+			}
+		}
 		if !s.tryAcquire(r) {
 			return nil, fmt.Errorf("cancelled")
 		}
 		defer s.release()
-		body, err = s.api.Search(r.Context(), q, limit)
+		body, err = s.api.Search(r.Context(), q, limit, asOf)
 	case "get":
 		id := strings.TrimSpace(fmt.Sprint(p.Arguments["id"]))
 		if id == "" || id == "<nil>" {

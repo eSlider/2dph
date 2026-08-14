@@ -5,6 +5,8 @@ package rank
 import (
 	"sort"
 	"strings"
+
+	"github.com/eSlider/2dph/internal/facts"
 )
 
 type HopNode struct {
@@ -23,17 +25,24 @@ type Hit struct {
 	Source     string    `json:"-"`
 	Score      float64   `json:"score"`
 	Snippet    string    `json:"snippet,omitempty"`
+	ValidFrom  string    `json:"valid_from,omitempty"`
+	ValidTo    string    `json:"valid_to,omitempty"`
 	Hops       []HopNode `json:"hops,omitempty"`
 }
 
 // rrfK dampens the contribution of low ranks; same constant as kblib.py.
 const rrfK = 60
 
-// RankAndFilter fuses the two hit lists, applies --root/--repo, then cuts to
-// limit. Cutting first dropped every matching leaf ranked below the cut, so
-// `--root facts` came back empty whenever info leafs filled the top N.
-// limit <= 0 keeps everything.
+// RankAndFilter fuses the two hit lists, applies --root/--repo/--as-of, then
+// cuts to limit. Cutting first dropped every matching leaf ranked below the
+// cut, so `--root facts` came back empty whenever info leafs filled the top N.
+// limit <= 0 keeps everything. asOf empty skips interval filter (D24).
 func RankAndFilter(fts, vec []Hit, root, repo string, limit int) []Hit {
+	return RankAndFilterAsOf(fts, vec, root, repo, "", limit)
+}
+
+// RankAndFilterAsOf is RankAndFilter with D24 fact-interval filter.
+func RankAndFilterAsOf(fts, vec []Hit, root, repo, asOf string, limit int) []Hit {
 	out := Hybrid(fts, vec, 0)
 	if root != "" {
 		out = FilterRoot(out, root)
@@ -41,8 +50,26 @@ func RankAndFilter(fts, vec []Hit, root, repo string, limit int) []Hit {
 	if repo != "" {
 		out = FilterRepo(out, repo)
 	}
+	if asOf != "" {
+		out = FilterAsOf(out, asOf)
+	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
+	}
+	return out
+}
+
+// FilterAsOf keeps hits whose [valid_from, valid_to] covers asOf (D24).
+// Empty intervals stay (legacy leafs). Empty asOf keeps all.
+func FilterAsOf(hits []Hit, asOf string) []Hit {
+	if asOf == "" {
+		return hits
+	}
+	var out []Hit
+	for _, h := range hits {
+		if facts.ActiveAt(h.ValidFrom, h.ValidTo, asOf) {
+			out = append(out, h)
+		}
 	}
 	return out
 }
