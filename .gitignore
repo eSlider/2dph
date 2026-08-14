@@ -14,3 +14,9 @@ go.work.local
 models/
 # Purged from git history. Do not re-add.
 docs/crm-associations-proof.md
+
+# mount scaffold for the 8TB volume, never part of the repo
+mnt/
+
+# go build ./bin/mail/sync.go drops a binary named `sync` in cwd
+/sync

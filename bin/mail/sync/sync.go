@@ -106,6 +106,7 @@ func Retry(ctx context.Context, policy RetryPolicy, fn func() error) error {
 type SyncConfig struct {
 	OO      *OOConfig          // OnlyOffice source (optional)
 	Gmail   *GmailCredentials  // Gmail source (optional)
+	M365    *M365Credentials   // Microsoft 365 Graph source (optional)
 	Out     string             // var/mail root; default <repo>/var/mail
 	Workers int                // concurrency; default 4
 	Limit   int                // max messages per source (0 = all)
@@ -131,6 +132,14 @@ type Source interface {
 	Get(ctx context.Context, id string) (*Message, error)
 	DownloadAttachment(ctx context.Context, msg *Message, att Attachment) ([]byte, error)
 	Folder() string
+}
+
+// Committer is an optional Source capability: Commit is called after all listed
+// ids have been downloaded successfully. Sources that only advance durable state
+// on success (e.g. a Graph delta link) implement this so a killed or failed run
+// stays retryable without gaps.
+type Committer interface {
+	Commit() error
 }
 
 type ooSource struct {
@@ -222,8 +231,22 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 		}
 		sources = append(sources, &gmailSource{c: gm, query: cfg.Query})
 	}
+	if cfg.M365 != nil {
+		stateDir := filepath.Join(cfg.Out, ".m365")
+		for _, mb := range cfg.M365.Users {
+			if !strings.Contains(mb, "@") {
+				return nil, fmt.Errorf("m365 user %q is not an email address", mb)
+			}
+			c, err := NewM365Client(*cfg.M365)
+			if err != nil {
+				return nil, fmt.Errorf("m365 init for %s: %w", mb, err)
+			}
+			local := strings.SplitN(mb, "@", 2)[0]
+			sources = append(sources, &m365Source{c: c, mailbox: mb, localpart: strings.ToLower(local), stateDir: stateDir})
+		}
+	}
 	if len(sources) == 0 {
-		return nil, errors.New("sync: no source configured (need OO, Gmail, or both)")
+		return nil, errors.New("sync: no source configured (need OO, Gmail, M365, or a combination)")
 	}
 
 	stats := &SyncStats{}
@@ -295,6 +318,25 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	}
 	close(jobsCh)
 	wg.Wait()
+
+	// Only advance durable source state (e.g. delta links) when everything
+	// downloaded. A killed or failed run must be retryable without gaps.
+	if len(failures) == 0 {
+		seen := map[Source]bool{}
+		for _, j := range jobs {
+			if seen[j.src] {
+				continue
+			}
+			seen[j.src] = true
+			if c, ok := j.src.(Committer); ok {
+				if err := c.Commit(); err != nil {
+					mu.Lock()
+					failures = append(failures, j.src.Folder()+"/commit: "+err.Error())
+					mu.Unlock()
+				}
+			}
+		}
+	}
 
 	if len(failures) > 0 {
 		fmt.Fprintf(os.Stderr, "sync: %d failures:\n  %s\n", len(failures), strings.Join(failures, "\n  "))

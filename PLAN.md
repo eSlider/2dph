@@ -86,7 +86,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     mail/ocr.go             tesseract eng+deu (pdftoppm scans)
     md/import               (deprecated; bin/markdown/import.go)
     brain/extract  brain/audit       brain/deduce    (thinking wrapper)
-    stack/start start-assistant stop status
+    stack/start start-assistant start-mail-sync stop status
     web/search               (deprecated shim → web/search.go)
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
@@ -141,8 +141,9 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 ## Mail pipeline (done)
 
-1. `bin/mail/sync.go` (Go, 8 workers) — paginated Gmail/OnlyOffice download.
-   Gmail attachments key off `body.attachmentId`, not MIME `partId`.
+1. `bin/mail/sync.go` (Go, 8 workers) — paginated Gmail / OnlyOffice / M365
+   Graph download. Gmail attachments key off `body.attachmentId`, not MIME
+   `partId`. M365 uses client-credentials + delta link (commit after success).
 2. `bin/mail/import.go --from-raw` — message.json → message.md; PDFs via
    `pdftotext -layout` (~15ms); textless/scanned PDFs `pdftoppm` + tesseract
    `eng+deu`. ICS sidecars
@@ -151,7 +152,11 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
    indexing stay separate for crash safety. `bin/mail/index_mail` is a
    deprecation shim.
-4. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
+4. Compose `mail-sync` / `bin/stack/start-mail-sync` — ETL loop (default
+   `onlyoffice,gmail`, 300s): sync → import on `new>0`; full rebuild only if
+   `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
+   they do not replace the corpus path.
+5. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
    via `bin/brain/search.go`.
 
 ## CI/CD pipeline (D15)

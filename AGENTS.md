@@ -66,12 +66,20 @@ var/          kb.lbug, var/mail/*, caches (gitignored)
 ```bash
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail   # raw message.json + attachments
 bin/mail/sync.go --source gmail --query 'from:example.com' --out var/mail  # Gmail search (default in:inbox)
+bin/mail/sync.go --source m365 --env ~/.config/brain/mail.env --out var/mail  # Microsoft Graph (delta)
 bin/mail/import.go --from-raw var/mail                                  # message.json → message.md (convert only)
 bin/brain/index.go --rebuild --with-facts --with-chats
+bin/stack/start-mail-sync                                               # compose ETL: sync→import every 300s
 ```
 
 - `sync` (Go) downloads messages + attachments; Gmail uses paginated list +
-  `body.attachmentId` (not partId) for attachments.
+  `body.attachmentId` (not partId) for attachments. Sources: `onlyoffice`,
+  `gmail`, `m365` (client-credentials + delta link; commit after success).
+- Compose `mail-sync` / `bin/stack/start-mail-sync`: ETL loop (default
+  `onlyoffice,gmail`, 300s). On `new>0` runs import; full `--rebuild` only if
+  `MAIL_SYNC_INDEX=1`. Secrets: `~/.config/brain/mail.env` + `~/.gmail-mcp`.
+  Case wrappers (e.g. family `gmail-sync-la-quinta.sh`) and ai-bot
+  `gmail-reauth.sh` reuse this sync/OAuth — do not fork corpus download.
 - `import` converts body + attachments to markdown. PDFs use poppler
   `pdftotext -layout` fast path (~15ms); textless/scanned PDFs use
   `pdftoppm` + tesseract `eng+deu` (`bin/mail/ocr.go`). Optional
