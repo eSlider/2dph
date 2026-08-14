@@ -7,7 +7,10 @@ offline against fixtures.
 from __future__ import annotations
 
 import html
+import os
 import re
+import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -18,9 +21,10 @@ OFFICE_SUFFIXES = {".docx", ".pptx", ".xlsx", ".html", ".htm", ".epub", ".eml", 
 PDF_SUFFIXES = {".pdf"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
 ARCHIVE_SUFFIXES = {".zip"}
-# Legacy binary Office (doc/xls/ppt) — markitdown/docling skip them; we try
+# Legacy binary Office (doc/xls/ppt) — markitdown skip them; we try
 # pandoc first, else leave a stub.
 LEGACY_OFFICE_SUFFIXES = {".doc", ".xls", ".ppt"}
+TESS_LANG = "eng+deu"
 
 CONVERTIBLE_SUFFIXES = (
     TEXT_SUFFIXES | OFFICE_SUFFIXES | PDF_SUFFIXES | IMAGE_SUFFIXES | ARCHIVE_SUFFIXES | LEGACY_OFFICE_SUFFIXES
@@ -146,3 +150,82 @@ def zip_extract_safe(zip_path: Path, dest: Path) -> list[Path]:
 
 def is_convertible(suffix: str) -> bool:
     return suffix.lower() in CONVERTIBLE_SUFFIXES
+
+
+def convert_pdf(path: Path, ocr: bool = False) -> str:
+    """pdftotext -layout first; empty text layer → pdftoppm + tesseract.
+
+    `ocr` is unused for born-digital PDFs (text layer wins). Scans OCR
+    automatically. This path never execs an ONNX document converter.
+    """
+    del ocr  # scans OCR when the text layer is empty; flag is for images
+    text = pdf_fast_text(path)
+    if text and text.strip():
+        return normalize_markdown(text)
+    scanned = ocr_pdf(path)
+    if scanned and scanned.strip():
+        return normalize_markdown(scanned)
+    if text:
+        return normalize_markdown(text)
+    return "\n<!-- pdf has no text layer (ocr unavailable) -->\n"
+
+
+def pdf_fast_text(path: Path) -> str | None:
+    """pdftotext -layout; None when poppler is missing or the command fails."""
+    try:
+        proc = subprocess.run(
+            ["pdftotext", "-layout", str(path), "-"],
+            capture_output=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+def ocr_pdf(path: Path) -> str:
+    """Rasterize with pdftoppm and OCR each page (tesseract or paddle)."""
+    try:
+        with tempfile.TemporaryDirectory(prefix="2dph-ocr-") as tmp:
+            prefix = str(Path(tmp) / "page")
+            proc = subprocess.run(
+                ["pdftoppm", "-png", "-r", "200", str(path), prefix],
+                capture_output=True, timeout=120)
+            if proc.returncode != 0:
+                return ""
+            pages = sorted(Path(tmp).glob("page*.png"))
+            parts = [ocr_image(p) for p in pages]
+            return "\n\n".join(p for p in parts if p and p.strip())
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+
+
+def ocr_image(path: Path) -> str:
+    engine = os.environ.get("OCR_ENGINE", "tesseract")
+    if engine == "paddle":
+        return _ocr_paddle(path)
+    return _ocr_tesseract(path)
+
+
+def _ocr_tesseract(path: Path) -> str:
+    try:
+        proc = subprocess.run(
+            ["tesseract", str(path), "stdout", "-l", TESS_LANG, "--psm", "6"],
+            capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.decode("utf-8", errors="replace").strip()
+
+
+def _ocr_paddle(path: Path) -> str:
+    try:
+        proc = subprocess.run(
+            ["paddleocr", "ocr", "-i", str(path)],
+            capture_output=True, timeout=180)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.decode("utf-8", errors="replace").strip()

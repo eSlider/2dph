@@ -8,10 +8,13 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 
 from mailconv import (  # noqa: E402
+    TESS_LANG,
     clean_email_address,
+    convert_pdf,
     html_to_markdown,
     is_convertible,
     normalize_markdown,
+    ocr_image,
     split_zip_members,
     subject_to_filename,
     zip_extract_safe,
@@ -99,6 +102,92 @@ class TestMailConv(unittest.TestCase):
         self.assertTrue(is_convertible(".TXT"))
         self.assertFalse(is_convertible(".exe"))
         self.assertFalse(is_convertible(".unknown"))
+
+    def test_convert_pdf_prefers_pdftotext(self):
+        import mailconv as mc
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+
+            class P:
+                returncode = 0
+                stdout = b"Invoice BM25 layout"
+                stderr = b""
+
+            return P()
+
+        self._patch_run(mc, fake_run)
+        out = convert_pdf(Path(self._tmp("born.pdf")))
+        self.assertIn("BM25", out)
+        self.assertEqual(calls[0][:2], ["pdftotext", "-layout"])
+        self.assertFalse(any(c[0] == "tesseract" for c in calls))
+        self.assertFalse(any(c[0] == "pdftoppm" for c in calls))
+
+    def test_convert_pdf_empty_layer_uses_pdftoppm_tesseract(self):
+        import mailconv as mc
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+
+            class P:
+                returncode = 0
+                stdout = b""
+                stderr = b""
+
+            if cmd[0] == "pdftotext":
+                P.stdout = b"  \n"
+                return P()
+            if cmd[0] == "pdftoppm":
+                prefix = Path(cmd[-1])
+                (prefix.parent / "page-1.png").write_bytes(b"fake")
+                return P()
+            if cmd[0] == "tesseract":
+                P.stdout = b"scanned HELLO"
+                return P()
+            return P()
+
+        self._patch_run(mc, fake_run)
+        out = convert_pdf(Path(self._tmp("scan.pdf")))
+        self.assertIn("HELLO", out)
+        bins = [c[0] for c in calls]
+        self.assertIn("pdftotext", bins)
+        self.assertIn("pdftoppm", bins)
+        self.assertIn("tesseract", bins)
+        tess = next(c for c in calls if c[0] == "tesseract")
+        self.assertIn(TESS_LANG, tess)
+        self.assertNotIn("docling", " ".join(bins))
+
+    def test_ocr_image_paddle_engine(self):
+        import mailconv as mc
+
+        calls: list[list[str]] = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(list(cmd))
+
+            class P:
+                returncode = 0
+                stdout = b"paddle text"
+                stderr = b""
+
+            return P()
+
+        self._patch_run(mc, fake_run)
+        os.environ["OCR_ENGINE"] = "paddle"
+        try:
+            out = ocr_image(Path(self._tmp("x.png")))
+        finally:
+            os.environ.pop("OCR_ENGINE", None)
+        self.assertEqual(out, "paddle text")
+        self.assertEqual(calls[0][:2], ["paddleocr", "ocr"])
+
+    def _patch_run(self, mod, fn) -> None:
+        self.addCleanup(setattr, mod.subprocess, "run", mod.subprocess.run)
+        mod.subprocess.run = fn
 
     def _mk_zip(self, members):
         zpath = Path(self._tmp("arc.zip"))

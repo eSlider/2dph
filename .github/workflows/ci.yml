@@ -72,10 +72,26 @@ jobs:
           uv run python bin/kb/index --rebuild --json
           KB_ROOT="$PWD" /tmp/brain-eval --json
 
+  ocr:
+    name: OCR (tesseract fixture)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install tesseract + poppler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu poppler-utils
+      - name: Go OCR tests (synthetic HELLO PNG)
+        run: go test ./internal/ocr -count=1
+
   release:
     name: Release (semver)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: test
+    needs: [test, ocr]
     runs-on: ubuntu-latest
     permissions:
       contents: write

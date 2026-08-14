@@ -7,7 +7,7 @@
   bin/mail/import --since 2026-01-01    only messages after a date
   bin/mail/import --limit 50            cap messages per run
   bin/mail/import --no-attachments      body only, skip attachment conversion
-  bin/mail/import --ocr                OCR scanned PDFs/images via docling
+  bin/mail/import --ocr                OCR images (PDFs OCR when textless)
   bin/mail/import --dry-run            list messages without writing anything
 
 Writes one directory per message: var/mail/{folder}/{message_id}/
@@ -16,10 +16,11 @@ Writes one directory per message: var/mail/{folder}/{message_id}/
   attachments/*.md          converted attachment content
 
 Indexing is a separate step (`bin/brain/index.go --rebuild`): conversion can
-crash in native docling and must not leave the brain DB mid-transaction.
+crash and must not leave the brain DB mid-transaction.
 
-Requires ONLYOFFICE_URL/USER/PASS in .env (or env). Idempotent: a message
-already present (message.md exists) is skipped unless --force.
+Requires ONLYOFFICE_URL/USER/PASS in .env (or env) except `--from-raw`.
+Idempotent: a message already present (message.md exists) is skipped unless
+--force.
 """
 from __future__ import annotations
 
@@ -41,10 +42,10 @@ from mailconv import (  # noqa: E402
     IMAGE_SUFFIXES,
     LEGACY_OFFICE_SUFFIXES,
     TEXT_SUFFIXES,
+    convert_pdf,
     html_to_markdown,
-    is_convertible,
     normalize_markdown,
-    subject_to_filename,
+    ocr_image,
     zip_extract_safe,
 )
 
@@ -147,75 +148,14 @@ def convert_file_to_md(path: Path, ocr: bool) -> str | None:
         except Exception as e:
             return f"\n<!-- conversion failed: {e} -->\n"
     if suffix == ".pdf":
-        return _convert_pdf(path, ocr)
+        return convert_pdf(path, ocr)
     if suffix in IMAGE_SUFFIXES and ocr:
-        return _convert_pdf(path, ocr)
+        return ocr_image(path) or "\n<!-- ocr unavailable -->\n"
     if suffix in LEGACY_OFFICE_SUFFIXES:
         return _convert_legacy(path)
     if suffix in ARCHIVE_SUFFIXES:
         return None  # handled by caller (unpack + recurse)
     return None
-
-
-def _convert_pdf(path: Path, ocr: bool) -> str:
-    """Convert one PDF to markdown.
-
-    Fast path: poppler's pdftotext (-layout) extracts exact text from
-    born-digital PDFs in ~15ms vs docling's 1-3s. Only textless PDFs (scanned
-    pages, layout-heavy) fall back to docling, which runs isolated in a
-    subprocess because its native onnx/RT-DETR has segfaulted the main process.
-    """
-    text = _pdf_fast_text(path)
-    if ocr or text is None or not text.strip():
-        return _convert_pdf_docling(path, ocr)
-    return normalize_markdown(text)
-
-
-def _pdf_fast_text(path: Path) -> str | None:
-    """pdftotext -layout; None when poppler is unavailable (or the PDF has no text layer)."""
-    try:
-        proc = subprocess.run(
-            ["pdftotext", "-layout", str(path), "-"],
-            capture_output=True, timeout=60)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout.decode("utf-8", errors="replace")
-
-
-def _convert_pdf_docling(path: Path, ocr: bool) -> str:
-    try:
-        proc = subprocess.run(
-            [sys.executable, os.path.abspath(__file__), "--pdf-worker", str(path),
-             "--ocr" if ocr else "--no-ocr"],
-            capture_output=True, text=True, timeout=600)
-    except subprocess.TimeoutExpired:
-        return "\n<!-- pdf conversion timed out -->\n"
-    if proc.returncode != 0:
-        tail = proc.stderr.strip().splitlines()[-3:]
-        return f"\n<!-- pdf conversion failed: {proc.returncode}: {' | '.join(tail)} -->\n"
-    return proc.stdout
-
-
-def _pdf_worker(path: Path, ocr: bool) -> None:
-    """docling worker entry: prints converted markdown on stdout, exits non-zero on error."""
-    try:
-        from docling.document_converter import DocumentConverter, PdfFormatOption
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
-        opts = PdfPipelineOptions()
-        opts.do_ocr = bool(ocr)
-        opts.do_table_structure = True
-        conv = DocumentConverter(format_options={"pdf": PdfFormatOption(pipeline_options=opts)})
-        res = conv.convert(str(path))
-        sys.stdout.write(normalize_markdown(res.document.export_to_markdown()))
-        sys.exit(0)
-    except Exception as e:
-        # errors/stacktraces to stderr; the caller only reports a one-liner
-        print(f"pdf-worker: {e}", file=sys.stderr)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        sys.exit(1)
 
 
 def _convert_legacy(path: Path) -> str:
@@ -356,19 +296,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--from-raw", default="",
                    help="convert Go-synced dirs (var/mail/<folder>/<id>/message.json) to markdown")
     p.add_argument("--no-attachments", action="store_true", help="skip attachment download+convert")
-    p.add_argument("--ocr", action="store_true", help="OCR scanned PDFs/images via docling")
+    p.add_argument("--ocr", action="store_true", help="OCR images (PDFs OCR when textless)")
     p.add_argument("--force", action="store_true", help="re-import even if message.md exists")
     p.add_argument("--dry-run", action="store_true", help="list messages, write nothing")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--pdf-worker", default="", help=argparse.SUPPRESS)
-    p.add_argument("--no-ocr", action="store_true", help=argparse.SUPPRESS)
     a = p.parse_args(argv)
 
-    if a.pdf_worker:
-        _pdf_worker(Path(a.pdf_worker), ocr=not a.no_ocr)
-        return 0
-
-    conf = load_env()
     fid = folder_id(a.folder)
     out_root = ROOT / "var" / "mail"
     summary: list[dict] = []
@@ -394,6 +327,7 @@ def main(argv: list[str]) -> int:
                                      target_dir=msg_dir.parent))
             summary.append(entry)
     else:
+        conf = load_env()
         OOCLIENT = OOClient(conf)
         if a.id:
             messages = [{"id": i} for i in a.id]
