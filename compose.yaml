@@ -5,6 +5,7 @@
 #   docker compose --profile picoclaw up brain-mcp
 #   docker compose --profile reasoner up -d reasoner   # CPU Ollama :11435
 #   docker compose --profile searxng up -d
+#   OCR_ENGINE=paddle docker compose --profile ocr-paddle run --rm ocr-paddle
 #
 # Secrets never baked in: search.env + db-profiles.yml from ~/.config/brain.
 
@@ -130,6 +131,15 @@ services:
     volumes:
       - reasoner-ollama:/root/.ollama
     restart: unless-stopped
+
+  # Optional PP-OCRv5 (not default). Default OCR is tesseract eng+deu.
+  #   OCR_ENGINE=paddle docker compose --profile ocr-paddle run --rm ocr-paddle
+  ocr-paddle:
+    profiles: ["ocr-paddle"]
+    image: python:3.12-slim
+    environment:
+      OCR_ENGINE: paddle
+    command: ["python", "-c", "print('OCR_ENGINE=paddle; install paddleocr on PATH')"]
 
 volumes:
   kb-model:

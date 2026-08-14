@@ -4,8 +4,9 @@ A brain that loves facts and deduction. Evidence-first knowledge graph + hybrid
 RAG over the operational Brain/ops/eSlider stack. Built like Sherlock
 Holmes: nothing is asserted unless it has proof.
 
-Status: **in progress** — read path + MCP work; v1 goal is [epic #16](https://git.produktor.io/eSlider/2dph/issues/16)
-(milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12)).
+Status: **v1 in** (epic [#16](https://git.produktor.io/eSlider/2dph/issues/16) closed).
+v2 board: milestone [v2](https://git.produktor.io/eSlider/2dph/milestone/13) — OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6),
+[#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1, [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3.
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
@@ -74,6 +75,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     reasoner/bakeoff.go     CPU tool-call bake-off (D18; OpenAI tools)
     chats/sync.go import.go facts.go apply.go
                             (libs in internal/chats; no chats index)
+    mail/ocr.go             tesseract eng+deu (pdftoppm scans)
     md/import               (deprecated; bin/markdown/import.go)
     brain/extract  brain/audit   brain/deduce    (thinking wrapper)
     web/search               (deprecated shim → web/search.go)
@@ -115,10 +117,13 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 ## Open questions (v2)
 
 - OQ1: mutually-contradicting evidence — how to resolve (authority weighting,
-  temporal freshness, audit adjudication). **v2**; does not block epic #16.
-- OQ2: OCR — poppler `pdftotext` fast-path exists; scans still docling.
-  [#6](https://git.produktor.io/eSlider/2dph/issues/6) (v2, does not block #16).
+  temporal freshness, audit adjudication). **v2**; [#29](https://git.produktor.io/eSlider/2dph/issues/29).
+- OQ2: OCR — **in**. `pdftotext -layout` first; scans `pdftoppm` + tesseract
+  `eng+deu` (`bin/mail/ocr.go`, `internal/ocr`). No gocv, no gosseract CGO
+  (D21 Zig owns Ladybug CGO). Optional `OCR_ENGINE=paddle` / compose profile
+  `ocr-paddle`. Docling left the default path. [#6](https://git.produktor.io/eSlider/2dph/issues/6).
 - OQ3: optional duckdb-md layer for `SELECT … FORMAT MARKDOWN` export/write-back.
+  [#30](https://git.produktor.io/eSlider/2dph/issues/30).
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.
 
@@ -127,7 +132,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 1. `bin/mail/sync.go` (Go, 8 workers) — paginated Gmail/OnlyOffice download.
    Gmail attachments key off `body.attachmentId`, not MIME `partId`.
 2. `bin/mail/import.go --from-raw` — message.json → message.md; PDFs via
-   `pdftotext -layout` (~15ms) with docling subprocess fallback; ICS sidecars
+   `pdftotext -layout` (~15ms); textless/scanned PDFs `pdftoppm` + tesseract
+   `eng+deu`. ICS sidecars
    Latin-1→UTF-8 normalized.
 3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
@@ -177,4 +183,4 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. Python `bin/kb/eval` stays as an explicit fallback. |
 
-Does **not** block epic close: [#6](https://git.produktor.io/eSlider/2dph/issues/6) OCR, OQ1, OQ3, OQ4.
+Does **not** block epic close: OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30), OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) is **in**.
