@@ -55,6 +55,7 @@ bin/brain/stats.go
 ```
 
 `--hop` is not implemented. Empty web results are `throttled`, not absence.
+Gap to v1: [roadmap](roadmap.md) / [epic #16](https://git.produktor.io/eSlider/2dph/issues/16).
 
 Ladybug 0.19: never `DROP INDEX` FTS/VECTOR (ghost catalog). Fresh indexes =
 delete `var/kb.lbug` then `--rebuild`.

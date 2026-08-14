@@ -172,7 +172,9 @@ docker compose up brain-watch                  # auto re-index on change
   skills (`web-search`, `postgres`, …) that 2dph integrates
 - detective method — the two-source method
 
-Work board (issues): [git.produktor.io/eSlider/2dph/issues](https://git.produktor.io/eSlider/2dph/issues).
+Work board (issues): [epic #16](https://git.produktor.io/eSlider/2dph/issues/16)
+on [git.produktor.io/eSlider/2dph/issues](https://git.produktor.io/eSlider/2dph/issues).
 PRs and CI: GitHub [`eSlider/2dph`](https://github.com/eSlider/2dph).
 
-See [PLAN.md](PLAN.md) for decisions, execution status, and v2 open questions.
+See [PLAN.md](PLAN.md) for decisions, [docs/roadmap.md](docs/roadmap.md) for
+the gap to v1, and v2 open questions.
