@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const Usage = `usage: bin/brain/search.go "query" [--root facts|info] [--repo REPO] [-n N] [--json] [--no-web]
+const Usage = `usage: bin/brain/search.go "query" [--root facts|info] [--repo REPO] [-n N] [--hop N] [--json] [--no-web]
        bin/brain/search.go serve [port]
        bin/brain/search.go --list-model`
 
@@ -15,6 +15,7 @@ type Options struct {
 	Root      string
 	Repo      string
 	Limit     int
+	Hop       int
 	JSONOut   bool
 	ListModel bool
 	NoWeb     bool
@@ -22,8 +23,6 @@ type Options struct {
 
 // ParseArgs reads flags. Unknown flags are an error: silently dropping them
 // meant `--hop 1` vanished and its argument `1` was appended to the query.
-// --hop is recognised so it cannot be swallowed; it is not implemented until
-// File/FROM_FILE edges exist.
 func ParseArgs(args []string) (Options, error) {
 	opt := Options{Limit: 20}
 	var queryArgs []string
@@ -52,7 +51,15 @@ func ParseArgs(args []string) (Options, error) {
 			}
 			opt.Limit = n
 		case "--hop":
-			return opt, fmt.Errorf("--hop is not implemented yet (needs File/FROM_FILE edges)")
+			i++
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 1 {
+				return opt, fmt.Errorf("--hop must be a positive integer, got %q", args[i])
+			}
+			if n > 3 {
+				return opt, fmt.Errorf("--hop max is 3 (File → Commit → Person)")
+			}
+			opt.Hop = n
 		case "--json":
 			opt.JSONOut = true
 		case "--no-web":
