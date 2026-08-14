@@ -4,6 +4,7 @@ status: current
 related:
   - docs/README.md
   - docs/runbook.md
+  - docs/roadmap.md
 ---
 
 # Design — facts, info, deduction
@@ -33,8 +34,9 @@ bin/brain/search.go "question"
      is not evidence of absence; `--no-web` / `--root` skip it)
 ```
 
-`--hop` is not implemented yet (needs File/FROM_FILE edges). The flag is an
-error; it is not a graph walk.
+`--hop` is not implemented. `FROM_FILE` / `HAS_VERSION` exist in schema;
+search does not walk them ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
+The flag is an error; it is not a graph walk.
 
 ## Who / What / How / Where / When + evidence
 
@@ -95,3 +97,6 @@ Pluggable OpenAI-compatible URL. RAM: `Qwen/Qwen3.5-9B`. Quality:
 CPU sidecar: compose profile `reasoner` (`OLLAMA_NUM_GPU=0`,
 `127.0.0.1:11435`). Bake-off: `bin/reasoner/bakeoff.go`. Weights stay out
 of the 2dph image. See [docs/reasoner.md](reasoner.md).
+
+Gap to v1 (write, hops, corpus, agent loop): [roadmap](roadmap.md),
+[epic #16](https://git.produktor.io/eSlider/2dph/issues/16).
