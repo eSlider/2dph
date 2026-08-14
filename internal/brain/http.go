@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
 )
@@ -137,12 +139,22 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 	return json.Marshal(map[string]any{"status": "ok", "by_confidence": rows})
 }
 
-func (HTTP) Ingest(context.Context) ([]byte, error) {
-	return json.Marshal(map[string]any{
-		"mode":    "rebuild",
-		"command": "bin/brain/index.go --rebuild",
-		"add":     "v2",
-	})
+func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return json.Marshal(map[string]any{
+			"mode":    "add",
+			"command": "bin/brain/add.go",
+			"rebuild": "bin/brain/index.go --rebuild",
+		})
+	}
+	cmd := exec.CommandContext(ctx, filepath.Join(repoRoot(), "bin", "kb", "add"), "--json")
+	cmd.Stdin = bytes.NewReader(body)
+	cmd.Dir = repoRoot()
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("add: %w", err)
+	}
+	return out, nil
 }
 
 func asInt(v any) int64 {

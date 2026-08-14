@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -64,8 +65,11 @@ func (f *fakeSearcher) Audit(context.Context) ([]byte, error) {
 	return []byte(`{"status":"ok"}`), nil
 }
 
-func (f *fakeSearcher) Ingest(context.Context) ([]byte, error) {
-	return []byte(`{"mode":"rebuild","command":"bin/brain/index.go --rebuild"}`), nil
+func (f *fakeSearcher) Ingest(_ context.Context, body []byte) ([]byte, error) {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return []byte(`{"mode":"add","command":"bin/brain/add.go"}`), nil
+	}
+	return []byte(`{"mode":"add","ids":["fake-leaf"]}`), nil
 }
 
 func (f *fakeSearcher) count() int {
@@ -190,6 +194,27 @@ func TestStatsAuditIngest(t *testing.T) {
 		if !json.Valid(body) {
 			t.Fatalf("%s body not json: %s", path, body)
 		}
+	}
+}
+
+func TestIngestIsAddNotRebuildHint(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	code, body := get(t, h, "/ingest")
+	if code != http.StatusOK {
+		t.Fatalf("GET /ingest code = %d body=%s", code, body)
+	}
+	if strings.Contains(string(body), `"add":"v2"`) || strings.Contains(string(body), "write is v2") {
+		t.Fatalf("GET /ingest still a v2 hint: %s", body)
+	}
+	if !strings.Contains(string(body), "bin/brain/add.go") {
+		t.Fatalf("GET /ingest should name add.go: %s", body)
+	}
+	code, body = postJSON(t, h, "/ingest", `{"text":"hello","root":"info","source":"t"}`)
+	if code != http.StatusOK {
+		t.Fatalf("POST /ingest code = %d body=%s", code, body)
+	}
+	if !strings.Contains(string(body), "fake-leaf") {
+		t.Fatalf("POST /ingest should add: %s", body)
 	}
 }
 

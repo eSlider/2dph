@@ -71,6 +71,69 @@ class KblibTest(unittest.TestCase):
         self.assertTrue(hits)
         self.assertIn("Leaf_vec", kblib.leaf_index_names(self.conn))
 
+    def test_add_after_indexes_keeps_fts_queryable(self):
+        """Incremental add after FTS+HNSW must find the new leaf on both indexes."""
+        kblib.upsert_leaf(self.conn, text="seed fox leaf", root="info",
+                          confidence="confirmed", source="s", source_rev="r1",
+                          how="test", loc="/tmp", type_="reference",
+                          embedding=make_emb(0.1))
+        kblib.ensure_indexes(self.conn)
+        ids = kblib.add_leafs(self.conn, [{
+            "text": "added zebra after index",
+            "root": "facts",
+            "confidence": "confirmed",
+            "source": "a.md x b.md",
+            "source_rev": "r1",
+            "how": "test",
+            "loc": "/tmp",
+            "type": "fact",
+            "embedding": make_emb(0.9),
+        }])
+        self.assertEqual(len(ids), 1)
+        fts = kblib.query_fts(self.conn, "zebra", 5)
+        self.assertTrue(fts)
+        self.assertIn("zebra", fts[0]["text"])
+        self.assertEqual(fts[0]["root"], "facts")
+        vec = kblib.query_vector(self.conn, make_emb(0.9), 5)
+        self.assertTrue(any("zebra" in h["text"] for h in vec))
+        fox = kblib.query_fts(self.conn, "fox", 5)
+        self.assertTrue(fox)
+        self.assertIn("fox", fox[0]["text"])
+
+    def test_add_facts_and_info_one_transaction(self):
+        """D12: facts and info land in the same transaction."""
+        kblib.ensure_indexes(self.conn)
+        ids = kblib.add_leafs(self.conn, [
+            {
+                "text": "tx fact leaf two-source",
+                "root": "facts",
+                "confidence": "confirmed",
+                "source": "compose.yml x docker ps",
+                "source_rev": "r1",
+                "how": "test",
+                "loc": "/tmp",
+                "type": "fact",
+                "embedding": make_emb(0.4),
+            },
+            {
+                "text": "tx info narrative",
+                "root": "info",
+                "confidence": "confirmed",
+                "source": "note.md",
+                "source_rev": "r1",
+                "how": "test",
+                "loc": "/tmp",
+                "type": "reference",
+                "embedding": make_emb(0.5),
+            },
+        ])
+        self.assertEqual(len(ids), 2)
+        stats = kblib.stats(self.conn)
+        self.assertEqual(stats["by_root"].get("facts"), 1)
+        self.assertEqual(stats["by_root"].get("info"), 1)
+        self.assertTrue(kblib.query_fts(self.conn, "two-source", 5))
+        self.assertTrue(kblib.query_fts(self.conn, "narrative", 5))
+
     def test_drop_vector_then_create_raises_clear_error(self):
         """DROP INDEX leaves ghost catalog; create_fts_and_vector must raise."""
         kblib.upsert_leaf(self.conn, text="seed", root="info",

@@ -120,6 +120,7 @@ Mail is a first-class corpus (retrievable through the same search):
 ```bash
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
 bin/mail/import.go --from-raw var/mail                                  # JSON → markdown
+bin/brain/add.go --text T --root facts --source "a.md x b.md"
 bin/brain/index.go --rebuild                                            # rebuild brain (incl. mail)
 bin/brain/search.go "invoice from last week"                            # same search over mail leafs
 ```
@@ -128,8 +129,9 @@ bin/brain/search.go "invoice from last week"                            # same s
 
 - **LadybugDB** — single `var/kb.lbug`, Cypher + HNSW + BM25, embedded.
   Read tools (`get` / `stats` / `eval`) are Go + Zig CGO (`bin/cgo/zcc`).
-  Python fallbacks stay for CI until the runner fetches Zig. Write is
-  Compose profile `index` (`bin/brain/index.go`).
+  Python fallbacks stay for CI until the runner fetches Zig. Incremental
+  write is `bin/brain/add.go` (Python `kblib.add_leafs`). Bulk rebuild is
+  Compose profile `index` (`bin/brain/index.go --rebuild`).
 - **model2vec** — `potion-multilingual-128M` (256-dim), CPU, no Ollama
   runtime dependency.
 - facts and info split by `root` but written in the same transaction.

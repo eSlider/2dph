@@ -75,8 +75,19 @@ class BinLayoutTest(unittest.TestCase):
         )
 
     def test_brain_methods_are_shebangs(self) -> None:
-        for method in ("index.go", "get.go", "stats.go", "eval.go", "watch.go"):
+        for method in ("index.go", "add.go", "get.go", "stats.go", "eval.go", "watch.go"):
             self._assert_shebang(f"bin/brain/{method}")
+
+    def test_brain_add_is_python_write_not_rebuild(self) -> None:
+        self._assert_shebang("bin/brain/add.go")
+        text = (ROOT / "bin" / "brain" / "add.go").read_text()
+        self.assertIn("cmdbin.ExecFile", text)
+        self.assertIn("bin/kb/add", text)
+        self.assertNotIn("--rebuild", text)
+        py = (ROOT / "bin" / "kb" / "add").read_text()
+        self.assertIn("add_leafs", py)
+        self.assertIn("--json", py)
+        self.assertNotIn("unlink", py.lower())
 
     def test_brain_get_stats_eval_are_not_python_exec(self) -> None:
         for method in ("get.go", "stats.go", "eval.go"):
