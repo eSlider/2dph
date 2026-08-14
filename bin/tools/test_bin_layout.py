@@ -207,3 +207,25 @@ class BinLayoutTest(unittest.TestCase):
         search = (ROOT / "bin" / "kb" / "search").read_text()
         self.assertIn("bin/cgo/zig", search)
         self.assertNotIn("command -v gcc", search)
+
+    def test_ci_recall_sot_is_zig_brain_eval(self) -> None:
+        ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+        self.assertIn("bin/brain/eval.go", ci)
+        self.assertIn("system_ladybug,brain_eval", ci)
+        self.assertIn("/tmp/brain-eval", ci)
+        self.assertIn("KB_ROOT", ci)
+        self.assertNotIn("bin/kb/eval", ci)
+        self.assertNotIn("gate skipped", ci)
+        self.assertIn("./bin/facts/audit self", ci)
+
+    def test_eval_fragments_live_in_default_corpus(self) -> None:
+        """CI --rebuild indexes README/PLAN/docs/skills; fragments must be there."""
+        corpus = []
+        for rel in ("README.md", "PLAN.md", "AGENTS.md"):
+            corpus.append((ROOT / rel).read_text())
+        for d in ("docs", "skills"):
+            for p in (ROOT / d).rglob("*.md"):
+                corpus.append(p.read_text())
+        blob = "\n".join(corpus)
+        for frag in ("BM25", "DevOps", "LadybugDB"):
+            self.assertIn(frag, blob, f"{frag} must appear in default index corpus")
