@@ -53,6 +53,7 @@ bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
+bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
 bin/docker-entrypoint  container entrypoint (api: serve|search|watch; index: python)
 compose.yaml  docker composition (root level, not docker/)
 Dockerfile    api (Zig CGO, no Python) + index (Python write)
@@ -88,6 +89,7 @@ bin/facts/audit.go ["self"|"db"|"contradict"]     # 2-source + D16 adjudication
 bin/facts/crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
+bin/brain/search.go "query" --as-of 2025-01-01    # D24 fact intervals
 bin/brain/search.go "query" --no-web              # local graph only
 source <(./bin/cli/complete.go bash)              # flaggy completions (D23)
 eval "$(bin/cgo/zig env)"                         # Zig cc + liblbug (not gcc)
@@ -98,6 +100,10 @@ bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI
 bin/brain/stats.go [--json]
 bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
 bin/brain/serve.go                               # HTTP :8630; GET /openapi.json POST /mcp
+bin/stack/start                                  # brain HTTP/MCP (reuse healthy :8630)
+bin/stack/start-assistant                        # + reasoner + PicoClaw agent
+bin/stack/status                                 # YAML health
+bin/stack/stop                                   # compose stop; volumes kept
 bin/markdown/import.go [dir]                      # H2 leafs → YAML; Python bin/md/import fallback
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence

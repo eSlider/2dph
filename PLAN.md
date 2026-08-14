@@ -9,7 +9,8 @@ v2 board: milestone [v2](https://git.produktor.io/eSlider/2dph/milestone/13) —
 OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
 [#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1 in,
 [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 in,
-[#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 in.
+[#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 in,
+[#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 in.
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
@@ -53,6 +54,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D21 | CGO | Ladybug/tokenizers CGO is compiled with **Zig** (`bin/cgo/zcc` → `zig cc -target …-linux-gnu`), not gcc. `bin/cgo/zig` pins Zig 0.14.1 + liblbug 0.19.1 + libtokenizers 1.27.0. Compose `target: api` has no CPython; write/rebuild is profile `index`. |
 | D22 | analytics | **duckdb-go** in-process (`internal/duckstats`, `bin/qa/stats.go`) for quantiles/JSONL. Links with **gcc/g++**, not Zig. Ladybug stays the graph; web-search cache stays modernc sqlite. Slice small structured docs with **mikefarah/yq**, not kislyuk/jq. [#30](https://git.produktor.io/eSlider/2dph/issues/30). |
 | D23 | CLI | **flaggy** (`github.com/integrii/flaggy`, 0 deps). Flags at any position. Wrapper `internal/cli`. Bash complete: `source <(./bin/cli/complete.go bash)`. No cobra, no stdlib `flag` in Go tools. Search does not intercept the word `completion`. [#34](https://git.produktor.io/eSlider/2dph/issues/34). |
+| D24 | fact intervals | Leaf `valid_from` / `valid_to` (YYYY-MM-DD, inclusive; empty = open/legacy). Search `--as-of` / MCP `as_of` keeps facts active that day. Not D16 `temporal_freshness` (source stale vs HEAD). Empty interval = always visible. [#36](https://git.produktor.io/eSlider/2dph/issues/36). |
 
 ## Architecture
 
@@ -83,7 +85,8 @@ detective method: **a fact needs ≥2 independent sources or it is
                             (libs in internal/chats; no chats index)
     mail/ocr.go             tesseract eng+deu (pdftoppm scans)
     md/import               (deprecated; bin/markdown/import.go)
-    brain/extract  brain/audit   brain/deduce    (thinking wrapper)
+    brain/extract  brain/audit       brain/deduce    (thinking wrapper)
+    stack/start start-assistant stop status
     web/search               (deprecated shim → web/search.go)
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
@@ -101,7 +104,8 @@ them from each hit (1=File, 2=Commit, 3=Person). Rebuild writes
 `Leaf-[:FROM_FILE]->File`; git import writes the rest.
 
 Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
-`where`, `when`, `source_rev`.
+`where`, `when`, `source_rev`. Leaf interval of truth (D24): `valid_from`,
+`valid_to`.
 
 ## Config
 
@@ -132,6 +136,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
   quantiles / JSONL count. Not a second graph. [#30](https://git.produktor.io/eSlider/2dph/issues/30).
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.
+- OQ5: **in** — fact `valid_from` / `valid_to` + `--as-of` / MCP `as_of` (D24).
+  Not D16 `temporal_freshness`. [#36](https://git.produktor.io/eSlider/2dph/issues/36).
 
 ## Mail pipeline (done)
 

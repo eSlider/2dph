@@ -53,12 +53,15 @@ bin/brain/add.go --text "arc-1 runs Matrix" --root facts --source "compose.yml x
 bin/brain/index.go --rebuild --with-facts --with-chats
 bin/brain/search.go "LadybugDB vector index"     # facts → info → web (D17)
 bin/brain/search.go "upstream flag" --no-web
+bin/brain/search.go "who works where" --as-of 2025-01-01  # D24 intervals
 source <(./bin/cli/complete.go bash)            # D23 flaggy complete
 bin/brain/get.go <id> --body
 bin/brain/stats.go
 ```
 
-`--hop N` walks File → Commit → Person from each hit. Empty web results are `throttled`, not absence.
+`--hop N` walks File → Commit → Person from each hit. `--as-of YYYY-MM-DD`
+keeps leafs whose `valid_from`/`valid_to` cover that day (empty interval =
+legacy always-on). Empty web results are `throttled`, not absence.
 Gap to v1: [roadmap](roadmap.md) / [epic #16](https://git.produktor.io/eSlider/2dph/issues/16).
 
 Ladybug 0.19: never `DROP INDEX` FTS/VECTOR (ghost catalog). Fresh indexes =
@@ -67,12 +70,23 @@ delete `var/kb.lbug` then `--rebuild`.
 ## HTTP / MCP
 
 ```bash
+bin/stack/start                 # brain :8630, wait until MCP search/get/audit
+bin/stack/status                # YAML: brain / reasoner / picoclaw
+bin/stack/start-assistant       # + qwen3.5:9b + PicoClaw agent (ask the brain)
+bin/stack/start-assistant --no-attach
+bin/stack/stop                  # compose stop; volumes kept
+```
+
+Same Compose services by hand:
+
+```bash
 docker compose up -d brain                       # :8630 Zig CGO serve
 docker compose --profile index run --rm index    # rebuild
 docker compose --profile picoclaw up brain-mcp   # MCP 127.0.0.1:8630
 ```
 
 `GET /openapi.json`, `POST /mcp`. Agent tool order: `search` → `get` → `audit`.
+See [picoclaw.md](picoclaw.md).
 
 ## Reasoner (optional, D18)
 

@@ -85,7 +85,16 @@ func openWithSandbox(epsv string) error {
 		closeBrain()
 		return fmt.Errorf("LOAD EXTENSION VECTOR: %w", err)
 	}
+	migrateIntervalColumns()
 	return nil
+}
+
+// migrateIntervalColumns adds D24 valid_from/valid_to on existing Leaf tables.
+// Fresh CREATE already has them; ALTER is a no-op when the column exists.
+func migrateIntervalColumns() {
+	for _, col := range []string{"valid_from", "valid_to"} {
+		_, _ = conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
+	}
 }
 
 func closeBrain() {

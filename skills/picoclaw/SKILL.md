@@ -12,6 +12,12 @@ PicoClaw speaks MCP at `POST /mcp` on `bin/brain/serve.go`. Compose profile
 `picoclaw` runs the official `sipeed/picoclaw` gateway plus `brain-mcp`
 (see [docs/picoclaw.md](../../docs/picoclaw.md)).
 
+```bash
+bin/stack/start-assistant     # brain + qwen3.5:9b + gateway + picoclaw agent
+bin/stack/status
+bin/stack/stop
+```
+
 ## Tool order (before a factual reply)
 
 1. **`search`** — facts root first, then info. The `web` block is a second

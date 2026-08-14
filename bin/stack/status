@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# bin/stack/status - YAML health for brain MCP, reasoner model, PicoClaw gateway.
+#
+#   bin/stack/status
+#   bin/stack/status | yq '.picoclaw'
+set -euo pipefail
+
+STACK_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+# shellcheck source=lib.sh
+source "$STACK_DIR/lib.sh"
+case "${1:-}" in
+-h | --help)
+	stack_usage "$0"
+	exit 0
+	;;
+esac
+stack_status
