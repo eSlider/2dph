@@ -4,7 +4,9 @@ A brain that loves facts and deduction. Evidence-first knowledge graph + hybrid
 RAG over the operational Brain/ops/eSlider stack. Built like Sherlock
 Holmes: nothing is asserted unless it has proof.
 
-Status: **in progress** — this file is the plan and the record of decisions.
+Status: **in progress** — read path + MCP work; v1 goal is [epic #16](https://git.produktor.io/eSlider/2dph/issues/16)
+(milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12)).
+Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
 
@@ -41,7 +43,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D15 | repo | Gitea [`eSlider/2dph`](https://git.produktor.io/eSlider/2dph) is origin + [issues](https://git.produktor.io/eSlider/2dph/issues). GitHub `eSlider/2dph` is the public clone (PRs + Actions CI). No direct `main` pushes. TDD → PR → CI green → merge. |
 | D16 | contradictions | ≥2 yes vs ≥2 no → unrelated sources conflict → hypothesis → `(not confirmed)`. Resolution (authority, staleness adjudication) = **v2**, tracked as open question. |
 | D17 | assertion gate | Fact-check every *claim* (facts → info → live → web), not every edit. `bin/brain/search.go` adds a `web` block when there is no facts hit (`throttled`/`skipped`/`refused` ≠ absence). `--root` and `--no-web` stay local. Missing graph ≠ “does not exist”. |
-| D18 | reasoner | Pluggable OpenAI-compatible URL (`REASONER_BASE_URL`). RAM: `Qwen/Qwen3.5-9B`. Quality: `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B. CPU bake-off: `bin/reasoner/bakeoff.go` + compose profile `reasoner` (`OLLAMA_NUM_GPU=0`, `:11435`). PicoClaw is not shipped; tools are `search`/`get`/`audit`. Weights are not copied into the 2dph image. |
+| D18 | reasoner | Pluggable OpenAI-compatible URL (`REASONER_BASE_URL`). RAM: `Qwen/Qwen3.5-9B`. Quality: `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B. CPU bake-off: `bin/reasoner/bakeoff.go` + compose profile `reasoner` (`OLLAMA_NUM_GPU=0`, `:11435`). PicoClaw is compose profile `picoclaw`; tools are `search`/`get`/`audit`. Weights are not copied into the 2dph image. Agent lever/loop: [#15](https://git.produktor.io/eSlider/2dph/issues/15). |
 | D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
 | D20 | agent API | OpenAPI + MCP are generated from the same `internal/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`). |
 | D21 | CGO | Ladybug/tokenizers CGO is compiled with **Zig** (`bin/cgo/zcc` → `zig cc -target …-linux-gnu`), not gcc. `bin/cgo/zig` pins Zig 0.14.1 + liblbug 0.19.1 + libtokenizers 1.27.0. Compose `target: api` has no CPython; write/rebuild is profile `index`. |
@@ -83,7 +85,8 @@ detective method: **a fact needs ≥2 independent sources or it is
 
 Node tables: `Person, Service, Host, Container, Repo, File, Commit, Leaf`.
 `Leaf(embedding FLOAT[N])` — FTS on `text`, HNSW vector index on `embedding`.
-Edges: `RUNS / USES / HAS_VERSION / AUTHORED / ABOUT / ASSOCIATED / SIMILAR_0.85`.
+Edges: `RUNS / USES / FROM_FILE / HAS_VERSION / AUTHORED / ABOUT / ASSOCIATED / SIMILAR_0.85`.
+`FROM_FILE` / `HAS_VERSION` exist in schema; search `--hop` does not walk them yet ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
 Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 `where`, `when`, `source_rev`.
@@ -108,9 +111,9 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 ## Open questions (v2)
 
 - OQ1: mutually-contradicting evidence — how to resolve (authority weighting,
-  temporal freshness, audit adjudication).
-- OQ2: OCR pipeline for pdfs/images/docs — mostly solved: poppler pdftotext
-  fast-path for born-digital PDFs, docling fallback for the ~5% textless ones.
+  temporal freshness, audit adjudication). **v2**; does not block epic #16.
+- OQ2: OCR — poppler `pdftotext` fast-path exists; scans still docling.
+  [#6](https://git.produktor.io/eSlider/2dph/issues/6) (v2, does not block #16).
 - OQ3: optional duckdb-md layer for `SELECT … FORMAT MARKDOWN` export/write-back.
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.
@@ -138,6 +141,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 3. python -m unittest discover -s bin/tools (includes published-docs SoT)
 4. `bin/facts/audit self` (lexicon internal consistency; `bin/facts/audit.go` is the D14 wrapper)
 5. `bin/kb/eval` (recall@5 ≥ 0.95). Local SoT is `bin/brain/eval.go` via Zig CGO.
+   CI SoT switch: [#19](https://git.produktor.io/eSlider/2dph/issues/19).
 6. `bin/cgo/zig go build -tags system_ladybug` (compile search with zig cc; fetches pinned zig+libs).
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
@@ -151,5 +155,23 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 4. .venv: ladybug + model2vec + mistune
 5. schema + tools with TDD (kb + md + facts + brain)
 6. ~/.config/brain config
-7. corpus extraction (facts/info)
+7. corpus extraction (facts/info) — **open**: [#18](https://git.produktor.io/eSlider/2dph/issues/18)
 8. verify: web-search smoke, onlyoffice pg, md-db round-trip, eval, audit
+
+## Gap to v1 (epic #16)
+
+Read path + MCP are in. The detective brain is not closed until the graph is
+**writable incrementally** and search can **walk** it. Board:
+[epic #16](https://git.produktor.io/eSlider/2dph/issues/16),
+milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12).
+Narrative: [docs/roadmap.md](docs/roadmap.md).
+
+| Order | Issue | Gap |
+|-------|-------|-----|
+| 1 | [#14](https://git.produktor.io/eSlider/2dph/issues/14) | Write stays Python rebuild; `brain/add` / `POST /ingest` are hints. Ladybug 0.19 WAL corrupts if new leafs land while FTS/HNSW exist. |
+| 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | `--hop` errors. `FROM_FILE` / `HAS_VERSION` are in schema; search does not walk them. |
+| 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | Rebuild is mostly `info` (repo md + mail). `facts/extract` and chats are not a first-class index input. WhatsApp sync is a stub. |
+| 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | Lever = 2dph fact-check. Loop = PicoClaw/MCP `search` → `get` → `audit`. Specify in-repo, not only live config. |
+| 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | GitHub CI recall still runs Python `bin/kb/eval`. |
+
+Does **not** block epic close: [#6](https://git.produktor.io/eSlider/2dph/issues/6) OCR, OQ1, OQ3, OQ4.
