@@ -49,7 +49,7 @@ corpus rebuild remains `bin/brain/index.go --rebuild` (Compose profile
 
 ```bash
 bin/brain/add.go --text "arc-1 runs Matrix" --root facts --source "compose.yml x docker ps"
-bin/brain/index.go --rebuild
+bin/brain/index.go --rebuild --with-facts --with-chats
 bin/brain/search.go "LadybugDB vector index"     # facts → info → web (D17)
 bin/brain/search.go "upstream flag" --no-web
 bin/brain/get.go <id> --body

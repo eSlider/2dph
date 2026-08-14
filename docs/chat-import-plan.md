@@ -21,4 +21,5 @@ OO_CLI                     (default: $HOME/go/bin/oo)
 ./bin/chats/apply.go --dry-run
 ```
 
-JSONL → markdown only. Brain ingest is `bin/brain/index.go` (not a `chats index`).
+JSONL → markdown only. Brain ingest is `bin/brain/index.go --with-chats`
+(default `var/chats/md`). WhatsApp sync is out of v1.

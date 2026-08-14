@@ -121,6 +121,7 @@ Mail is a first-class corpus (retrievable through the same search):
 bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
 bin/mail/import.go --from-raw var/mail                                  # JSON → markdown
 bin/brain/add.go --text T --root facts --source "a.md x b.md"
+bin/brain/index.go --rebuild --with-facts --with-chats                  # facts extract + chats md
 bin/brain/index.go --rebuild                                            # rebuild brain (incl. mail)
 bin/brain/search.go "invoice from last week"                            # same search over mail leafs
 ```

@@ -29,10 +29,11 @@ func main() {
 	case "linkedin":
 		os.Exit(chats.RunSyncLinkedIn(args))
 	case "whatsapp":
-		fmt.Fprintln(os.Stderr, "chats: WhatsApp not implemented yet")
+		fmt.Fprintln(os.Stderr, "chats: WhatsApp sync is out of v1")
 		os.Exit(1)
 	case "help", "-h", "--help":
-		fmt.Fprintln(os.Stderr, `usage: bin/chats/sync.go telegram|linkedin [flags]`)
+		fmt.Fprintln(os.Stderr, `usage: bin/chats/sync.go telegram|linkedin [flags]
+WhatsApp sync is out of v1.`)
 		return
 	default:
 		fmt.Fprintf(os.Stderr, "chats: unknown platform %q\n", platform)
