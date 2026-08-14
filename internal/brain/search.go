@@ -56,6 +56,12 @@ func runSearch(args []string) int {
 		fmt.Fprintf(os.Stderr, "search: %v\n", err)
 		return 1
 	}
+	if opt.Hop > 0 {
+		if err := attachHops(hits, opt.Hop); err != nil {
+			fmt.Fprintf(os.Stderr, "hop: %v\n", err)
+			return 1
+		}
+	}
 
 	results := hits
 	for i := range results {
@@ -106,6 +112,44 @@ func searchHits(query, root, repo string, limit int) ([]Hit, error) {
 		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
 	}
 	return rank.RankAndFilter(fts, vec, root, repo, limit), nil
+}
+
+func attachHops(hits []Hit, n int) error {
+	if conn == nil {
+		return fmt.Errorf("brain not open")
+	}
+	for i := range hits {
+		var hops []rank.HopNode
+		for d := 1; d <= n; d++ {
+			stmt, err := conn.Prepare(rank.HopStmt(d))
+			if err != nil {
+				return err
+			}
+			res, err := conn.Execute(stmt, map[string]any{"id": hits[i].ID})
+			stmt.Close()
+			if err != nil {
+				return err
+			}
+			for res.HasNext() {
+				row, err := res.Next()
+				if err != nil {
+					return err
+				}
+				vals, err := row.GetAsSlice()
+				if err != nil || len(vals) < 3 {
+					continue
+				}
+				hops = append(hops, rank.HopNode{
+					ID:    fmt.Sprint(vals[0]),
+					Label: rank.HopLabel(d),
+					Name:  fmt.Sprint(vals[1]),
+					Depth: int(asInt(vals[2])),
+				})
+			}
+		}
+		hits[i].Hops = hops
+	}
+	return nil
 }
 
 func b2i(err error) int {
@@ -183,11 +227,12 @@ type jsonOut struct {
 }
 
 type jsonHit struct {
-	ID      string  `json:"id"`
-	Text    string  `json:"text"`
-	Root    string  `json:"root"`
-	Score   float64 `json:"score"`
-	Snippet string  `json:"snippet,omitempty"`
+	ID      string         `json:"id"`
+	Text    string         `json:"text"`
+	Root    string         `json:"root"`
+	Score   float64        `json:"score"`
+	Snippet string         `json:"snippet,omitempty"`
+	Hops    []rank.HopNode `json:"hops,omitempty"`
 }
 
 func toJSONOut(hits []Hit, query, rootFilter string, web *rank.SecondSource) *jsonOut {
@@ -199,6 +244,7 @@ func toJSONOut(hits []Hit, query, rootFilter string, web *rank.SecondSource) *js
 			Root:    h.Root,
 			Score:   h.Score,
 			Snippet: h.Snippet,
+			Hops:    h.Hops,
 		}
 	}
 	return &jsonOut{
@@ -221,6 +267,18 @@ func resultsToDicts(hits []Hit) []any {
 		}
 		if h.Snippet != "" {
 			d = append(d, KV{"snippet", h.Snippet})
+		}
+		if len(h.Hops) > 0 {
+			nodes := make([]any, len(h.Hops))
+			for j, n := range h.Hops {
+				nodes[j] = Dict{
+					{"id", n.ID},
+					{"label", n.Label},
+					{"name", n.Name},
+					{"depth", n.Depth},
+				}
+			}
+			d = append(d, KV{"hops", nodes})
 		}
 		out[i] = d
 	}

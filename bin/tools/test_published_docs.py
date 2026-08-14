@@ -1,7 +1,6 @@
-"""Published docs must match live commands (Gitea SoT, brain/search, no fake --hop)."""
+"""Published docs must match live commands (Gitea SoT, brain/search)."""
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -139,24 +138,21 @@ class PublishedDocsTest(unittest.TestCase):
         skill = (ROOT / "skills" / "brain" / "SKILL.md").read_text()
         self.assertIn("`web` block", skill)
 
-    def test_docs_do_not_claim_hop_walks(self) -> None:
+    def test_docs_say_hop_walks_from_file(self) -> None:
         paths = [
             ROOT / "README.md",
             ROOT / "docs" / "design.md",
             ROOT / "skills" / "brain" / "SKILL.md",
-            ROOT / "skills" / "diataxis-docs" / "SKILL.md",
             ROOT / "docs" / "runbook.md",
             ROOT / "docs" / "README.md",
-            ROOT / "docs" / "roadmap.md",
         ]
-        # Command-style `--hop 1` / `--hop N` plus follow/walk = the old lie.
-        # Honest "not implemented" notes must not match.
-        lie = re.compile(r"--hop (?:N|1).*(?:follow|walk)", re.I | re.S)
         for path in paths:
             text = path.read_text()
-            self.assertIsNone(
-                lie.search(text),
-                f"{path.relative_to(ROOT)} still claims --hop walks the graph",
+            self.assertIn("--hop", text, f"{path.relative_to(ROOT)} must document --hop")
+            self.assertNotIn(
+                "not implemented",
+                text.lower(),
+                f"{path.relative_to(ROOT)} still says hop is not implemented",
             )
 
     def test_docs_are_portable_diataxis(self) -> None:

@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "bin" / "tools"))
 
 from kblib import (  # noqa: E402
-    connect, ensure_indexes, init_schema, upsert_leaf,
+    connect, ensure_indexes, init_schema, upsert_leaf, link_from_file,
     open_readonly, stats,
 )
 from mdleaves import read_markdown, to_all, walk_markdown  # noqa: E402
@@ -81,10 +81,11 @@ def index_leafs(conn, leafs: list[dict], embed_fn, limit: int) -> tuple[int, int
     for lf in leafs[:limit] if limit else leafs:
         query = f"{lf['heading']}\n\n{lf['text']}"
         emb = embed_fn(lf["text"]) if lf["text"] else None
-        upsert_leaf(conn, text=query, root="info", confidence="confirmed",
+        lid = upsert_leaf(conn, text=query, root="info", confidence="confirmed",
                     source=lf["source"], source_rev="working-tree",
                     how="kb/index", loc=lf["source"], type_=lf.get("type", "reference"),
                     embedding=emb)
+        link_from_file(conn, lid, lf["source"], repo=str(lf.get("repo") or ""))
         count += 1
     return count, len(leafs)
 

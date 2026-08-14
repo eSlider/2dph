@@ -91,15 +91,41 @@ func TestHybridKeepsVectorScoreForSharedHit(t *testing.T) {
 }
 
 // The old parser dropped unknown flags and appended their arguments to the
-// query, so `search "q" --hop 1` searched for "q 1". --hop is not implemented
-// here (needs File edges); it must still fail closed instead of changing q.
+// query, so `search "q" --hop 1` searched for "q 1". --hop must stay a flag.
 func TestParseHopIsNotSwallowedIntoTheQuery(t *testing.T) {
-	_, err := ParseArgs([]string{"what runs on arc-2", "--hop", "1"})
-	if err == nil {
-		t.Fatal("expected --hop to error (not implemented), not be swallowed")
+	opt, err := ParseArgs([]string{"what runs on arc-2", "--hop", "1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "--hop") {
-		t.Fatalf("error should name --hop, got %v", err)
+	if opt.Query != "what runs on arc-2" {
+		t.Fatalf("query swallowed hop arg: %q", opt.Query)
+	}
+	if opt.Hop != 1 {
+		t.Fatalf("hop = %d, want 1", opt.Hop)
+	}
+}
+
+func TestParseHopMaxIsThree(t *testing.T) {
+	if _, err := ParseArgs([]string{"q", "--hop", "4"}); err == nil {
+		t.Fatal("expected --hop 4 to error")
+	}
+	opt, err := ParseArgs([]string{"q", "--hop", "3"})
+	if err != nil || opt.Hop != 3 {
+		t.Fatalf("hop 3: %+v err=%v", opt, err)
+	}
+}
+
+func TestHopStmtWalksFromFile(t *testing.T) {
+	s := HopStmt(1)
+	if !strings.Contains(s, "FROM_FILE") || !strings.Contains(s, "File") {
+		t.Fatalf("hop 1 must walk FROM_FILE, got %q", s)
+	}
+	s3 := HopStmt(3)
+	if !strings.Contains(s3, "HAS_VERSION") || !strings.Contains(s3, "AUTHORED") || !strings.Contains(s3, "Person") {
+		t.Fatalf("hop 3 must reach Person, got %q", s3)
+	}
+	if HopLabel(1) != "File" || HopLabel(3) != "Person" {
+		t.Fatal("hop labels")
 	}
 }
 

@@ -88,7 +88,9 @@ detective method: **a fact needs ≥2 independent sources or it is
 Node tables: `Person, Service, Host, Container, Repo, File, Commit, Leaf`.
 `Leaf(embedding FLOAT[N])` — FTS on `text`, HNSW vector index on `embedding`.
 Edges: `RUNS / USES / FROM_FILE / HAS_VERSION / AUTHORED / ABOUT / ASSOCIATED / SIMILAR_0.85`.
-`FROM_FILE` / `HAS_VERSION` exist in schema; search `--hop` does not walk them yet ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
+`FROM_FILE` / `HAS_VERSION` / `AUTHORED`: `bin/brain/search.go --hop N` walks
+them from each hit (1=File, 2=Commit, 3=Person). Rebuild writes
+`Leaf-[:FROM_FILE]->File`; git import writes the rest.
 
 Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 `where`, `when`, `source_rev`.
@@ -162,9 +164,8 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 
 ## Gap to v1 (epic #16)
 
-Read path + MCP are in. Incremental `brain/add` is in. The detective brain is
-not closed until search can **walk** the graph and the facts+chats corpus
-lands on rebuild. Board:
+Read path + MCP are in. Incremental `brain/add` and `--hop` are in. Remaining:
+facts+chats corpus on rebuild, and CI eval SoT. Board:
 [epic #16](https://git.produktor.io/eSlider/2dph/issues/16),
 milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12).
 Narrative: [docs/roadmap.md](docs/roadmap.md).
@@ -172,7 +173,7 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | Order | Issue | Gap |
 |-------|-------|-----|
 | 1 | [#14](https://git.produktor.io/eSlider/2dph/issues/14) | **in** — `bin/brain/add.go` / `POST /ingest` write facts+info without deleting `kb.lbug`. Bulk corpus still `--rebuild`. Leftover Python (mail/facts) is not the living-graph blocker. |
-| 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | `--hop` errors. `FROM_FILE` / `HAS_VERSION` are in schema; search does not walk them. |
+| 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | **in** — `--hop N` walks `FROM_FILE` → `HAS_VERSION` → `AUTHORED` (max 3). |
 | 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | Rebuild is mostly `info` (repo md + mail). `facts/extract` and chats are not a first-class index input. WhatsApp sync is a stub. |
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | GitHub CI recall still runs Python `bin/kb/eval`. |

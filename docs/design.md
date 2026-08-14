@@ -34,9 +34,9 @@ bin/brain/search.go "question"
      is not evidence of absence; `--no-web` / `--root` skip it)
 ```
 
-`--hop` is not implemented. `FROM_FILE` / `HAS_VERSION` exist in schema;
-search does not walk them ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
-The flag is an error; it is not a graph walk.
+`--hop N` walks `Leaf-[:FROM_FILE]->File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`
+from each hit (1=File, 2=Commit, 3=Person). Rebuild writes FROM_FILE;
+git import writes HAS_VERSION/AUTHORED ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
 ## Who / What / How / Where / When + evidence
 
