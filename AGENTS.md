@@ -3,7 +3,8 @@
 Evidence-first brain over the ops/eSlider stack. Facts need proof or they are
 `(not confirmed)`.
 
-Read first: [PLAN](PLAN.md) → [docs](docs/).
+Read first: [PLAN](PLAN.md) → [docs](docs/) → [roadmap](docs/roadmap.md)
+(epic [#16](https://git.produktor.io/eSlider/2dph/issues/16)).
 
 ## Method (detective, no fork)
 

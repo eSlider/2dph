@@ -31,8 +31,9 @@ bin/brain/stats.go                                     # index health
 bin/brain/eval.go                                      # recall@5 >= 0.95 gate (Go; Python bin/kb/eval is CI fallback)
 ```
 
-`bin/kb/search` is a deprecated wrapper. `--hop` errors (File/FROM_FILE edges
-are not wired yet); do not treat it as a graph walk.
+`bin/kb/search` is a deprecated wrapper. `--hop` errors (schema has
+`FROM_FILE`; search does not walk it yet, [#17](https://git.produktor.io/eSlider/2dph/issues/17));
+do not treat it as a graph walk.
 
 ## Rules
 

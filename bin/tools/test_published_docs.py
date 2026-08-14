@@ -147,6 +147,7 @@ class PublishedDocsTest(unittest.TestCase):
             ROOT / "skills" / "diataxis-docs" / "SKILL.md",
             ROOT / "docs" / "runbook.md",
             ROOT / "docs" / "README.md",
+            ROOT / "docs" / "roadmap.md",
         ]
         # Command-style `--hop 1` / `--hop N` plus follow/walk = the old lie.
         # Honest "not implemented" notes must not match.
@@ -173,3 +174,19 @@ class PublishedDocsTest(unittest.TestCase):
         readme = (ROOT / "README.md").read_text()
         self.assertIn("docs/runbook.md", readme)
         self.assertNotIn("search.ops.io", readme)
+
+    def test_v1_epic_is_named_in_docs(self) -> None:
+        plan = (ROOT / "PLAN.md").read_text()
+        self.assertIn("Gap to v1", plan)
+        self.assertIn("eSlider/2dph/issues/16", plan)
+        self.assertIn("eSlider/2dph/issues/17", plan)
+        self.assertIn("eSlider/2dph/milestone/12", plan)
+        road = (ROOT / "docs" / "roadmap.md").read_text()
+        self.assertIn("type: explanation", road)
+        self.assertIn("issues/16", road)
+        self.assertIn("issues/14", road)
+        index = (ROOT / "docs" / "README.md").read_text()
+        self.assertIn("roadmap.md", index)
+        self.assertIn("epic #16", index)
+        agents = (ROOT / "AGENTS.md").read_text()
+        self.assertIn("roadmap.md", agents)
