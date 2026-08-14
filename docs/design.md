@@ -80,14 +80,16 @@ Conflicting pairings (≥2 yes vs ≥2 no) = hypothesis (OQ1 → v2 resolution).
 They do not exec Python. Control questions for recall@5 live in
 `internal/brain/rank` so CI can test the table without libladybug.
 Python `bin/kb/{get,stats,eval}` remain for GitHub Actions until the runner
-fetches Zig + libs (`bin/cgo/zig`). Index/write is still `bin/kb/index`
+fetches Zig + libs (`bin/cgo/zig`). Incremental write is `bin/kb/add`
+(`bin/brain/add.go`). Bulk index/write is still `bin/kb/index`
 (`docker compose --profile index`).
 
 ## Agent API (D20)
 
 `bin/brain/serve.go` exposes the same `internal/httpapi.Ops` table as OpenAPI
 (`GET /openapi.json`) and MCP (`POST /mcp` JSON-RPC `tools/list` +
-`tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`.
+`tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`,
+`ingest` (add a leaf; omit body for the CLI hint).
 Agents should use these endpoints instead of shebang CLIs.
 
 ## Reasoner (D18)
@@ -98,5 +100,5 @@ CPU sidecar: compose profile `reasoner` (`OLLAMA_NUM_GPU=0`,
 `127.0.0.1:11435`). Bake-off: `bin/reasoner/bakeoff.go`. Weights stay out
 of the 2dph image. See [docs/reasoner.md](reasoner.md).
 
-Gap to v1 (write, hops, corpus, agent loop): [roadmap](roadmap.md),
+Gap to v1 (hops, corpus, CI eval): [roadmap](roadmap.md),
 [epic #16](https://git.produktor.io/eSlider/2dph/issues/16).

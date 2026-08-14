@@ -7,8 +7,8 @@
 //	./bin/brain/index.go --rebuild --with-mail
 //	./bin/brain/index.go --dry-run --with-mail
 //
-// v1 write is always a rebuild when mail is included (live FTS/HNSW + bulk
-// insert corrupts Ladybug 0.19 WAL). `add` is v2.
+// v1 write: bin/brain/add.go for one/few leafs (indexes may already exist).
+// Bulk mail/corpus still --rebuild (fresh file, indexes last).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""kb/add - incremental leaf write (no rebuild).
+
+  bin/kb/add --text T --root facts|info --source S
+  bin/kb/add --json                 # stdin: one object or {"leafs":[...]}
+  bin/kb/add --db PATH --json
+
+Writes facts+info in one Ladybug transaction. Does not delete kb.lbug.
+Embedding is used when provided; otherwise model2vec encodes the text.
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "bin" / "tools"))
+
+from kblib import (  # noqa: E402
+    EMBED_DIM,
+    add_leafs,
+    connect,
+    ensure_indexes,
+    init_schema,
+)
+
+
+def _as_leafs(payload: object) -> list[dict]:
+    if isinstance(payload, list):
+        return [dict(x) for x in payload]
+    if isinstance(payload, dict):
+        if "leafs" in payload:
+            return [dict(x) for x in payload["leafs"]]
+        return [dict(payload)]
+    raise ValueError("json must be an object, a list, or {leafs:[...]}")
+
+
+def _embed_missing(leafs: list[dict]) -> None:
+    missing = [lf for lf in leafs if not lf.get("embedding")]
+    if not missing:
+        return
+    from model2vec import StaticModel
+
+    model = StaticModel.from_pretrained("minishlab/potion-multilingual-128M")
+    for lf in missing:
+        text = str(lf.get("text") or "")
+        vec = model.encode([text])[0].astype(float).tolist()
+        if len(vec) != EMBED_DIM:
+            vec = (vec + [0.0] * EMBED_DIM)[:EMBED_DIM]
+        lf["embedding"] = vec
+
+
+def main(argv: list[str]) -> int:
+    import argparse
+
+    p = argparse.ArgumentParser(description="add leafs without rebuilding the brain")
+    p.add_argument("--db", default="", help="path to kb.lbug (default var/kb.lbug)")
+    p.add_argument("--json", action="store_true", help="read leaf JSON from stdin")
+    p.add_argument("--text", default="", help="leaf text")
+    p.add_argument("--root", default="info", choices=("facts", "info"))
+    p.add_argument("--source", default="")
+    p.add_argument("--confidence", default="confirmed")
+    p.add_argument("--source-rev", default="working-tree")
+    p.add_argument("--how", default="brain/add")
+    p.add_argument("--loc", default="")
+    p.add_argument("--type", default="reference", dest="type_")
+    args = p.parse_args(argv)
+
+    if args.json:
+        raw = sys.stdin.read()
+        if not raw.strip():
+            print("kb/add: empty stdin", file=sys.stderr)
+            return 2
+        leafs = _as_leafs(json.loads(raw))
+    else:
+        if not args.text or not args.source:
+            print("kb/add: --text and --source are required (or --json)", file=sys.stderr)
+            return 2
+        leafs = [{
+            "text": args.text,
+            "root": args.root,
+            "source": args.source,
+            "confidence": args.confidence,
+            "source_rev": args.source_rev,
+            "how": args.how,
+            "loc": args.loc or args.source,
+            "type": args.type_,
+        }]
+
+    for lf in leafs:
+        if not lf.get("text") or not lf.get("source"):
+            print("kb/add: each leaf needs text and source", file=sys.stderr)
+            return 2
+
+    _embed_missing(leafs)
+
+    from kblib import DB_PATH, VAR
+
+    dbpath = Path(args.db) if args.db else DB_PATH
+    dbpath.parent.mkdir(parents=True, exist_ok=True)
+    VAR.mkdir(exist_ok=True)
+    db, conn = connect(dbpath, read_only=False)
+    init_schema(conn)
+    ids = add_leafs(conn, leafs)
+    ensure_indexes(conn)
+    conn.close()
+    db.close()
+    print(json.dumps({"mode": "add", "ids": ids, "db": str(dbpath)}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

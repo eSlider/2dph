@@ -31,9 +31,9 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D3 | web search | Go client `bin/web/search.go` (`internal/websearch`). SearXNG URL is config (`BRAIN_SEARCH_URL`). Optional Compose profile `searxng` (sanitized settings). Do not run a second copy on a host that already has one. Empty/`throttled` ≠ “nothing exists”. |
 | D4 | embeddings | **model2vec** `minishlab/potion-multilingual-128M` instead of embeddinggemma. |
 | D5 | parser | **mistune** for MD → leaf extraction (duckdb-md documented as future optional SQL/export layer, not v1). |
-| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`). Read path is Go + Zig CGO (D21). Python `bin/kb/{get,stats,eval}` is the CI fallback when Zig/libs are not fetched. Index/write stays Python (`compose --profile index`) until the Go write path is safe. |
+| D6 | graph engine | **LadybugDB**. Go is the service (`bin/brain/search.go`, `bin/brain/serve.go` in-process, `internal/brain`). Read path is Go + Zig CGO (D21). Python `bin/kb/{get,stats,eval}` is the CI fallback when Zig/libs are not fetched. Incremental write is Python `bin/kb/add` (`bin/brain/add.go`). Bulk rebuild stays `compose --profile index` until the Go write path is safe. |
 | D7 | db access | `db-yaml`/`psql-yq`-style, read-only, YAML out. OnlyOffice Postgres via SSH tunnel (`127.0.0.1:5433`). |
-| D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. Auto-pair docker ps × compose × ssh-config × docs. |
+| D8 | evidence | detective method: ≥2 independent sources or `(not confirmed)`. 2-source auto-pair docker ps × compose × ssh-config × docs. |
 | D9 | facts/goal model | Who / What / How / Where / When + evidence + confidence on every edge. |
 | D10 | versioning | everything is a leaf with `sha256 + observed_at + source_rev`; `File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`. Stale = `source_rev` < git HEAD. |
 | D11 | strong/weak | `root` column: `facts` (strong) vs `info` (weak). Answer is `confirmed` only from facts root. |
@@ -45,7 +45,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D17 | assertion gate | Fact-check every *claim* (facts → info → live → web), not every edit. `bin/brain/search.go` adds a `web` block when there is no facts hit (`throttled`/`skipped`/`refused` ≠ absence). `--root` and `--no-web` stay local. Missing graph ≠ “does not exist”. |
 | D18 | reasoner | Pluggable OpenAI-compatible URL (`REASONER_BASE_URL`). RAM: `Qwen/Qwen3.5-9B`. Quality: `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B. CPU bake-off: `bin/reasoner/bakeoff.go` + compose profile `reasoner` (`OLLAMA_NUM_GPU=0`, `:11435`). PicoClaw is compose profile `picoclaw`; tools are `search`/`get`/`audit`. Weights are not copied into the 2dph image. Agent lever/loop: [#15](https://git.produktor.io/eSlider/2dph/issues/15). |
 | D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
-| D20 | agent API | OpenAPI + MCP are generated from the same `internal/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`). |
+| D20 | agent API | OpenAPI + MCP are generated from the same `internal/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`/`ingest`). |
 | D21 | CGO | Ladybug/tokenizers CGO is compiled with **Zig** (`bin/cgo/zcc` → `zig cc -target …-linux-gnu`), not gcc. `bin/cgo/zig` pins Zig 0.14.1 + liblbug 0.19.1 + libtokenizers 1.27.0. Compose `target: api` has no CPython; write/rebuild is profile `index`. |
 
 ## Architecture
@@ -57,8 +57,10 @@ detective method: **a fact needs ≥2 independent sources or it is
   skills/                   in-project skills (web-search, postgres, brain, picoclaw, diataxis-docs)
   bin/
     facts/extract.go audit.go crm.go  # D14 shebang; Python implementation
-    kb/index                Python write path (called by bin/brain/index.go)
+    kb/index                Python bulk write (called by bin/brain/index.go)
+    kb/add                  Python incremental write (called by bin/brain/add.go)
     brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
+    brain/add.go            incremental leaf write (no rebuild)
     brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
     brain/watch.go
     brain/search.go         deduction: facts → info → web-search
@@ -160,18 +162,19 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 
 ## Gap to v1 (epic #16)
 
-Read path + MCP are in. The detective brain is not closed until the graph is
-**writable incrementally** and search can **walk** it. Board:
+Read path + MCP are in. Incremental `brain/add` is in. The detective brain is
+not closed until search can **walk** the graph and the facts+chats corpus
+lands on rebuild. Board:
 [epic #16](https://git.produktor.io/eSlider/2dph/issues/16),
 milestone [v1 detective brain](https://git.produktor.io/eSlider/2dph/milestone/12).
 Narrative: [docs/roadmap.md](docs/roadmap.md).
 
 | Order | Issue | Gap |
 |-------|-------|-----|
-| 1 | [#14](https://git.produktor.io/eSlider/2dph/issues/14) | Write stays Python rebuild; `brain/add` / `POST /ingest` are hints. Ladybug 0.19 WAL corrupts if new leafs land while FTS/HNSW exist. |
+| 1 | [#14](https://git.produktor.io/eSlider/2dph/issues/14) | **in** — `bin/brain/add.go` / `POST /ingest` write facts+info without deleting `kb.lbug`. Bulk corpus still `--rebuild`. Leftover Python (mail/facts) is not the living-graph blocker. |
 | 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | `--hop` errors. `FROM_FILE` / `HAS_VERSION` are in schema; search does not walk them. |
 | 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | Rebuild is mostly `info` (repo md + mail). `facts/extract` and chats are not a first-class index input. WhatsApp sync is a stub. |
-| 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | Lever = 2dph fact-check. Loop = PicoClaw/MCP `search` → `get` → `audit`. Specify in-repo, not only live config. |
+| 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | GitHub CI recall still runs Python `bin/kb/eval`. |
 
 Does **not** block epic close: [#6](https://git.produktor.io/eSlider/2dph/issues/6) OCR, OQ1, OQ3, OQ4.

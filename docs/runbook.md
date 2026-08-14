@@ -43,10 +43,12 @@ That binds `127.0.0.1:8888`. JSON format must stay enabled.
 
 ## Index then search
 
-Write path is Compose profile `index` (Python Ladybug rebuild) until
-`brain/add` is v2. The operator command is `bin/brain/index.go`.
+Write path is `bin/brain/add.go` for a leaf (or `POST /ingest`). Bulk
+corpus rebuild remains `bin/brain/index.go --rebuild` (Compose profile
+`index`). Do not DROP INDEX on Ladybug 0.19.
 
 ```bash
+bin/brain/add.go --text "arc-1 runs Matrix" --root facts --source "compose.yml x docker ps"
 bin/brain/index.go --rebuild
 bin/brain/search.go "LadybugDB vector index"     # facts → info → web (D17)
 bin/brain/search.go "upstream flag" --no-web
