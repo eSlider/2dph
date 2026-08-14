@@ -9,6 +9,7 @@ require (
 	github.com/daulet/tokenizers v1.27.0
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
 	github.com/go-git/go-git/v5 v5.19.2
+	github.com/integrii/flaggy v1.8.0
 	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.40.0
 	modernc.org/sqlite v1.56.0

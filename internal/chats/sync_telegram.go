@@ -2,33 +2,28 @@ package chats
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	cliparse "github.com/eSlider/2dph/internal/cli"
 )
 
 func RunSyncTelegram(args []string) int {
-	fs := flag.NewFlagSet("chats sync telegram", flag.ContinueOnError)
-	limit := fs.Int("limit", 0, "max messages per chat (0 = all)")
-	phone := fs.String("phone", "", "phone number (default env TELEGRAM_PHONE)")
-	help := fs.Bool("help", false, "")
-	fs.SetOutput(os.Stderr)
-	if err := fs.Parse(args); err != nil {
-		return 2
+	f, err := parseTelegramFlags(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
-	if *help {
-		fmt.Fprintln(os.Stderr, "usage: chats sync telegram [--limit N] [--phone PHONE]")
-		return 0
-	}
+	limit := f.Limit
+	phone := f.Phone
 
 	apiIDStr := envVar("TELEGRAM_API_ID", "")
 	apiHash := envVar("TELEGRAM_API_HASH", "")
 	sessionStr := envVar("TELEGRAM_SESSION_STRING", "")
-	phoneNum := *phone
+	phoneNum := phone
 	if phoneNum == "" {
 		phoneNum = envVar("TELEGRAM_PHONE", "")
 	}
@@ -78,7 +73,7 @@ func RunSyncTelegram(args []string) int {
 	defer cancel()
 
 	start := time.Now()
-	if err := src.Sync(ctx, Dir(), *limit); err != nil {
+	if err := src.Sync(ctx, Dir(), limit); err != nil {
 		fmt.Fprintf(os.Stderr, "chats sync telegram: %v\n", err)
 		return 1
 	}

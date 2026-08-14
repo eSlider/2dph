@@ -17,6 +17,7 @@ import (
 	"os"
 	"strings"
 
+	cliparse "github.com/eSlider/2dph/internal/cli"
 	"github.com/eSlider/2dph/internal/ocr"
 )
 
@@ -25,15 +26,12 @@ func main() {
 }
 
 func run(args []string) int {
-	if len(args) != 1 || strings.HasPrefix(args[0], "-") {
-		fmt.Fprintln(os.Stderr, `usage: bin/mail/ocr.go <image|pdf>`)
-		return 2
+	c, err := ocr.ParseArgs(args)
+	if err != nil {
+		return cliparse.Fail(err)
 	}
-	path := args[0]
-	var (
-		text string
-		err  error
-	)
+	path := c.Path
+	var text string
 	if strings.HasSuffix(strings.ToLower(path), ".pdf") {
 		text, err = ocr.PDFFile(path)
 	} else {

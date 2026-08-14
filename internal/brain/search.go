@@ -20,6 +20,7 @@ import (
 
 	lbug "github.com/LadybugDB/go-ladybug"
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/cli"
 )
 
 const defaultPort = 17830
@@ -29,6 +30,9 @@ const healthPath = "/health"
 func runSearch(args []string) int {
 	opt, err := rank.ParseArgs(args)
 	if err != nil {
+		if errors.Is(err, cli.ErrHelp) {
+			return 0
+		}
 		fmt.Fprintf(os.Stderr, "brain/search: %v\n%s\n", err, rank.Usage)
 		return 2
 	}
