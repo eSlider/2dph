@@ -14,9 +14,24 @@ class BinLayoutTest(unittest.TestCase):
         self.assertTrue(p.is_file(), "missing bin/brain/search.go")
         first = p.read_text().splitlines()[0]
         self.assertTrue(
-            first.startswith("//usr/bin/env go run"),
+            first.startswith("//usr/bin/env"),
             f"shebang first line, got {first!r}",
         )
+        self.assertIn("cgo/zig", first, "Ladybug CGO shebang must route through bin/cgo/zig")
+        self.assertIn("go run", first)
+        self.assertIn("system_ladybug", first)
+
+    def test_ladybug_cgo_shebangs_use_zig(self) -> None:
+        for method, tag in (
+            ("search.go", "system_ladybug"),
+            ("get.go", "system_ladybug,brain_get"),
+            ("stats.go", "system_ladybug,brain_stats"),
+            ("eval.go", "system_ladybug,brain_eval"),
+            ("serve.go", "brain_serve,system_ladybug"),
+        ):
+            first = (ROOT / "bin" / "brain" / method).read_text().splitlines()[0]
+            self.assertIn("cgo/zig", first, method)
+            self.assertIn(f"-tags={tag}", first, method)
 
     def test_no_nested_go_mod_under_bin(self) -> None:
         nested = list((ROOT / "bin").rglob("go.mod"))
@@ -70,9 +85,10 @@ class BinLayoutTest(unittest.TestCase):
         self.assertTrue(p.is_file(), f"missing {rel}")
         first = p.read_text().splitlines()[0]
         self.assertTrue(
-            first.startswith("//usr/bin/env go run"),
+            first.startswith("//usr/bin/env"),
             f"{rel} shebang, got {first!r}",
         )
+        self.assertIn("go run", first, f"{rel} shebang must invoke go run")
 
     def test_brain_methods_are_shebangs(self) -> None:
         for method in ("index.go", "add.go", "get.go", "stats.go", "eval.go", "watch.go"):
