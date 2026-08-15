@@ -1,4 +1,4 @@
-//usr/bin/env go run -tags=system_ladybug "$0" "$@"; exit
+//usr/bin/env bash -c 'exec "${0%/*}/../cgo/zig" go run -tags=system_ladybug "$0" "$@"' "$0" "$@"; exit
 //go:build cgo && system_ladybug
 //
 // bin/brain/search.go - deduction search over the 2dph brain.
@@ -7,8 +7,8 @@
 //	./bin/brain/search.go serve [port]
 //	./bin/brain/search.go --list-model
 //
-// Needs CGO + libladybug via Zig (`eval "$(bin/cgo/zig env)"`), not gcc.
-// bin/kb/search which sets those and builds a binary for the embed daemon.
+// Shebang routes through bin/cgo/zig (Zig cc + liblbug), not gcc.
+// bin/kb/search builds a cached binary the same way.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

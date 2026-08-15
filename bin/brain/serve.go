@@ -1,4 +1,4 @@
-//usr/bin/env go run -tags=brain_serve,system_ladybug "$0" "$@"; exit
+//usr/bin/env bash -c 'exec "${0%/*}/../cgo/zig" go run -tags=brain_serve,system_ladybug "$0" "$@"' "$0" "$@"; exit
 //go:build brain_serve && cgo && system_ladybug
 //
 // bin/brain/serve.go - HTTP API (in-process ladybug search).
@@ -9,7 +9,7 @@
 //	GET  /openapi.json  same Ops table as the handlers
 //	POST /mcp           JSON-RPC tools/list + tools/call
 //
-// Needs CGO + libladybug (same as bin/brain/search.go).
+// Shebang routes through bin/cgo/zig (same as bin/brain/search.go).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
