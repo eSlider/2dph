@@ -21,7 +21,7 @@ No laptop-absolute paths. Config lives in env files under `$HOME/.config/brain/`
 ```bash
 uv venv .venv
 uv pip install -r requirements.lock.txt
-eval "$(bin/cgo/zig env)"   # when compiling Ladybug read tools
+eval "$(bin/cgo/zig env)"   # optional; bin/brain/{search,get,stats,eval,serve}.go auto-wrap zig
 go test ./...
 uv run python -m unittest discover -s bin/tools -t .
 ```

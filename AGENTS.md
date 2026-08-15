@@ -100,7 +100,7 @@ bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --as-of 2025-01-01    # D24 fact intervals
 bin/brain/search.go "query" --no-web              # local graph only
 source <(./bin/cli/complete.go bash)              # flaggy completions (D23)
-eval "$(bin/cgo/zig env)"                         # Zig cc + liblbug (not gcc)
+eval "$(bin/cgo/zig env)"                         # optional; Ladybug shebangs call bin/cgo/zig
 bin/brain/index.go --rebuild [--with-mail] [--with-facts] [--with-chats]
 bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
 bin/brain/add.go --json                                      # stdin leaf or {leafs:[...]}
