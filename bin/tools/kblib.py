@@ -10,9 +10,31 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import sys
 import time
 import zlib
 from pathlib import Path
+
+try:
+    import ladybug  # noqa: F401
+except ImportError:
+    # System python3 has no project deps. Re-exec this script under the repo
+    # .venv python so `bin/brain/index.go --rebuild` (-> bin/kb/index) works
+    # without activating the venv first. The Docker index image ships ladybug
+    # into PATH python3, so this block never fires there.
+    _p = Path(__file__).resolve().parent
+    while True:
+        if (_p / "var").is_dir() or (_p / ".git").is_dir() or (_p / "pyproject.toml").is_file():
+            break
+        if _p.parent == _p:
+            break
+        _p = _p.parent
+    _venv = _p / ".venv" / "bin" / "python3"
+    if _venv.is_file() and sys.argv:
+        _script = Path(sys.argv[0]).resolve()
+        os.execv(str(_venv), [str(_venv), str(_script)] + sys.argv[1:])
+    raise
 
 import ladybug
 
