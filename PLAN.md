@@ -215,7 +215,7 @@ edelweiss `/home/devops/projects/2dph` M365 WIP. Prefer Go; Python only for A/B.
 | yaml-seed secret/noise filter; compose/CI → Go (no Python INSTALL) | done |
 | Phase 3: PR → CI green → merge GitHub main; docs (D6 reversal) | done — PR #42, merged `2cea0e7` |
 | Phase 4: go-ollama + go-xls PR/merge; verify go-env/go-hocr/go-onlyoffice | done — PR #4 (`325c4e2`), PR #1 (`165d25d`) |
-| Phase 5: deploy brain :8630 + wire MCP into opencode.json | in progress — brain serving (7754 leafs), MCP wired; fixes in PR #43 |
+| Phase 5: deploy brain :8630 + wire MCP into opencode.json | done — brain live (7754 leafs), MCP wired; PR #43 merged `a1880de` |
 
 Note: CI found + fixed 3 real bugs in the port (modeldir HF-cache default +
 snapshot weight selection, secret/noise filter false positives).
