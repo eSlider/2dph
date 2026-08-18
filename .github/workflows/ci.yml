@@ -64,6 +64,9 @@ jobs:
           bin/cgo/zig go build -tags 'system_ladybug,brain_add' -o /tmp/brain-add ./bin/brain/add.go
           bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
 
+      - name: Go write-path tests (Zig CGO ladybug, in-process)
+        run: bin/cgo/zig go test -tags system_ladybug ./internal/brain/... -count=1
+
       - uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface

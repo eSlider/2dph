@@ -50,16 +50,29 @@ func LoadDefaultCorpus(root string) ([]CorpusLeaf, error) {
 
 // indexable keeps vendor noise and secret-ish paths out of the brain.
 func indexable(path string) bool {
-	low := strings.ToLower(path)
-	for _, d := range []string{"node_modules", ".venv", "venv", ".git", "_archive",
-		"var", "dist", "build", ".next", ".cache", "target"} {
-		if strings.Contains(low, "/"+d+"/") {
-			return false
+	segs := strings.Split(filepath.ToSlash(path), "/")
+	for _, s := range segs {
+		if s == "" {
+			continue
+		}
+		low := strings.ToLower(s)
+		for _, d := range []string{"node_modules", ".venv", "venv", ".git", "_archive",
+			"var", "dist", "build", ".next", ".cache", "target"} {
+			if low == d {
+				return false
+			}
+		}
+		for _, d := range []string{".ssh", "secrets", "credentials", "certs", "keys",
+			"tokens", "wallets", "private"} {
+			if low == d {
+				return false
+			}
 		}
 	}
-	for _, s := range []string{".env", "secret", "credential", "allowlist", "token",
+	base := strings.ToLower(filepath.Base(path))
+	for _, x := range []string{".env", "secret", "credential", "allowlist", "token",
 		"id_rsa", ".pem", ".p12", "password", "passwords"} {
-		if strings.Contains(low, s) {
+		if strings.Contains(base, x) {
 			return false
 		}
 	}
