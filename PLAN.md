@@ -214,11 +214,16 @@ edelweiss `/home/devops/projects/2dph` M365 WIP. Prefer Go; Python only for A/B.
 | Phase 2: finish Go write path (write.go/corpus.go/index/add/mailconv) TDD | done |
 | yaml-seed secret/noise filter; compose/CI → Go (no Python INSTALL) | done |
 | Phase 3: PR → CI green → merge GitHub main; docs (D6 reversal) | done — PR #42, merged `2cea0e7` |
-| Phase 4: go-ollama + go-xls PR/merge; verify go-env/go-hocr/go-onlyoffice | in progress |
-| Phase 5: deploy brain :8630 + wire MCP into opencode.json | todo |
+| Phase 4: go-ollama + go-xls PR/merge; verify go-env/go-hocr/go-onlyoffice | done — PR #4 (`325c4e2`), PR #1 (`165d25d`) |
+| Phase 5: deploy brain :8630 + wire MCP into opencode.json | in progress — brain serving (7754 leafs), MCP wired; fixes in PR #43 |
 
 Note: CI found + fixed 3 real bugs in the port (modeldir HF-cache default +
 snapshot weight selection, secret/noise filter false positives).
+
+Deploy findings (PR #43): fts-extension install needs writable+execable HOME
+(`/data`, not noexec `/tmp`); serve must bind `KB_HOST=0.0.0.0` for compose
+publishing; corpus walk must skip permission-denied entries; leaf text needs
+UTF-8 sanitization before FTS.
 
 Decisions (2026-08-18): exclude arc-1 junk (external/, docs/chats/, bin/chats.bin,
 qa/load_test_*.py); keep Python in-tree deprecated for A/B; M365 WIP same PR;
