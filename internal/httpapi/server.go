@@ -273,7 +273,11 @@ func Run(api API) {
 	}
 	workers, port := workersAndPort()
 	handler := NewServer(api, workers)
-	addr := "127.0.0.1:" + strconv.Itoa(port)
+	host := os.Getenv("KB_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	addr := host + ":" + strconv.Itoa(port)
 	log.Printf("serve: %s (workers=%d)", addr, workers)
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)

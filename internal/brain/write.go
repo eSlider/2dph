@@ -141,6 +141,8 @@ func execParams(conn *lbug.Connection, query string, args map[string]any) error 
 
 // UpsertLeaf MERGEs one leaf. Safe while FTS/HNSW exist (no DROP INDEX).
 func UpsertLeaf(conn *lbug.Connection, lf LeafInput) (string, error) {
+	lf.Text = strings.ToValidUTF8(lf.Text, "\uFFFD")
+	lf.Source = strings.ToValidUTF8(lf.Source, "\uFFFD")
 	if lf.Text == "" || lf.Source == "" {
 		return "", fmt.Errorf("leaf needs text and source")
 	}
