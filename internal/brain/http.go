@@ -169,8 +169,15 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
-	defer conn.Close()
+	closed := false
+	closeW := func() {
+		if !closed {
+			closed = true
+			conn.Close()
+			db.Close()
+		}
+	}
+	defer closeW()
 	if err := InitSchema(conn); err != nil {
 		return nil, err
 	}
@@ -181,7 +188,23 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if err := EnsureIndexes(conn); err != nil {
 		return nil, err
 	}
+	// Ladybug only exposes the write to fresh readers once the writable
+	// connection closes. Close it, then reopen the serve read connection so
+	// /search, /get and /stats see the new leafs without a restart.
+	closeW()
+	if err := refreshBrain(); err != nil {
+		return nil, err
+	}
 	return json.Marshal(map[string]any{"mode": "add", "ids": ids, "db": dbpath})
+}
+
+// refreshBrain reopens the long-lived serve read connection so data written
+// by Ingest's own connection becomes visible (Ladybug WAL snapshots the read
+// connection at its first query; without a reopen ingested facts stay hidden
+// from /search, /get and /stats until the process restarts).
+func refreshBrain() error {
+	closeBrain()
+	return openWithSandbox(eps())
 }
 
 func parseIngestLeafs(raw []byte) ([]LeafInput, error) {
