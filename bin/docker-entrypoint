@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # bin/docker-entrypoint - run 2dph tools inside the container.
 #
-# API image (Zig CGO binaries):
-#   serve | search | watch
-# Index image (Python write path, compose profile `index`):
-#   index | extract | audit | search (deprecated python wrapper)
-#   mail-sync [N]   ETL loop: sync -> import; optional index (default 300s)
+# API image (Zig CGO binaries, Go write path):
+#   serve | search | watch | index | add | extract | audit
+#   mail-sync [N]   ETL loop: sync -> import (Go); optional index (default 300s)
+# Python sidecar (index image) is deprecated: kept only for A/B comparison.
 #
 # Usage comment starts at line 2 (self-describing convention).
 set -euo pipefail
@@ -19,18 +18,15 @@ if [ -x /usr/local/bin/brain-serve ]; then
 		serve) exec /usr/local/bin/brain-serve "$@" ;;
 		search) exec /usr/local/bin/brain-search "$@" ;;
 		watch) exec /usr/local/bin/brain-watch "$@" ;;
-		index)
-			echo "index is the Python sidecar: docker compose --profile index run --rm index" >&2
-			exit 2
-			;;
-		*) echo "unknown command: $CMD (api: serve|search|watch)" >&2; exit 2 ;;
+		index) exec /usr/local/bin/brain-index "$@" ;;
+		add) exec /usr/local/bin/brain-add "$@" ;;
+		*) echo "unknown command: $CMD (api: serve|search|watch|index|add|mail-sync)" >&2; exit 2 ;;
 	esac
 fi
 
 case "$CMD" in
 	shell) exec bash ;;
 	search) exec "$KB_PY" /app/bin/kb/search "$@" ;;
-	index) exec "$KB_PY" /app/bin/kb/index --with-mail "$@" ;;
 	watch) exec /app/bin/watch "$@" ;;
 	serve) exec /app/bin/serve "$@" ;;
 	extract) exec "$KB_PY" /app/bin/facts/extract "$@" ;;
@@ -42,16 +38,16 @@ case "$CMD" in
 		[ "$interval" -gt 0 ] 2>/dev/null || interval=300
 		: "${MAIL_SYNC_ENV:=/secret/mail.env}"
 		: "${MAIL_SYNC_SRC:=onlyoffice,gmail}"
-		: "${MAIL_SYNC_OUT:=/app/var/mail}"
+		: "${MAIL_SYNC_OUT:=/data/var/mail}"
 		: "${MAIL_SYNC_INDEX:=0}"
 		while true; do
-			out="$("/app/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)" || true
+			out="$("/usr/local/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)" || true
 			echo "$out"
 			new="$(printf '%s\n' "$out" | sed -n 's/.*new=\([0-9]*\).*/\1/p' | tail -1)"
 			if [ -n "$new" ] && [ "$new" -gt 0 ] 2>/dev/null; then
-				"$KB_PY" /app/bin/mail/import --from-raw "$MAIL_SYNC_OUT" 2>&1 | tail -1
+				/usr/local/bin/mail-import --from-raw "$MAIL_SYNC_OUT" 2>&1 | tail -1
 				if [ "$MAIL_SYNC_INDEX" = "1" ]; then
-					"$KB_PY" /app/bin/kb/index --rebuild --with-mail 2>&1 | tail -1
+					/usr/local/bin/brain-index --rebuild --with-mail 2>&1 | tail -1
 				fi
 			fi
 			sleep "$interval"

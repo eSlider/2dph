@@ -22,6 +22,24 @@ type M365Credentials struct {
 	ClientID     string
 	ClientSecret string
 	Users        []string // mailbox addresses to sync, e.g. info@example.com
+	// ExcludeFolders is a set of Graph wellKnownName folder keys to skip.
+	// Default when empty: junkemail (spam).
+	ExcludeFolders []string
+}
+
+// excludeSet returns the wellKnownName filter for folder enumeration,
+// defaulting to junkemail when no override was configured.
+func (c M365Credentials) excludeSet() map[string]bool {
+	set := map[string]bool{}
+	for _, f := range c.ExcludeFolders {
+		if f = strings.TrimSpace(f); f != "" {
+			set[f] = true
+		}
+	}
+	if len(set) == 0 {
+		set["junkemail"] = true
+	}
+	return set
 }
 
 // m365Token is the cached access token with expiry.
@@ -115,6 +133,35 @@ func (c *M365Client) refreshLocked(ctx context.Context) (string, error) {
 	return out.AccessToken, nil
 }
 
+// MailFolder is one Graph mail folder (top-level or nested).
+type MailFolder struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"displayName"`
+	WellKnown   string `json:"wellKnownName"`
+}
+
+// ListFolders returns the top-level mail folders of a mailbox. Folders whose
+// wellKnownName is in skip are excluded (e.g. junkemail/spam). Nested folders
+// are included via the returned list shape only if the caller drills into
+// childFolders; the sync sources currently sync top-level folders only.
+func (c *M365Client) ListFolders(ctx context.Context, mailbox string, skip map[string]bool) ([]MailFolder, error) {
+	url := fmt.Sprintf("/v1.0/users/%s/mailFolders", pathEscape(mailbox))
+	var page struct {
+		Value []MailFolder `json:"value"`
+	}
+	if err := c.getJSON(ctx, url, &page); err != nil {
+		return nil, err
+	}
+	var out []MailFolder
+	for _, f := range page.Value {
+		if skip[f.WellKnown] {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out, nil
+}
+
 // deltaPage is one response page of the Graph delta query.
 type deltaPage struct {
 	Value []struct {
@@ -125,17 +172,18 @@ type deltaPage struct {
 	DeltaLink string `json:"@odata.deltaLink"`
 }
 
-// ListDeltaIDs walks the inbox delta query and returns live message ids since
-// the previous deltaLink (or the full inbox when deltaLink is empty). Returns
-// the new deltaLink for the next run. GET-only; nothing is mutated server-side.
-func (c *M365Client) ListDeltaIDs(ctx context.Context, mailbox, deltaLink string, limit int) ([]string, string, error) {
+// ListFolderDeltaIDs walks the delta query for one mail folder and returns
+// live message ids since the previous deltaLink (or the full folder when
+// deltaLink is empty). Returns the new deltaLink for the next run. GET-only;
+// nothing is mutated server-side.
+func (c *M365Client) ListFolderDeltaIDs(ctx context.Context, mailbox, folderID, deltaLink string, limit int) ([]string, string, error) {
 	var (
-		ids   []string
-		url   string
-		link  = deltaLink
+		ids  []string
+		url  string
+		link = deltaLink
 	)
 	if link == "" {
-		url = fmt.Sprintf("/v1.0/users/%s/mailFolders/inbox/messages/delta", pathEscape(mailbox))
+		url = fmt.Sprintf("/v1.0/users/%s/mailFolders/%s/messages/delta", pathEscape(mailbox), pathEscape(folderID))
 	} else {
 		url = link
 	}
@@ -329,44 +377,93 @@ func (c *M365Client) getJSON(ctx context.Context, path string, out any) error {
 	return nil
 }
 
+// m365FolderState is the persisted per-folder delta link for one mailbox.
+type m365FolderState struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	WellKnown string `json:"wellKnown,omitempty"`
+	Delta    string `json:"delta"`
+}
+
 // m365Source adapts a mailbox to the Source worker-pool contract. Each mailbox
-// gets its own folder under var/mail/m365/<localpart>/ and a delta state file.
+// gets its own folder under var/mail/m365/<localpart>/ and a per-folder delta
+// state file.
 type m365Source struct {
 	c         *M365Client
 	mailbox   string
-	localpart  string
-	stateDir   string
-	pending    string // delta link to persist on Commit()
-	hasPending bool
+	localpart string
+	stateDir  string
+	exclude   map[string]bool
+	folders   []m365FolderState
+	pending   []m365FolderState // new per-folder deltas, persisted on Commit()
 }
 
 func (s *m365Source) Folder() string { return filepath.Join("m365", s.localpart) }
 
-func (s *m365Source) ListIDs(ctx context.Context, limit int, cursor string) ([]string, string, error) {
-	link, _ := os.ReadFile(filepath.Join(s.stateDir, s.localpart+".deltalink"))
-	ids, newLink, err := s.c.ListDeltaIDs(ctx, s.mailbox, strings.TrimSpace(string(link)), limit)
+// loadFolders reads the persisted folder+delta state, or lists the mailbox's
+// folders (minus excluded, e.g. spam) on first run.
+func (s *m365Source) loadFolders(ctx context.Context) error {
+	if s.folders != nil {
+		return nil
+	}
+	stateFile := filepath.Join(s.stateDir, s.localpart+".folders.json")
+	if b, err := os.ReadFile(stateFile); err == nil {
+		if err := json.Unmarshal(b, &s.folders); err != nil {
+			return fmt.Errorf("m365 state %s: %w", stateFile, err)
+		}
+		return nil
+	}
+	mailFolders, err := s.c.ListFolders(ctx, s.mailbox, s.exclude)
 	if err != nil {
+		return err
+	}
+	for _, f := range mailFolders {
+		s.folders = append(s.folders, m365FolderState{ID: f.ID, Name: f.DisplayName, WellKnown: f.WellKnown})
+	}
+	return nil
+}
+
+func (s *m365Source) ListIDs(ctx context.Context, limit int, cursor string) ([]string, string, error) {
+	if err := s.loadFolders(ctx); err != nil {
 		return nil, "", err
 	}
-	// Buffer the new delta link; persist it only in Commit() after the full
-	// batch downloaded, so a failed run stays retryable without gaps.
-	if newLink != "" {
-		s.pending = newLink
-		s.hasPending = true
+	var (
+		ids []string
+		out = make([]m365FolderState, len(s.folders))
+	)
+	copy(out, s.folders)
+	for i := range out {
+		link := out[i].Delta
+		fids, newLink, err := s.c.ListFolderDeltaIDs(ctx, s.mailbox, out[i].ID, link, limit)
+		if err != nil {
+			return nil, "", err
+		}
+		out[i].Delta = newLink
+		ids = append(ids, fids...)
+		if limit > 0 && len(ids) >= limit {
+			break
+		}
 	}
+	// Buffer the new per-folder deltas; persist them only in Commit() after the
+	// full batch downloaded, so a failed run stays retryable without gaps.
+	s.pending = out
 	return ids, "", nil
 }
 
-// Commit persists the buffered delta link. Called by the sync runner only when
-// every listed message downloaded successfully.
+// Commit persists the buffered per-folder delta links. Called by the sync
+// runner only when every listed message downloaded successfully.
 func (s *m365Source) Commit() error {
-	if !s.hasPending || s.pending == "" {
+	if s.pending == nil {
 		return nil
 	}
 	if err := os.MkdirAll(s.stateDir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(s.stateDir, s.localpart+".deltalink"), []byte(s.pending), 0o644)
+	b, err := json.MarshalIndent(s.pending, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(s.stateDir, s.localpart+".folders.json"), b, 0o644)
 }
 
 func (s *m365Source) Get(ctx context.Context, id string) (*Message, error) {

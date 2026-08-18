@@ -28,6 +28,11 @@ type StaticModel struct {
 	dim       int
 }
 
+// LoadModel loads potion-multilingual-128M (same preprocess as search).
+func LoadModel() (*StaticModel, error) {
+	return loadModel()
+}
+
 func loadModel() (*StaticModel, error) {
 	dir, err := modelDir()
 	if err != nil {

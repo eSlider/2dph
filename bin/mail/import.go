@@ -1,20 +1,52 @@
 //usr/bin/env go run -tags=mail_import "$0" "$@"; exit
 //go:build mail_import
 //
-// bin/mail/import.go - message.json → markdown (no brain write).
+// bin/mail/import.go - message.json → markdown (no brain write). Go converter.
 //
 //	./bin/mail/import.go --from-raw var/mail
+//	./bin/mail/import.go --from-raw var/mail --ocr
 //
-// Indexing is bin/brain/index.go --rebuild, not this command.
-// NOTE: never run `gofmt -w` on this file — it breaks the shebang.
+// Live OnlyOffice pull is removed; use bin/mail/sync.go then --from-raw.
+// Indexing is bin/brain/index.go --rebuild.
+// NOTE: never run gofmt -w — it breaks the shebang.
 package main
 
 import (
+	"fmt"
 	"os"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	cliparse "github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/internal/mailconv"
 )
 
 func main() {
-	os.Exit(cmdbin.ExecFile("bin/mail/import", os.Args[1:]))
+	os.Exit(run(os.Args[1:]))
+}
+
+func run(args []string) int {
+	var fromRaw string
+	var ocr, force, dryRun bool
+	p := cliparse.New("mail-import")
+	p.Description = "convert synced message.json to markdown"
+	p.String(&fromRaw, "", "from-raw", "root with */*/message.json")
+	p.Bool(&ocr, "", "ocr", "OCR images (PDFs OCR when textless)")
+	p.Bool(&force, "", "force", "overwrite existing message.md")
+	p.Bool(&dryRun, "", "dry-run", "list without writing")
+	if err := cliparse.Parse(p, args); err != nil {
+		return cliparse.Fail(err)
+	}
+	if fromRaw == "" {
+		fmt.Fprintln(os.Stderr, "mail/import: --from-raw DIR required (live OO pull removed; use mail/sync.go)")
+		return 2
+	}
+	ok, skip, fail, err := mailconv.FromRaw(fromRaw, ocr, force, dryRun)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mail/import: %v\n", err)
+		return 1
+	}
+	fmt.Printf("mail/import: ok=%d skip=%d fail=%d\n", ok, skip, fail)
+	if fail > 0 {
+		return 1
+	}
+	return 0
 }

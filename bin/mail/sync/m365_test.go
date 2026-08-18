@@ -2,10 +2,12 @@ package sync
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -72,7 +74,7 @@ func TestM365DeltaSkipsTombstones(t *testing.T) {
 	deltaNext = c.base + "/v1.0/delta-next"
 	deltaFinal = c.base + "/v1.0/delta-final"
 
-	ids, link, err := c.ListDeltaIDs(context.Background(), "a@x.de", "", 0)
+	ids, link, err := c.ListFolderDeltaIDs(context.Background(), "a@x.de", "f-inbox", "", 0)
 	if err != nil {
 		t.Fatalf("delta: %v", err)
 	}
@@ -83,7 +85,7 @@ func TestM365DeltaSkipsTombstones(t *testing.T) {
 		t.Error("expected new deltaLink")
 	}
 	// Incremental: pass the deltaLink, get only the new id.
-	ids2, link2, err := c.ListDeltaIDs(context.Background(), "a@x.de", link, 0)
+	ids2, link2, err := c.ListFolderDeltaIDs(context.Background(), "a@x.de", "f-inbox", link, 0)
 	if err != nil {
 		t.Fatalf("delta incremental: %v", err)
 	}
@@ -142,35 +144,118 @@ func TestM365GetMessageNormalizes(t *testing.T) {
 	}
 }
 
-func TestM365SourceDeltaState(t *testing.T) {
+func TestM365ListFolders(t *testing.T) {
 	graph := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"value":[{"id":"m1"}],"@odata.deltaLink":"` + deltaNext + `"}`))
+		if strings.HasSuffix(r.URL.Path, "/mailFolders") {
+			w.Write([]byte(`{"value":[
+				{"id":"f-inbox","displayName":"Posteingang","wellKnownName":"inbox"},
+				{"id":"f-junk","displayName":"Junk","wellKnownName":"junkemail"},
+				{"id":"f-sent","displayName":"Sent","wellKnownName":"sentitems"}
+			]}`))
+			return
+		}
+		w.WriteHeader(500)
+		w.Write([]byte(`{"error":{"message":"unexpected path"}}`))
+	})
+	c := newM365TestClient(t, graph)
+	skip := map[string]bool{"junkemail": true}
+	folders, err := c.ListFolders(context.Background(), "info@x.de", skip)
+	if err != nil {
+		t.Fatalf("ListFolders: %v", err)
+	}
+	if len(folders) != 2 {
+		t.Fatalf("folders = %+v", folders)
+	}
+	if folders[0].ID != "f-inbox" || folders[1].ID != "f-sent" {
+		t.Errorf("folder ids = %+v", folders)
+	}
+}
+
+func TestM365SourceAllFoldersDelta(t *testing.T) {
+	// First ListIDs: folder enumeration + full delta per folder (junk skipped).
+	// Second ListIDs: incremental, must use the persisted per-folder delta links.
+	var calls int
+	graph := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		calls++
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/mailFolders"):
+			w.Write([]byte(`{"value":[
+				{"id":"f-inbox","displayName":"Inbox","wellKnownName":"inbox"},
+				{"id":"f-junk","displayName":"Junk","wellKnownName":"junkemail"},
+				{"id":"f-sent","displayName":"Sent","wellKnownName":"sentitems"}
+			]}`))
+		case strings.HasSuffix(r.URL.Path, "/f-inbox/messages/delta"):
+			w.Write([]byte(`{"value":[{"id":"m1"},{"id":"m2"}],"@odata.deltaLink":"` + deltaNext + `"}`))
+		case strings.HasSuffix(r.URL.Path, "/f-sent/messages/delta"):
+			w.Write([]byte(`{"value":[{"id":"m3"}],"@odata.deltaLink":"` + deltaFinal + `"}`))
+		case strings.Contains(r.URL.Path, "f-junk"):
+			w.WriteHeader(500)
+			w.Write([]byte(`{"error":{"message":"junk must be skipped"}}`))
+		case strings.Contains(r.URL.Path, "/delta-next"):
+			w.Write([]byte(`{"value":[{"id":"m4"}],"@odata.deltaLink":"` + deltaNext + `"}`))
+		case strings.Contains(r.URL.Path, "/delta-final"):
+			w.Write([]byte(`{"value":[{"id":"m5"}],"@odata.deltaLink":"` + deltaFinal + `"}`))
+		default:
+			w.WriteHeader(500)
+			w.Write([]byte(`{"error":{"message":"unexpected path "+` + "`" + r.URL.Path + `"}}`))
+		}
 	})
 	c := newM365TestClient(t, graph)
 	deltaNext = c.base + "/v1.0/delta-next"
+	deltaFinal = c.base + "/v1.0/delta-final"
 	stateDir := filepath.Join(t.TempDir(), ".m365")
-	s := &m365Source{c: c, mailbox: "info@x.de", localpart: "info", stateDir: stateDir}
-
-	if s.Folder() != "m365/info" {
-		t.Errorf("folder = %q", s.Folder())
+	s := &m365Source{
+		c:         c,
+		mailbox:   "info@x.de",
+		localpart: "info",
+		stateDir:  stateDir,
+		exclude:   map[string]bool{"junkemail": true},
 	}
+
 	ids, _, err := s.ListIDs(context.Background(), 0, "")
 	if err != nil {
 		t.Fatalf("ListIDs: %v", err)
 	}
-	if len(ids) != 1 || ids[0] != "m1" {
+	if len(ids) != 3 || ids[0] != "m1" || ids[1] != "m2" || ids[2] != "m3" {
 		t.Errorf("ids = %v", ids)
 	}
 	if err := s.Commit(); err != nil {
 		t.Fatalf("Commit: %v", err)
 	}
-	data, err := os.ReadFile(filepath.Join(stateDir, "info.deltalink"))
+	data, err := os.ReadFile(filepath.Join(stateDir, "info.folders.json"))
 	if err != nil {
 		t.Fatalf("read delta state: %v", err)
 	}
-	if string(data) != deltaNext {
-		t.Errorf("delta state = %q, want %q", string(data), deltaNext)
+	var state []m365FolderState
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("state parse: %v", err)
+	}
+	if len(state) != 2 {
+		t.Fatalf("state = %+v", state)
+	}
+	if state[0].Delta != deltaNext || state[1].Delta != deltaFinal {
+		t.Errorf("deltas = %+v", state)
+	}
+
+	// Second run: fresh source, must read state and go incremental.
+	s2 := &m365Source{
+		c:         c,
+		mailbox:   "info@x.de",
+		localpart: "info",
+		stateDir:  stateDir,
+		exclude:   map[string]bool{"junkemail": true},
+	}
+	ids2, _, err := s2.ListIDs(context.Background(), 0, "")
+	if err != nil {
+		t.Fatalf("ListIDs 2: %v", err)
+	}
+	if len(ids2) != 2 || ids2[0] != "m4" || ids2[1] != "m5" {
+		t.Errorf("ids2 = %v", ids2)
+	}
+	if err := s2.Commit(); err != nil {
+		t.Fatalf("Commit 2: %v", err)
 	}
 }
 

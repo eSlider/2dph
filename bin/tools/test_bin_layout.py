@@ -94,16 +94,16 @@ class BinLayoutTest(unittest.TestCase):
         for method in ("index.go", "add.go", "get.go", "stats.go", "eval.go", "watch.go"):
             self._assert_shebang(f"bin/brain/{method}")
 
-    def test_brain_add_is_python_write_not_rebuild(self) -> None:
+    def test_brain_add_is_go_write_not_rebuild(self) -> None:
         self._assert_shebang("bin/brain/add.go")
         text = (ROOT / "bin" / "brain" / "add.go").read_text()
-        self.assertIn("cmdbin.ExecFile", text)
-        self.assertIn("bin/kb/add", text)
+        self.assertIn("system_ladybug,brain_add", text.splitlines()[0])
+        self.assertIn("github.com/eSlider/2dph/internal/brain", text)
+        self.assertNotIn("ExecFile", text)
         self.assertNotIn("--rebuild", text)
-        py = (ROOT / "bin" / "kb" / "add").read_text()
-        self.assertIn("add_leafs", py)
-        self.assertIn("--json", py)
-        self.assertNotIn("unlink", py.lower())
+        shim = (ROOT / "bin" / "kb" / "add").read_text()
+        self.assertIn("bin/brain/add.go", shim)
+        self.assertIn("brain_add", shim)
 
     def test_brain_get_stats_eval_are_not_python_exec(self) -> None:
         for method in ("get.go", "stats.go", "eval.go"):
@@ -190,10 +190,10 @@ class BinLayoutTest(unittest.TestCase):
         self.assertIn("internal/ocr", ocr)
         self.assertIn("mail_ocr", ocr)
         self.assertNotIn("github.com/otiai10/gosseract", ocr)
-        py = (ROOT / "bin" / "mail" / "import").read_text()
-        self.assertNotIn("from docling", py)
-        self.assertNotIn("import docling", py)
-        self.assertIn("convert_pdf", py)
+        shim = (ROOT / "bin" / "mail" / "import").read_text()
+        self.assertIn("bin/mail/import.go", shim)
+        self.assertNotIn("from docling", shim)
+        self.assertNotIn("import docling", shim)
         conv = (ROOT / "bin" / "tools" / "mailconv.py").read_text()
         self.assertIn("pdftotext", conv)
         self.assertIn("pdftoppm", conv)
@@ -232,7 +232,9 @@ class BinLayoutTest(unittest.TestCase):
             self.assertNotIn("kb.lbug", text, rel)
             self.assertNotIn("var/brain.lbug", text, rel)
         index = (ROOT / "bin" / "brain" / "index.go").read_text()
-        self.assertIn("bin/kb/index", index)
+        self.assertIn("brain_index", index)
+        self.assertNotIn("ExecFile", index)
+        self.assertNotIn("bin/kb/index", index)
 
     def test_postgres_query_is_shebang(self) -> None:
         self._assert_shebang("bin/postgres/query.go")

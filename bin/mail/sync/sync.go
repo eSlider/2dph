@@ -242,7 +242,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 				return nil, fmt.Errorf("m365 init for %s: %w", mb, err)
 			}
 			local := strings.SplitN(mb, "@", 2)[0]
-			sources = append(sources, &m365Source{c: c, mailbox: mb, localpart: strings.ToLower(local), stateDir: stateDir})
+			sources = append(sources, &m365Source{c: c, mailbox: mb, localpart: strings.ToLower(local), stateDir: stateDir, exclude: cfg.M365.excludeSet()})
 		}
 	}
 	if len(sources) == 0 {

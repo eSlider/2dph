@@ -129,7 +129,11 @@ def split_zip_members(zip_path: Path) -> list[str]:
 
 
 def zip_extract_safe(zip_path: Path, dest: Path) -> list[Path]:
-    """Extract a zip into dest guarding against path traversal; returns files."""
+    """Extract a zip into dest guarding against path traversal; returns files.
+
+    Members that cannot be read (e.g. encrypted zips) are skipped silently —
+    one bad member must never abort a whole archive or an import run.
+    """
     out: list[Path] = []
     try:
         with zipfile.ZipFile(zip_path) as zf:
@@ -140,8 +144,11 @@ def zip_extract_safe(zip_path: Path, dest: Path) -> list[Path]:
                 if not target.is_relative_to(dest.resolve()):
                     continue
                 target.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(member) as src, open(target, "wb") as dst:
-                    dst.write(src.read())
+                try:
+                    with zf.open(member) as src, open(target, "wb") as dst:
+                        dst.write(src.read())
+                except (RuntimeError, NotImplementedError, OSError):
+                    continue
                 out.append(target)
     except zipfile.BadZipFile:
         return []

@@ -70,21 +70,19 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
-  # Python write path (Ladybug rebuild). Not in the API image.
+  # Go write path (Ladybug rebuild, brain-index Zig binary). Same api image.
   #   docker compose --profile index run --rm index
   index:
     profiles: ["index"]
-    image: ghcr.io/eslider/2dph:index
+    image: ghcr.io/eslider/2dph:api
     build:
       context: .
       dockerfile: Dockerfile
-      target: index
-    environment:
-      HF_HOME: /data/hf
-      KB_PY: python3
+      target: api
+    environment: *env
     volumes:
       - kb-model:/data/hf
-      - kb-var:/app/var
+      - kb-var:/data
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["index"]
@@ -100,21 +98,20 @@ services:
   #   docker compose up -d mail-sync
   #   bin/stack/start-mail-sync
   mail-sync:
-    image: ghcr.io/eslider/2dph:index
+    image: ghcr.io/eslider/2dph:api
     build:
       context: .
       dockerfile: Dockerfile
-      target: index
+      target: api
     environment:
       HF_HOME: /data/hf
-      KB_PY: python3
       MAIL_SYNC_SRC: onlyoffice,gmail
       MAIL_SYNC_ENV: /secret/mail.env
       MAIL_SYNC_INDEX: "0"
       HOME: /home/2dph
     volumes:
       - kb-model:/data/hf
-      - kb-var:/app/var
+      - kb-var:/data
       - ~/.config/brain:/secret:ro
       - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
     command: ["mail-sync", "300"]
