@@ -7,8 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"path/filepath"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
 )
@@ -147,12 +145,94 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 			"rebuild": "bin/brain/index.go --rebuild",
 		})
 	}
-	cmd := exec.CommandContext(ctx, filepath.Join(repoRoot(), "bin", "kb", "add"), "--json")
-	cmd.Stdin = bytes.NewReader(body)
-	cmd.Dir = repoRoot()
-	out, err := cmd.Output()
+	leafs, err := parseIngestLeafs(body)
 	if err != nil {
-		return nil, fmt.Errorf("add: %w", err)
+		return nil, err
+	}
+	model, err := LoadModel()
+	if err != nil {
+		return nil, fmt.Errorf("model: %w", err)
+	}
+	defer model.Close()
+	for i := range leafs {
+		if len(leafs[i].Embedding) > 0 {
+			continue
+		}
+		vec, err := model.Embed(leafs[i].Text)
+		if err != nil {
+			return nil, err
+		}
+		leafs[i].Embedding = vec
+	}
+	dbpath := dbPath()
+	db, conn, err := OpenWritable(dbpath)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	defer conn.Close()
+	if err := InitSchema(conn); err != nil {
+		return nil, err
+	}
+	ids, err := AddLeafs(conn, leafs)
+	if err != nil {
+		return nil, err
+	}
+	if err := EnsureIndexes(conn); err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"mode": "add", "ids": ids, "db": dbpath})
+}
+
+func parseIngestLeafs(raw []byte) ([]LeafInput, error) {
+	var payload any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	var objs []map[string]any
+	switch t := payload.(type) {
+	case []any:
+		for _, x := range t {
+			m, ok := x.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("list items must be objects")
+			}
+			objs = append(objs, m)
+		}
+	case map[string]any:
+		if leafs, ok := t["leafs"].([]any); ok {
+			for _, x := range leafs {
+				m, ok := x.(map[string]any)
+				if !ok {
+					return nil, fmt.Errorf("leafs items must be objects")
+				}
+				objs = append(objs, m)
+			}
+		} else {
+			objs = []map[string]any{t}
+		}
+	default:
+		return nil, fmt.Errorf("json must be object, list, or {leafs:[...]}")
+	}
+	out := make([]LeafInput, 0, len(objs))
+	for _, m := range objs {
+		lf := LeafInput{
+			Text: fmt.Sprint(m["text"]), Source: fmt.Sprint(m["source"]),
+			Root: fmt.Sprint(m["root"]), Confidence: fmt.Sprint(m["confidence"]),
+			SourceRev: fmt.Sprint(m["source_rev"]), How: fmt.Sprint(m["how"]),
+			Loc: fmt.Sprint(m["loc"]), Type: fmt.Sprint(m["type"]),
+			ValidFrom: fmt.Sprint(m["valid_from"]), ValidTo: fmt.Sprint(m["valid_to"]),
+		}
+		if lf.Text == "<nil>" {
+			lf.Text = ""
+		}
+		if lf.Source == "<nil>" {
+			lf.Source = ""
+		}
+		if lf.Text == "" || lf.Source == "" {
+			return nil, fmt.Errorf("each leaf needs text and source")
+		}
+		out = append(out, lf)
 	}
 	return out, nil
 }

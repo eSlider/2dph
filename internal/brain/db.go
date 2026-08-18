@@ -16,29 +16,44 @@ var (
 	conn *lbug.Connection
 )
 
+// RepoRoot returns KB_ROOT or walks up from the executable / cwd.
+func RepoRoot() string {
+	return repoRoot()
+}
+
 func repoRoot() string {
-	// Try KB_ROOT env, then walk up from binary
 	if v := os.Getenv("KB_ROOT"); v != "" {
 		return v
 	}
+	if wd, err := os.Getwd(); err == nil {
+		if root := findRepoRoot(wd); root != "" {
+			return root
+		}
+	}
 	self, err := os.Executable()
 	if err == nil {
-		dir := filepath.Dir(self)
-		for i := 0; i < 5; i++ {
-			if _, err := os.Stat(filepath.Join(dir, "var")); err == nil {
-				return dir
-			}
-			if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
-				return dir
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
+		if root := findRepoRoot(filepath.Dir(self)); root != "" {
+			return root
 		}
 	}
 	return "."
+}
+
+func findRepoRoot(dir string) string {
+	for i := 0; i < 8; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "var")); err == nil {
+			return dir
+		}
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
 }
 
 func dbPath() string {

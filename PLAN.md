@@ -201,3 +201,22 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. Python `bin/kb/eval` stays as an explicit fallback. |
 
 Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.
+## 2026-08-18 — Go-only write path sync (gitea #41)
+
+Goal: consolidate the most advanced version here and in sync with GitHub main.
+Sources: GitHub main `b1e6953` + arc-1 `/mnt/8TB/projects/ai/2dph` Go-write WIP +
+edelweiss `/home/devops/projects/2dph` M365 WIP. Prefer Go; Python only for A/B.
+
+| Step | Status |
+|------|--------|
+| sync issues via tea (gitea #41 assigned) | done |
+| Phase 1: branch `feat/brain-go-writepath` + arc-1/edelweiss WIP | done |
+| Phase 2: finish Go write path (write.go/corpus.go/index/add/mailconv) TDD | done |
+| yaml-seed secret/noise filter; compose/CI → Go (no Python INSTALL) | done |
+| Phase 3: PR → CI green → merge GitHub main; docs (D6 reversal) | pending |
+| Phase 4: go-ollama + go-xls PR/merge; verify go-env/go-hocr/go-onlyoffice | todo |
+| Phase 5: deploy brain :8630 + wire MCP into opencode.json | todo |
+
+Decisions (2026-08-18): exclude arc-1 junk (external/, docs/chats/, bin/chats.bin,
+qa/load_test_*.py); keep Python in-tree deprecated for A/B; M365 WIP same PR;
+go-ollama+go-xls now, rest verify.

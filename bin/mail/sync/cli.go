@@ -127,7 +127,13 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 			if len(userList) == 0 {
 				return CLIConfig{}, 2, fmt.Errorf("m365 source: M365_USERS empty")
 			}
-			cfg.M365 = &M365Credentials{Tenant: tenant, ClientID: cid, ClientSecret: sec, Users: userList}
+			var excl []string
+			for _, f := range strings.Split(pick(envVars["M365_EXCLUDE_FOLDERS"], envVars["MS_EXCLUDE_FOLDERS"]), ",") {
+				if f = strings.TrimSpace(f); f != "" {
+					excl = append(excl, f)
+				}
+			}
+			cfg.M365 = &M365Credentials{Tenant: tenant, ClientID: cid, ClientSecret: sec, Users: userList, ExcludeFolders: excl}
 		default:
 			return CLIConfig{}, 2, fmt.Errorf("unknown source %q", s)
 		}

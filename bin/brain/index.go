@@ -1,24 +1,292 @@
-//usr/bin/env go run -tags=brain_index "$0" "$@"; exit
-//go:build brain_index
+//usr/bin/env bash -c 'exec "${0%/*}/../cgo/zig" go run -tags=system_ladybug,brain_index "$0" "$@"' "$0" "$@"; exit
+//go:build cgo && system_ladybug && brain_index
 //
-// bin/brain/index.go - rebuild the Ladybug graph (Python write path).
+// bin/brain/index.go - rebuild the Ladybug graph (Go+Zig write path).
 //
 //	./bin/brain/index.go --rebuild --with-facts --with-chats
 //	./bin/brain/index.go --rebuild --with-mail
 //	./bin/brain/index.go --dry-run --with-mail
 //
-// v1 write: bin/brain/add.go for one/few leafs (indexes may already exist).
 // Bulk mail/corpus still --rebuild (fresh file, indexes last).
-// NOTE: never run `gofmt -w` on this file — it breaks the shebang.
+// NOTE: never run gofmt -w on this file — it breaks the shebang.
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	cliparse "github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/internal/brain"
 )
 
 func main() {
-	args := append([]string{"--with-mail"}, os.Args[1:]...)
-	os.Exit(cmdbin.ExecFile("bin/kb/index", args))
+	os.Exit(run(os.Args[1:]))
+}
+
+type indexFlags struct {
+	db, factsJSON, withChats, since string
+	corpus                          []string
+	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut bool
+	limit                           int
+}
+
+func run(args []string) int {
+	// historic wrapper prepended --with-mail; keep default off unless passed
+	v := indexFlags{}
+	p := cliparse.New("brain-index")
+	p.Description = "build the 2dph brain index (Go+Zig)"
+	p.String(&v.db, "", "db", "path to kb.lbug")
+	p.Bool(&v.rebuild, "", "rebuild", "fresh db + indexes")
+	p.Bool(&v.noDefaults, "", "no-defaults", "skip README/docs/skills")
+	p.Bool(&v.withMail, "", "with-mail", "include var/mail message.md leafs")
+	p.Bool(&v.withFacts, "", "with-facts", "facts/extract --json --dry-run")
+	p.String(&v.factsJSON, "", "facts-json", "JSON facts file")
+	p.String(&v.withChats, "", "with-chats", "chat markdown dir (empty=off; bare flag via const path)")
+	p.String(&v.since, "", "since", "with --with-mail, messages >= YYYY-MM-DD")
+	p.Bool(&v.dryRun, "", "dry-run", "count leafs, write nothing")
+	p.Bool(&v.skipIndexes, "", "skip-indexes", "write leafs only")
+	p.Int(&v.limit, "", "limit", "max leafs to embed")
+	p.Bool(&v.jsonOut, "", "json", "JSON stats")
+	// --corpus may repeat: parse manually from args leftovers after flaggy
+	if err := cliparse.Parse(p, filterCorpusArgs(args, &v.corpus)); err != nil {
+		return cliparse.Fail(err)
+	}
+	// bare --with-chats without value → default dir
+	if hasBareWithChats(args) && v.withChats == "" {
+		v.withChats = filepath.Join(brain.RepoRoot(), "var", "chats", "md")
+	}
+
+	root := brain.RepoRoot()
+	dbpath := v.db
+	if dbpath == "" {
+		dbpath = filepath.Join(root, "var", "kb.lbug")
+	}
+
+	var leafs []brain.CorpusLeaf
+	var err error
+	if !v.noDefaults {
+		leafs, err = brain.LoadDefaultCorpus(root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: corpus: %v\n", err)
+			return 1
+		}
+	}
+	for _, c := range v.corpus {
+		extra, err := brain.LoadCorpusPath(c)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: corpus %s: %v\n", c, err)
+			continue
+		}
+		leafs = append(leafs, extra...)
+	}
+	chatN := 0
+	if v.withChats != "" {
+		chats, err := brain.LoadCorpusPath(v.withChats)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: chats: %v\n", err)
+			return 1
+		}
+		chatN = len(chats)
+		leafs = append(leafs, chats...)
+	}
+	mailN := 0
+	if v.withMail {
+		mail, err := brain.LoadMailLeafs(filepath.Join(root, "var", "mail"), v.since, 0)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: mail: %v\n", err)
+			return 1
+		}
+		mailN = len(mail)
+		leafs = append(leafs, mail...)
+	}
+
+	facts := []brain.LeafInput{}
+	if v.factsJSON != "" {
+		raw, err := os.ReadFile(v.factsJSON)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: facts-json: %v\n", err)
+			return 1
+		}
+		facts = append(facts, factsFromJSON(raw)...)
+	}
+	if v.withFacts {
+		facts = append(facts, factsFromExtract(root)...)
+	}
+
+	if v.dryRun {
+		msg := map[string]any{
+			"info": len(leafs), "facts": len(facts), "mail": mailN, "chats": chatN,
+			"would_index": true,
+		}
+		if v.jsonOut {
+			enc := json.NewEncoder(os.Stdout)
+			_ = enc.Encode(msg)
+		} else {
+			fmt.Printf("brain/index: %d info + %d facts would be indexed\n", len(leafs), len(facts))
+		}
+		return 0
+	}
+	if !v.rebuild {
+		fmt.Fprintln(os.Stderr, "brain/index: refuse non-rebuild write; pass --rebuild (fresh db)")
+		return 2
+	}
+
+	_ = os.Remove(dbpath)
+	_ = os.Remove(dbpath + ".wal")
+
+	model, err := brain.LoadModel()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: model: %v\n", err)
+		return 1
+	}
+	defer model.Close()
+
+	db, conn, err := brain.OpenWritable(dbpath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: %v\n", err)
+		return 1
+	}
+	defer db.Close()
+	defer conn.Close()
+	if err := brain.InitSchema(conn); err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: schema: %v\n", err)
+		return 1
+	}
+
+	infoN, err := brain.WriteCorpus(conn, leafs, model, v.limit)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: write info: %v\n", err)
+		return 1
+	}
+	factN := 0
+	for _, f := range facts {
+		if f.Text == "" || f.Source == "" {
+			continue
+		}
+		if len(f.Embedding) == 0 && model != nil {
+			vec, err := model.Embed(f.Text)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "brain/index: embed fact: %v\n", err)
+				return 1
+			}
+			f.Embedding = vec
+		}
+		if f.Root == "" {
+			f.Root = "facts"
+		}
+		if f.Type == "" {
+			f.Type = "fact"
+		}
+		if f.How == "" {
+			f.How = "facts/extract"
+		}
+		if _, err := brain.UpsertLeaf(conn, f); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: fact: %v\n", err)
+			return 1
+		}
+		factN++
+	}
+	if !v.skipIndexes {
+		if err := brain.EnsureIndexes(conn); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: indexes: %v\n", err)
+			return 1
+		}
+	}
+	total := infoN + factN
+	if v.jsonOut {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"indexed_info": infoN, "indexed_facts": factN, "db": dbpath, "total": total,
+		})
+	} else {
+		fmt.Printf("indexed %d/%d info + %d facts; db total %d\n", infoN, len(leafs), factN, total)
+	}
+	return 0
+}
+
+func filterCorpusArgs(args []string, corpus *[]string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--corpus" && i+1 < len(args):
+			*corpus = append(*corpus, args[i+1])
+			i++
+		case strings.HasPrefix(a, "--corpus="):
+			*corpus = append(*corpus, strings.TrimPrefix(a, "--corpus="))
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func hasBareWithChats(args []string) bool {
+	for i, a := range args {
+		if a == "--with-chats" {
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func factsFromExtract(root string) []brain.LeafInput {
+	cmd := exec.Command("python3", filepath.Join(root, "bin", "facts", "extract"), "--json", "--dry-run")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: facts/extract failed: %v\n", err)
+		return nil
+	}
+	return factsFromJSON(out)
+}
+
+func factsFromJSON(raw []byte) []brain.LeafInput {
+	var payload any
+	if json.Unmarshal(raw, &payload) != nil {
+		return nil
+	}
+	var list []any
+	switch t := payload.(type) {
+	case map[string]any:
+		list, _ = t["facts"].([]any)
+	case []any:
+		list = t
+	}
+	var out []brain.LeafInput
+	for _, x := range list {
+		m, ok := x.(map[string]any)
+		if !ok {
+			continue
+		}
+		text := fmt.Sprint(m["text"])
+		source := fmt.Sprint(m["source"])
+		if text == "" || source == "" || text == "<nil>" || source == "<nil>" {
+			continue
+		}
+		out = append(out, brain.LeafInput{
+			Text: text, Source: source, Root: "facts", Confidence: "confirmed",
+			SourceRev: strOr(m["source_rev"], "working-tree"),
+			How:       strOr(m["how"], "facts/extract"),
+			Loc:       strOr(m["loc"], source),
+			Type:      "fact",
+		})
+	}
+	return out
+}
+
+func strOr(v any, def string) string {
+	if v == nil {
+		return def
+	}
+	s := fmt.Sprint(v)
+	if s == "" || s == "<nil>" {
+		return def
+	}
+	return s
 }

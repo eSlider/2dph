@@ -94,10 +94,9 @@ Conflicting pairings (≥2 yes vs ≥2 no) stay hypothesis until
 (`system_ladybug`), compiled by **Zig** (`bin/cgo/zcc`, D21), not gcc.
 They do not exec Python. Control questions for recall@5 live in
 `internal/brain/rank` so CI can test the table without libladybug.
-Python `bin/kb/{get,stats,eval}` remain for GitHub Actions until the runner
-fetches Zig + libs (`bin/cgo/zig`). Incremental write is `bin/kb/add`
-(`bin/brain/add.go`). Bulk index/write is still `bin/kb/index`
-(`docker compose --profile index`).
+Bulk index/write is Go-only: `bin/brain/index.go` + `bin/brain/add.go`
+(both Zig CGO, `docker compose --profile index`). Python `bin/kb/index` is
+deprecated, kept only for A/B comparison.
 
 ## Agent API (D20)
 
