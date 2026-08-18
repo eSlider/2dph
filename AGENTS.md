@@ -54,11 +54,11 @@ bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
 bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
-bin/docker-entrypoint  container entrypoint (api: serve|search|watch; index: python)
+bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|mail-sync)
 compose.yaml  docker composition (root level, not docker/)
-Dockerfile    api (Zig CGO, no Python) + index (Python write)
+Dockerfile    api (Zig CGO, Go write path; no CPython)
 var/          kb.lbug, var/mail/*, caches (gitignored)
-.venv/        ladybug + model2vec + mistune
+.venv/        ladybug + model2vec + mistune (Python A/B only)
 ```
 
 ## Mail pipeline

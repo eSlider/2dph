@@ -22,7 +22,9 @@ Decisions: [PLAN.md](../PLAN.md).
 
 Read path Go + Zig CGO (D21). HTTP + OpenAPI + MCP (D20). PicoClaw compose
 profile + CPU reasoner (D18). Mail sync → import → rebuild. D14 shebangs.
-Compose `api` (no CPython) / `index` (Python write). Issues #1–#5, #7–#13.
+Write path Go-only (D25): `bin/brain/index.go` + `add.go`; Python kept for
+A/B only. Compose `api` covers serve/search/index/add/mail-sync. Issues
+#1–#5, #7–#13.
 [#15](https://git.produktor.io/eSlider/2dph/issues/15) lever/loop.
 [#14](https://git.produktor.io/eSlider/2dph/issues/14) `bin/brain/add.go` /
 `POST /ingest` (Python `kblib.add_leafs`; no Go upsert port).

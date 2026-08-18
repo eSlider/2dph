@@ -56,10 +56,12 @@ jobs:
       - name: facts/audit self (lexicon consistency, no network)
         run: ./bin/facts/audit self
 
-      - name: CGO via Zig (compile brain/search + eval)
+      - name: CGO via Zig (compile brain/search + index + add + eval)
         run: |
           chmod +x bin/cgo/zig bin/cgo/zcc bin/cgo/zc++
           bin/cgo/zig go build -tags system_ladybug -o /tmp/brain-search ./bin/brain/search.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_index' -o /tmp/brain-index ./bin/brain/index.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_add' -o /tmp/brain-add ./bin/brain/add.go
           bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
 
       - uses: actions/cache@v4
@@ -67,9 +69,11 @@ jobs:
           path: ~/.cache/huggingface
           key: ${{ runner.os }}-hf-potion-multilingual-128M
 
-      - name: recall@5 SoT (Zig bin/brain/eval.go)
+      - name: recall@5 SoT (Go index + Zig bin/brain/eval.go)
         run: |
-          uv run python bin/kb/index --rebuild --json
+          # weights via Python model2vec (A/B side only, no python indexing)
+          uv run python -c "from model2vec import StaticModel; StaticModel.from_pretrained('minishlab/potion-multilingual-128M')"
+          /tmp/brain-index --rebuild --json
           KB_ROOT="$PWD" /tmp/brain-eval --json
 
   ocr:

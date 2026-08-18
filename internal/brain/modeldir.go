@@ -1,3 +1,5 @@
+//go:build cgo && system_ladybug
+
 package brain
 
 import (
@@ -22,11 +24,21 @@ func modelDir() (string, error) {
 			}
 		}
 	}
-	// 3. Repo root lib/ (where other scripts expect it)
+	// 3. Repo root models/ or lib/
 	if v := os.Getenv("KB_ROOT"); v != "" {
-		cand := filepath.Join(v, "lib", "potion-multilingual-128m")
-		if st, err := os.Stat(cand); err == nil && st.IsDir() {
-			return cand, nil
+		for _, sub := range []string{"models/potion-multilingual-128m", "lib/potion-multilingual-128m"} {
+			cand := filepath.Join(v, sub)
+			if st, err := os.Stat(cand); err == nil && st.IsDir() {
+				return cand, nil
+			}
+		}
+	}
+	if root := repoRoot(); root != "" && root != "." {
+		for _, sub := range []string{"models/potion-multilingual-128m", "lib/potion-multilingual-128m"} {
+			cand := filepath.Join(root, sub)
+			if st, err := os.Stat(cand); err == nil && st.IsDir() {
+				return cand, nil
+			}
 		}
 	}
 	// 4. HF cache (new layout: models--*/snapshots/*)

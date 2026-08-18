@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import unittest
+import unittest.mock
 import zipfile
 from pathlib import Path
 
@@ -94,6 +95,29 @@ class TestMailConv(unittest.TestCase):
         files = zip_extract_safe(zip_path, dest)
         self.assertEqual(files, [])
         self.assertFalse((dest.parent / "evil.txt").exists())
+
+    def test_zip_extract_safe_skips_encrypted_members(self):
+        # An encrypted member raises RuntimeError on zf.open when no password
+        # is supplied (zipfile raises this for flag-bit-0 members). It must be
+        # skipped, not abort the whole archive (and never the whole import).
+        zip_path = Path(self._tmp("enc.zip"))
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("ok.txt", "clear")
+            zf.writestr("secret.pdf", b"\x50\x4bencrypted")
+        dest = Path(self._tmp("out"))
+        real_open = zipfile.ZipFile.open
+
+        def boom(self_, name, *a, **kw):
+            member = getattr(name, "filename", name)
+            if member == "secret.pdf":
+                raise RuntimeError("File %r is encrypted, password required" % member)
+            return real_open(self_, name, *a, **kw)
+
+        with unittest.mock.patch.object(zipfile.ZipFile, "open", boom):
+            files = zip_extract_safe(zip_path, dest)
+        self.assertGreaterEqual(len(files), 1)
+        self.assertTrue((dest / "ok.txt").exists())
+        self.assertFalse((dest / "secret.pdf").exists())
 
     def test_is_convertible(self):
         self.assertTrue(is_convertible(".pdf"))
