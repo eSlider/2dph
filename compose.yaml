@@ -31,7 +31,9 @@ services:
         - ghcr.io/eslider/2dph:cache
     command: ["serve"]
     environment: &env
+      HOME: /data
       HF_HOME: /data/hf
+      KB_HOST: 0.0.0.0
       BRAIN_SEARCH_CACHE: /data/cache/web-search.sqlite
       BRAIN_DB_PROFILES: /secret/db-profiles.yml
       BRAIN_SEARCH_ENV: /secret/search.env
@@ -104,11 +106,11 @@ services:
       dockerfile: Dockerfile
       target: api
     environment:
+      HOME: /home/2dph
       HF_HOME: /data/hf
       MAIL_SYNC_SRC: onlyoffice,gmail
       MAIL_SYNC_ENV: /secret/mail.env
       MAIL_SYNC_INDEX: "0"
-      HOME: /home/2dph
     volumes:
       - kb-model:/data/hf
       - kb-var:/data
