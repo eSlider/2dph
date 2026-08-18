@@ -108,8 +108,14 @@ func LoadCorpusPath(source string) ([]CorpusLeaf, error) {
 	}
 	if st.IsDir() {
 		_ = filepath.Walk(source, func(p string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
+			if err != nil {
+				if os.IsPermission(err) {
+					return nil
+				}
 				return err
+			}
+			if info.IsDir() {
+				return nil
 			}
 			ext := strings.ToLower(filepath.Ext(p))
 			if ext != ".yaml" && ext != ".yml" {
@@ -238,7 +244,7 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 		if limit > 0 && i >= limit {
 			break
 		}
-		query := lf.Heading + "\n\n" + lf.Text
+		query := strings.ToValidUTF8(lf.Heading+"\n\n"+lf.Text, "\uFFFD")
 		var emb []float64
 		if model != nil && lf.Text != "" {
 			var err error

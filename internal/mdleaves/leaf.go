@@ -123,6 +123,10 @@ func WalkMarkdown(root string) ([]string, error) {
 	var out []string
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
+			// unreadable dirs/files (host permission mix) must not abort the walk
+			if os.IsPermission(err) {
+				return nil
+			}
 			return err
 		}
 		if info.IsDir() {
