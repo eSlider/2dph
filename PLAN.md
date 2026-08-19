@@ -86,7 +86,6 @@ detective method: **a fact needs ≥2 independent sources or it is
     mail/ocr.go             tesseract eng+deu (pdftoppm scans)
     brain/extract  brain/audit       brain/deduce    (thinking wrapper)
     stack/start start-assistant start-mail-sync stop status
-    web/search               (deprecated shim → web/search.go)
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
   var/kb.lbug               single embedded store (gitignored)
@@ -148,8 +147,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
    Latin-1→UTF-8 normalized.
 3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
-   indexing stay separate for crash safety. `bin/mail/index_mail` is a
-   deprecation shim.
+   indexing stay separate for crash safety.
 4. Compose `mail-sync` / `bin/stack/start-mail-sync` — ETL loop (default
    `onlyoffice,gmail`, 300s): sync → import on `new>0`; full rebuild only if
    `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
