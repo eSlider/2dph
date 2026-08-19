@@ -161,39 +161,6 @@ class KblibTest(unittest.TestCase):
         self.assertEqual(stats["total"], 2)
         self.assertEqual(stats["by_root"], {"facts": 1, "info": 1})
 
-    def test_hop_1_returns_file_hop_3_reaches_person(self):
-        """--hop walks FROM_FILE / HAS_VERSION / AUTHORED (Gitea #17)."""
-        import gitimport
-
-        lid = kblib.upsert_leaf(
-            self.conn, text="readme hop fixture", root="info",
-            confidence="confirmed", source="README.md", source_rev="r1",
-            how="test", loc="README.md", type_="reference",
-            embedding=make_emb(0.3),
-        )
-        kblib.link_from_file(self.conn, lid, "README.md", repo="sample-repo")
-        gitimport.index_commits(self.conn, [gitimport.Commit(
-            sha="a1b2c3d",
-            author="Ada Lovelace",
-            email="ada@example.com",
-            date="2026-08-10T12:00:00Z",
-            subject="feat: first commit",
-            files=["README.md"],
-        )], "sample-repo")
-        hop1 = kblib.hop_walk(self.conn, lid, 1)
-        self.assertEqual(len(hop1), 1)
-        self.assertEqual(hop1[0]["label"], "File")
-        self.assertEqual(hop1[0]["name"], "README.md")
-        self.assertEqual(hop1[0]["depth"], 1)
-        hop3 = kblib.hop_walk(self.conn, lid, 3)
-        labels = {n["label"] for n in hop3}
-        self.assertIn("File", labels)
-        self.assertIn("Commit", labels)
-        self.assertIn("Person", labels)
-        person = [n for n in hop3 if n["label"] == "Person"][0]
-        self.assertEqual(person["name"], "Ada Lovelace")
-        self.assertEqual(person["depth"], 3)
-
     def test_as_of_keeps_x_drops_y(self) -> None:
         """OQ5/#36: as of 2025-01-01 → works-at-X, not works-at-Y."""
         kblib.upsert_leaf(

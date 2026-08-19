@@ -43,7 +43,7 @@ bin/          self-describing tools bin/{subject}/{method}.go (shebang)
 bin/brain/    search.go serve.go index.go add.go get.go stats.go eval.go watch.go
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
 bin/mail/     sync.go import.go ocr.go (index_mail → brain/index.go)
-bin/markdown/ import.go (H2 leaf split; Python bin/md/import fallback)
+bin/markdown/ import.go (H2 leaf split)
 bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history; Python shim execs it)
 bin/web/      search.go (SearXNG; Python shim execs it)
@@ -58,7 +58,7 @@ bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|m
 compose.yaml  docker composition (root level, not docker/)
 Dockerfile    api (Zig CGO, Go write path; no CPython)
 var/          kb.lbug, var/mail/*, caches (gitignored)
-.venv/        ladybug + model2vec + mistune (Python A/B only)
+.venv/        legacy python facts tools only (kblib/contradict)
 ```
 
 ## Mail pipeline
@@ -104,7 +104,7 @@ eval "$(bin/cgo/zig env)"                         # optional; Ladybug shebangs c
 bin/brain/index.go --rebuild [--with-mail] [--with-facts] [--with-chats]
 bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
 bin/brain/add.go --json                                      # stdin leaf or {leafs:[...]}
-bin/brain/get.go <id> [--body] [--json]          # Go read; Python bin/kb/get CI fallback
+bin/brain/get.go <id> [--body] [--json]          # Go read (Zig CGO)
 bin/brain/stats.go [--json]
 bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
 bin/brain/serve.go                               # HTTP :8630; GET /openapi.json POST /mcp
@@ -112,7 +112,7 @@ bin/stack/start                                  # brain HTTP/MCP (reuse healthy
 bin/stack/start-assistant                        # + reasoner + PicoClaw agent
 bin/stack/status                                 # YAML health
 bin/stack/stop                                   # compose stop; volumes kept
-bin/markdown/import.go [dir]                      # H2 leafs → YAML; Python bin/md/import fallback
+bin/markdown/import.go [dir]                      # H2 leafs → YAML (Go)
 bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
 bin/reasoner/bakeoff.go [--model ID] [--json]     # D18 CPU tool-call bake-off
