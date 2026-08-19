@@ -21,10 +21,10 @@ type fakeSearcher struct {
 	calls    int
 	active   atomic.Int32
 	maxSeen  atomic.Int32
-	callback func(q string, limit int, asOf string) ([]byte, error)
+	callback func(q string, limit int, asOf, root string) ([]byte, error)
 }
 
-func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf string) ([]byte, error) {
+func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf, root string) ([]byte, error) {
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()
@@ -44,7 +44,7 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf
 		}
 	}
 	if f.callback != nil {
-		return f.callback(query, limit, asOf)
+		return f.callback(query, limit, asOf, root)
 	}
 	return []byte(`{"query":"` + query + `","count":0,"results":[]}`), nil
 }
@@ -109,7 +109,7 @@ func TestSearchMissingQuery(t *testing.T) {
 }
 
 func TestSearchReturnsSearcherResult(t *testing.T) {
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf string) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string) ([]byte, error) {
 		return []byte(`{"query":"` + q + `","count":1,"results":[{"id":"x"}]}`), nil
 	}}
 	h := NewServer(fs, 1)
@@ -126,6 +126,43 @@ func TestSearchReturnsSearcherResult(t *testing.T) {
 	}
 	if fs.count() != 1 {
 		t.Fatalf("searcher called %d times, want 1", fs.count())
+	}
+}
+
+func TestSearchPassesRootFilter(t *testing.T) {
+	var gotRoot string
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string) ([]byte, error) {
+		gotRoot = root
+		return []byte(`{"query":"` + q + `","count":0,"results":[]}`), nil
+	}}
+	h := NewServer(fs, 1)
+	if code, _ := get(t, h, "/search?q=ops&root=facts"); code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", code)
+	}
+	if gotRoot != "facts" {
+		t.Fatalf("root = %q, want facts", gotRoot)
+	}
+	if code, _ := get(t, h, "/search?q=ops"); code != http.StatusOK {
+		t.Fatalf("code = %d, want 200", code)
+	}
+	if gotRoot != "" {
+		t.Fatalf("root = %q, want empty when omitted", gotRoot)
+	}
+}
+
+func TestMCPSearchPassesRootFilter(t *testing.T) {
+	var gotRoot string
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string) ([]byte, error) {
+		gotRoot = root
+		return []byte(`{"query":"` + q + `","count":0,"results":[]}`), nil
+	}}
+	h := NewServer(fs, 1)
+	code, body := postJSON(t, h, "/mcp", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search","arguments":{"q":"ops","root":"facts"}}}`)
+	if code != http.StatusOK {
+		t.Fatalf("call code = %d body=%s", code, body)
+	}
+	if gotRoot != "facts" {
+		t.Fatalf("mcp root = %q, want facts", gotRoot)
 	}
 }
 
@@ -168,7 +205,7 @@ func TestSearchRejectsBadLimit(t *testing.T) {
 }
 
 func TestGetLeaf(t *testing.T) {
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf string) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string) ([]byte, error) {
 		return []byte(`{}`), nil
 	}}
 	h := NewServer(fs, 1)
