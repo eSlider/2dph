@@ -166,7 +166,7 @@ jobs:
       - name: Image tags
         id: meta
         run: |
-          REPO="ghcr.io/${{ github.repository }}"
+          REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             echo "tags=$REPO:api,$REPO:$GITHUB_REF_NAME,$REPO:latest" >> "$GITHUB_OUTPUT"
           else
