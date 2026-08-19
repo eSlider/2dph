@@ -32,20 +32,19 @@ services:
     command: ["serve"]
     environment: &env
       HOME: /data
-      HF_HOME: /data/hf
+      HF_HOME: /data/var/hf
       KB_HOST: 0.0.0.0
-      BRAIN_SEARCH_CACHE: /data/cache/web-search.sqlite
+      BRAIN_SEARCH_CACHE: /data/var/cache/web-search.sqlite
       BRAIN_DB_PROFILES: /secret/db-profiles.yml
       BRAIN_SEARCH_ENV: /secret/search.env
       KB_ROOT: /data
       KB_WORKERS: "4"
       KB_PORT: "8630"
+    network_mode: host
     volumes:
-      - kb-model:/data/hf
-      - kb-var:/data
+      - ./var:/data/var
+      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ~/.config/brain:/secret:ro
-    ports:
-      - "127.0.0.1:8630:8630"
     read_only: true
     tmpfs:
       - /tmp
@@ -61,8 +60,8 @@ services:
     image: ghcr.io/eslider/2dph:api
     environment: *env
     volumes:
-      - kb-model:/data/hf
-      - kb-var:/data
+      - ./var:/data/var
+      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["watch", "/corpus"]
@@ -83,8 +82,8 @@ services:
       target: api
     environment: *env
     volumes:
-      - kb-model:/data/hf
-      - kb-var:/data
+      - ./var:/data/var
+      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["index"]
@@ -107,13 +106,13 @@ services:
       target: api
     environment:
       HOME: /home/2dph
-      HF_HOME: /data/hf
+      HF_HOME: /data/var/hf
       MAIL_SYNC_SRC: onlyoffice,gmail
       MAIL_SYNC_ENV: /secret/mail.env
       MAIL_SYNC_INDEX: "0"
     volumes:
-      - kb-model:/data/hf
-      - kb-var:/data
+      - ./var:/data/var
+      - ./var/lbdb-extension:/home/2dph/.lbdb/extension:ro
       - ~/.config/brain:/secret:ro
       - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
     command: ["mail-sync", "300"]
@@ -145,8 +144,8 @@ services:
     image: ghcr.io/eslider/2dph:api
     environment: *env
     volumes:
-      - kb-model:/data/hf
-      - kb-var:/data
+      - ./var:/data/var
+      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ~/.config/brain:/secret:ro
     command: ["serve"]
     ports:
@@ -202,7 +201,5 @@ services:
     command: ["python", "-c", "print('OCR_ENGINE=paddle; install paddleocr on PATH')"]
 
 volumes:
-  kb-model:
-  kb-var:
   reasoner-ollama:
   picoclaw-home:
