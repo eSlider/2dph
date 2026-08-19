@@ -40,9 +40,17 @@ jobs:
           sh -n bin/cgo/zc++
 
       - name: Go tests (root module; duckdb-go CGO via gcc, no ladybug)
+        if: github.server_url == 'https://github.com'
         run: |
           CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go vet ./...
           CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go test ./... -count=1
+
+      - name: Go tests (root module, no duckdb CGO; Gitea runner libstdc++ is too old for duckdb static lib)
+        if: github.server_url != 'https://github.com'
+        run: |
+          PKGS="$(go list ./... | grep -v /internal/duckstats)"
+          go vet $PKGS
+          go test $PKGS -count=1
 
       - name: brain ranking tests (no cgo / no ladybug)
         run: go test ./internal/brain/rank -count=1
