@@ -51,14 +51,13 @@ bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
 internal/     shared Go (brain/rank is cgo-free; facts D16; cli flaggy D23; chats; gitlog; websearch; reasoner; duckstats)
 bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
-bin/tools/    vendored python libs behind bin/* (kblib, yamlout, websearch)
+bin/tools/    web-search fixtures (Go testdata for internal/websearch)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
 bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
 bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|mail-sync)
 compose.yaml  docker composition (root level, not docker/)
 Dockerfile    api (Zig CGO, Go write path; no CPython)
 var/          kb.lbug, var/mail/*, caches (gitignored)
-.venv/        legacy python facts tools only (kblib/contradict)
 ```
 
 ## Mail pipeline

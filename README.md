@@ -1,8 +1,7 @@
 # 2dph — deductionphile
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB.svg)](https://python.org)
-[![uv](https://img.shields.io/badge/uv-managed-261230.svg)](https://docs.astral.sh/uv)
+[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8.svg)](https://go.dev)
 [![Tests](https://github.com/eSlider/2dph/actions/workflows/ci.yml/badge.svg)](https://github.com/eSlider/2dph/actions/workflows/ci.yml)
 [![Latest Release](https://img.shields.io/github/v/tag/eSlider/2dph?sort=semver&label=release)](https://github.com/eSlider/2dph/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/eSlider/2dph?style=social)](https://github.com/eSlider/2dph/stargazers)
@@ -132,8 +131,7 @@ bin/brain/search.go "invoice from last week"                            # same s
 
 - **LadybugDB** — single `var/kb.lbug`, Cypher + HNSW + BM25, embedded.
   Read tools (`get` / `stats` / `eval`) are Go + Zig CGO (`bin/cgo/zcc`).
-  Python fallbacks stay for CI until the runner fetches Zig. Incremental
-  write is `bin/brain/add.go` (Python `kblib.add_leafs`). Bulk rebuild is
+  Incremental write is `bin/brain/add.go`; bulk rebuild is
   Compose profile `index` (`bin/brain/index.go --rebuild`).
 - **potion-multilingual-128M** — 256-dim embeddings (Go/Ladybug, CPU, no Ollama)
   runtime dependency.
