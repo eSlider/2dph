@@ -104,16 +104,16 @@ func Retry(ctx context.Context, policy RetryPolicy, fn func() error) error {
 
 // SyncConfig wires up a sync run.
 type SyncConfig struct {
-	OO      *OOConfig          // OnlyOffice source (optional)
-	Gmail   *GmailCredentials  // Gmail source (optional)
-	M365    *M365Credentials   // Microsoft 365 Graph source (optional)
-	Out     string             // var/mail root; default <repo>/var/mail
-	Workers int                // concurrency; default 4
-	Limit   int                // max messages per source (0 = all)
-	Offset  int                // skip first N messages per source
-	Force   bool               // overwrite existing message.json + attachments
-	DryRun  bool               // list without writing
-	Query   string             // Gmail search query; default in:inbox
+	OO      *OOConfig         // OnlyOffice source (optional)
+	Gmail   *GmailCredentials // Gmail source (optional)
+	M365    *M365Credentials  // Microsoft 365 Graph source (optional)
+	Out     string            // var/mail root; default <repo>/var/mail
+	Workers int               // concurrency; default 4
+	Limit   int               // max messages per source (0 = all)
+	Offset  int               // skip first N messages per source
+	Force   bool              // overwrite existing message.json + attachments
+	DryRun  bool              // list without writing
+	Query   string            // Gmail search query; default in:inbox
 	Policy  RetryPolicy
 }
 
@@ -143,9 +143,16 @@ type Committer interface {
 }
 
 type ooSource struct {
-	c    *OOClient
+	c    ooMailAPI
 	page int
 }
+
+type ooMailAPI interface {
+	ListIDs(ctx context.Context, maxIDs int, page int) (ids []int, next int, err error)
+	GetMessage(ctx context.Context, id int) (*Message, error)
+	DownloadAttachment(ctx context.Context, fileID string) ([]byte, error)
+}
+
 // gmailAPI is the Gmail client surface gmailSource needs. *GmailClient implements it.
 type gmailAPI interface {
 	ListIDs(ctx context.Context, q string, maxIDs int, pageToken string) ([]string, string, error)
@@ -159,8 +166,8 @@ type gmailSource struct {
 	query string
 }
 
-func (s *ooSource) Folder() string      { return "inbox" }
-func (s *gmailSource) Folder() string   { return "gmail" }
+func (s *ooSource) Folder() string    { return "inbox" }
+func (s *gmailSource) Folder() string { return "gmail" }
 
 func (s *ooSource) ListIDs(ctx context.Context, limit int, cursor string) ([]string, string, error) {
 	page := s.page
@@ -218,7 +225,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	}
 	var sources []Source
 	if cfg.OO != nil {
-		oo, err := NewOOClient(*cfg.OO, 1) // folder inbox
+		oo, err := newOOAPI(*cfg.OO, 1) // folder inbox
 		if err != nil {
 			return nil, fmt.Errorf("onlyoffice auth: %w", err)
 		}
