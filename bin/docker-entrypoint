@@ -15,7 +15,14 @@ shift || true
 if [ -x /usr/local/bin/brain-serve ]; then
 	case "$CMD" in
 		shell) exec bash ;;
-		serve) exec /usr/local/bin/brain-serve "$@" ;;
+		serve)
+			# The HTTP API's embedQuery calls a search daemon on KBSEARCH_PORT
+			# (default 17830). Without it every query spawned a doomed
+			# subprocess + 10s poll before falling back to a per-query model
+			# load (~12s). Start the embed daemon, then serve the API.
+			port="${KBSEARCH_PORT:-17830}"
+			/usr/local/bin/brain-search serve "$port" &
+			exec /usr/local/bin/brain-serve "$@" ;;
 		search) exec /usr/local/bin/brain-search "$@" ;;
 		watch) exec /usr/local/bin/brain-watch "$@" ;;
 		index) exec /usr/local/bin/brain-index "$@" ;;
