@@ -168,7 +168,33 @@ func (o *OOClient) GetMessage(ctx context.Context, id int) (*Message, error) {
 	if err := o.get(ctx, path, &out); err != nil {
 		return nil, err
 	}
-	m := out.Response
+	return ooMessageToMessage(out.Response), nil
+}
+
+// DownloadAttachment fetches attachment bytes via the .ashx handler, which
+// requires the session cookie (client.Jar) captured during authenticate().
+func (o *OOClient) DownloadAttachment(ctx context.Context, fileID string) ([]byte, error) {
+	u := strings.TrimRight(o.cfg.URL, "/") + "/addons/mail/httphandlers/download.ashx?attachid=" + url.QueryEscape(fileID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oo download attach %s: status %d", fileID, resp.StatusCode)
+	}
+	return data, nil
+}
+
+func ooMessageToMessage(m ooMessage) *Message {
 	msg := &Message{
 		Source:         "onlyoffice",
 		ID:             fmt.Sprintf("%d", m.ID),
@@ -195,28 +221,5 @@ func (o *OOClient) GetMessage(ctx context.Context, id int) (*Message, error) {
 			ContentType: a.ContentType,
 		})
 	}
-	return msg, nil
-}
-
-// DownloadAttachment fetches attachment bytes via the .ashx handler, which
-// requires the session cookie (client.Jar) captured during authenticate().
-func (o *OOClient) DownloadAttachment(ctx context.Context, fileID string) ([]byte, error) {
-	u := strings.TrimRight(o.cfg.URL, "/") + "/addons/mail/httphandlers/download.ashx?attachid=" + url.QueryEscape(fileID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := o.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("oo download attach %s: status %d", fileID, resp.StatusCode)
-	}
-	return data, nil
+	return msg
 }
