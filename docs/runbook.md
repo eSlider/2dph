@@ -14,16 +14,12 @@ No laptop-absolute paths. Config lives in env files under `$HOME/.config/brain/`
 ## Toolchain
 
 - Go (see `go.mod`)
-- Python 3.12 + [uv](https://docs.astral.sh/uv)
 - Optional: Docker, Zig CGO via `bin/cgo/zig` (not gcc)
 - Optional: poppler (`pdftotext`/`pdftoppm`) + tesseract `eng+deu` for mail OCR
 
 ```bash
-uv venv .venv
-uv pip install -r requirements.lock.txt
 eval "$(bin/cgo/zig env)"   # optional; bin/brain/{search,get,stats,eval,serve}.go auto-wrap zig
 go test ./...
-uv run python -m unittest discover -s bin/tools -t .
 ```
 
 ## Config
