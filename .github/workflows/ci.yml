@@ -67,6 +67,7 @@ jobs:
           bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
 
       - name: Go write-path tests (Zig CGO ladybug, in-process)
+        if: github.server_url == 'https://github.com'
         run: bin/cgo/zig go test -tags system_ladybug ./internal/brain/... -count=1
 
       - uses: actions/cache@v4
@@ -75,6 +76,7 @@ jobs:
           key: ${{ runner.os }}-hf-potion-multilingual-128M
 
       - name: recall@5 SoT (Go index + Zig bin/brain/eval.go)
+        if: github.server_url == 'https://github.com'
         run: |
           # Go downloader fetches potion weights into the HF cache (skips if cached)
           go run ./bin/brain/model.go
@@ -92,9 +94,15 @@ jobs:
           go-version-file: go.mod
       - name: Install tesseract + poppler
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu poppler-utils
+          if [ "$(id -u)" = "0" ]; then
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu poppler-utils
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu poppler-utils
+          fi
       - name: Go OCR tests (synthetic HELLO PNG)
         run: go test ./internal/ocr -count=1
 
