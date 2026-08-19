@@ -3,31 +3,68 @@
 //
 // bin/facts/audit.go - 2-source + lexicon checks.
 //
-//	./bin/facts/audit.go self         # Go implementation (no python)
-//	./bin/facts/audit.go db           # python bin/facts/audit db
-//	./bin/facts/audit.go contradict   # python bin/facts/audit contradict
+//	./bin/facts/audit.go self         # repo lexicons (Go, no deps)
+//	./bin/facts/audit.go db           # evidence gate over var/kb.lbug (Go, via Zig)
+//	./bin/facts/audit.go contradict   # D16 adjudication (Go; JSON claim(s) on stdin)
 //
-// `self` mode checks the repo itself (PLAN.md + README.md lexicons) and is
-// implemented in Go so CI needs no python. `db`/`contradict` still delegate
-// to the python implementation via cmdbin.
+// `self` and `contradict` run pure Go. `db` builds the ladybug read via
+// bin/facts/audit_db.go (bin/cgo/zig CGO toolchain).
+// Exit 0 = all checks pass, 1 = audit failures, 2 = could not evaluate.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/eSlider/2dph/internal/cmdbin"
+	"github.com/eSlider/2dph/internal/facts"
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "self" {
-		os.Exit(auditSelf())
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: bin/facts/audit.go self|db|contradict [--json]")
+		os.Exit(2)
 	}
-	os.Exit(cmdbin.ExecFile("bin/facts/audit", os.Args[1:]))
+	switch args[0] {
+	case "self":
+		os.Exit(auditSelf())
+	case "contradict":
+		os.Exit(auditContradict())
+	case "db":
+		os.Exit(auditDB())
+	default:
+		fmt.Fprintln(os.Stderr, "audit: unknown mode:", args[0])
+		os.Exit(2)
+	}
+}
+
+func auditDB() int {
+	root := cmdbin.Root()
+	cmd := exec.Command(
+		filepath.Join(root, "bin", "cgo", "zig"),
+		"go", "run", "-tags=system_ladybug,facts_audit_db",
+		filepath.Join(root, "bin", "facts", "audit_db.go"),
+	)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Dir = root
+	if err := cmd.Run(); err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode()
+		}
+		fmt.Fprintln(os.Stderr, "audit db:", err)
+		return 2
+	}
+	return 0
 }
 
 func auditSelf() int {
@@ -68,6 +105,114 @@ func auditSelf() int {
 		fmt.Fprintln(os.Stderr, "audit self:", p)
 	}
 	return 1
+}
+
+func auditContradict() int {
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "contradict: read stdin:", err)
+		return 2
+	}
+	if strings.TrimSpace(string(raw)) == "" {
+		fmt.Fprintln(os.Stderr, "contradict: empty stdin (JSON claim or {claims:[...]})")
+		return 1
+	}
+	var payload any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		fmt.Fprintln(os.Stderr, "contradict: invalid JSON:", err)
+		return 1
+	}
+	claims, ok := collectClaims(payload)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "contradict: expected object or list")
+		return 1
+	}
+	results := make([]facts.Result, 0, len(claims))
+	for _, c := range claims {
+		results = append(results, facts.Adjudicate(c))
+	}
+	out := map[string]any{
+		"mode":          "contradict",
+		"ok":            true,
+		"problems":      []string{},
+		"contradictions": results,
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "contradict: marshal:", err)
+		return 2
+	}
+	fmt.Println(string(b))
+	return 0
+}
+
+func collectClaims(payload any) ([]facts.Claim, bool) {
+	switch v := payload.(type) {
+	case []any:
+		var out []facts.Claim
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, toClaim(m))
+			}
+		}
+		return out, true
+	case map[string]any:
+		if claims, ok := v["claims"]; ok {
+			if arr, ok := claims.([]any); ok {
+				var out []facts.Claim
+				for _, item := range arr {
+					if m, ok := item.(map[string]any); ok {
+						out = append(out, toClaim(m))
+					}
+				}
+				return out, true
+			}
+		}
+		return []facts.Claim{toClaim(v)}, true
+	}
+	return nil, false
+}
+
+func toClaim(m map[string]any) facts.Claim {
+	c := facts.Claim{Text: fmt.Sprint(m["text"])}
+	if yes, ok := m["yes"]; ok {
+		c.Yes = toSources(yes)
+	}
+	if no, ok := m["no"]; ok {
+		c.No = toSources(no)
+	}
+	return c
+}
+
+func toSources(v any) []facts.Source {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []facts.Source
+	for _, item := range arr {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		s := facts.Source{
+			ID:   strOf(m["id"]),
+			Kind: strOf(m["kind"]),
+			When: strOf(m["when"]),
+		}
+		if b, ok := m["stale"].(bool); ok {
+			s.Stale = b
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func strOf(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
 }
 
 var (
