@@ -64,12 +64,12 @@ detective method: **a fact needs ≥2 independent sources or it is
   docs/                     published docs (this conversation → docs/ as md)
   skills/                   in-project skills (web-search, postgres, brain, picoclaw, diataxis-docs)
   bin/
-    facts/extract.go audit.go crm.go  # D14 shebang; Python implementation
-    kb/index                Python bulk write (called by bin/brain/index.go)
-    kb/add                  Python incremental write (called by bin/brain/add.go)
+    facts/extract.go audit.go crm.go  # D14 shebang; Go implementation
+    kb/index                deprecated bash shim → bin/brain/index.go
+    kb/add                  deprecated bash shim → bin/brain/add.go
     brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
     brain/add.go            incremental leaf write (no rebuild)
-    brain/get.go stats.go eval.go  # Go read (cgo); Python bin/kb/* CI fallback
+    brain/get.go stats.go eval.go  # Go read (cgo)
     brain/watch.go
     brain/search.go         deduction: facts → info → web
     cli/complete.go         flaggy bash/zsh/fish complete (D23)
@@ -90,7 +90,6 @@ detective method: **a fact needs ≥2 independent sources or it is
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
   var/kb.lbug               single embedded store (gitignored)
-  .venv/                    legacy python facts tools only (kblib)
 ```
 
 ## Schema (first pass)
@@ -118,7 +117,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 ## Tooling conventions
 
 - `bin/{subject}/{method}` — line 2 is a usage comment (mirrors `psql-yq`).
-- bash + python primary; golang via Go shebang when a compiled helper is right.
+- bash + golang primary (Go shebang); no Python in-tree.
 - YAML default output, `--json` for machines. Slice with mikefarah/yq.
 - Everything that touches the network / DB is read-only, throttled, cached.
 - Tests (TDD) gate every commit; `gh` + CI/CD on every push.
@@ -222,5 +221,5 @@ publishing; corpus walk must skip permission-denied entries; leaf text needs
 UTF-8 sanitization before FTS.
 
 Decisions (2026-08-18): exclude arc-1 junk (external/, docs/chats/, bin/chats.bin,
-qa/load_test_*.py); keep Python in-tree deprecated for A/B; M365 WIP same PR;
+qa/load_test_*.py); Python fully removed (2026-08-19); M365 WIP same PR;
 go-ollama+go-xls now, rest verify.

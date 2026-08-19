@@ -236,7 +236,9 @@ func hasBareWithChats(args []string) bool {
 }
 
 func factsFromExtract(root string) []brain.LeafInput {
-	cmd := exec.Command("python3", filepath.Join(root, "bin", "facts", "extract"), "--json", "--dry-run")
+	cmd := exec.Command(filepath.Join(root, "bin", "cgo", "zig"), "go", "run",
+		"-tags=system_ladybug,facts_extract",
+		filepath.Join(root, "bin", "facts", "extract.go"), "--json", "--dry-run")
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
