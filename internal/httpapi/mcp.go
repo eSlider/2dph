@@ -112,11 +112,18 @@ func (s *Server) mcpCall(r *http.Request, params json.RawMessage) (any, error) {
 				asOf = ""
 			}
 		}
+		root := ""
+		if raw, ok := p.Arguments["root"]; ok {
+			root = strings.TrimSpace(fmt.Sprint(raw))
+			if root == "<nil>" {
+				root = ""
+			}
+		}
 		if !s.tryAcquire(r) {
 			return nil, fmt.Errorf("cancelled")
 		}
 		defer s.release()
-		body, err = s.api.Search(r.Context(), q, limit, asOf)
+		body, err = s.api.Search(r.Context(), q, limit, asOf, root)
 	case "get":
 		id := strings.TrimSpace(fmt.Sprint(p.Arguments["id"]))
 		if id == "" || id == "<nil>" {

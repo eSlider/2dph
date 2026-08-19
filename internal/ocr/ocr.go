@@ -91,12 +91,21 @@ func runTesseract(path string) (string, error) {
 	} else {
 		defer os.Remove(pre)
 	}
-	cmd := exec.Command("tesseract", pre, "stdout", "-l", TessLang, "--psm", "6")
+	cmd := exec.Command("tesseract", pre, "stdout", "-l", lang(), "--psm", "6")
 	out, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// lang returns TessLang unless OCR_LANG overrides it (CI containers may ship
+// fewer language packs, e.g. jitesoft/tesseract-ocr has eng only).
+func lang() string {
+	if v := os.Getenv("OCR_LANG"); v != "" {
+		return v
+	}
+	return TessLang
 }
 
 func runPaddle(path string) (string, error) {

@@ -85,6 +85,7 @@ jobs:
 
   ocr:
     name: OCR (tesseract fixture)
+    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -92,19 +93,14 @@ jobs:
       - uses: actions/setup-go@v4
         with:
           go-version-file: go.mod
-      - name: Install tesseract + poppler
+      - name: OCR tests (tesseract in docker, no apt)
         run: |
-          if [ "$(id -u)" = "0" ]; then
-            apt-get update
-            apt-get install -y --no-install-recommends \
-              tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu poppler-utils
-          else
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends \
-              tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu poppler-utils
-          fi
-      - name: Go OCR tests (synthetic HELLO PNG)
-        run: go test ./internal/ocr -count=1
+          go test -c -o /tmp/ocr.test ./internal/ocr
+          docker run --rm --user root --entrypoint bash \
+            -e OCR_LANG=eng \
+            -v /tmp/ocr.test:/ocr.test \
+            -v "$PWD":/work:ro -w /work/internal/ocr \
+            jitesoft/tesseract-ocr:latest -c '/ocr.test -test.v'
 
   release:
     name: Release (semver)
