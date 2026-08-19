@@ -7,7 +7,7 @@
 //	var/mail/<folder>/<id>/message.json   # Message (this package)
 //	var/mail/<folder>/<id>/attachments/    # raw attachment bytes (storedName)
 //
-// The Message JSON is the contract shared with the Python converter. Fields
+// The Message JSON is the contract shared with the Go converter. Fields
 // deliberately mirror what bin/mail/import already reads from the OnlyOffice
 // API, so conversion is source-agnostic.
 package sync

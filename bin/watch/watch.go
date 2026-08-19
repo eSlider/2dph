@@ -19,13 +19,13 @@ type Options struct {
 	Dirs     []string
 	Interval time.Duration
 	// IndexCmd is the index command template. %s is replaced by the repo
-	// root (from KB_ROOT). Defaults to `python3 <root>/bin/kb/index --with-mail`.
+	// root (from KB_ROOT). Defaults to `<root>/bin/brain/index.go --with-mail`.
 	IndexCmd string
 }
 
 // Run blocks forever polling Dirs (defaults: KB_WATCH_DIRS or /corpus) every
 // Interval (default 30s) and re-indexing when files change. KB_ROOT names the
-// repo root used to locate bin/kb/index.
+// repo root used to locate bin/brain/index.go.
 func Run(args []string) {
 	opts := fromEnv(args)
 	root, _ := os.Getwd()
@@ -63,11 +63,7 @@ func fromEnv(args []string) Options {
 			}
 		}
 	}
-	pys := os.Getenv("KB_PY")
-	if pys == "" {
-		pys = "python3"
-	}
-	opts.IndexCmd = pys + " <root>/bin/kb/index --with-mail"
+	opts.IndexCmd = "<root>/bin/brain/index.go --with-mail"
 	return opts
 }
 

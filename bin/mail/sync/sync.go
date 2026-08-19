@@ -408,7 +408,7 @@ func processOne(ctx context.Context, src Source, id string, cfg SyncConfig) (sta
 			return statusFailed, fmt.Errorf("attachment %s: %w", att.FileName, err)
 		}
 		// ICS attachments get structured markdown immediately (same name the
-		// Python converter would use: <display stem>.md).
+		// Go converter uses: <display stem>.md).
 		if isICS(att.FileName) {
 			stem := att.FileName
 			if i := strings.LastIndex(stem, "."); i >= 0 {

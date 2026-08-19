@@ -42,11 +42,11 @@ skills/       in-project agent skills (vendored, no external links)
 bin/          self-describing tools bin/{subject}/{method}.go (shebang)
 bin/brain/    search.go serve.go index.go add.go get.go stats.go eval.go watch.go
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
-bin/mail/     sync.go import.go ocr.go (index_mail → brain/index.go)
+bin/mail/     sync.go import.go ocr.go
 bin/markdown/ import.go (H2 leaf split)
 bin/postgres/ query.go (read-only YAML)
-bin/git/      import.go (go-git history; Python shim execs it)
-bin/web/      search.go (SearXNG; Python shim execs it)
+bin/git/      import.go (go-git history)
+bin/web/      search.go (SearXNG)
 bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
 internal/     shared Go (brain/rank is cgo-free; facts D16; cli flaggy D23; chats; gitlog; websearch; reasoner; duckstats)
 bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
@@ -83,8 +83,8 @@ bin/stack/start-mail-sync                                               # compos
   `pdftotext -layout` fast path (~15ms); textless/scanned PDFs use
   `pdftoppm` + tesseract `eng+deu` (`bin/mail/ocr.go`). Optional
   `OCR_ENGINE=paddle`. Conversion never touches the brain DB (crash safety).
-- `index_mail` is a deprecation shim for `bin/brain/index.go --rebuild`. Bulk
-  rebuild still deletes `var/kb.lbug` and creates FTS/HNSW last. Single-leaf
+- Bulk rebuild is `bin/brain/index.go --rebuild`; it still deletes
+  `var/kb.lbug` and creates FTS/HNSW last. Single-leaf
   write is `bin/brain/add.go` (safe while indexes exist; do not DROP INDEX).
   Keep conversion + indexing separate so a conversion crash can't leave the
   DB mid-transaction.
