@@ -30,7 +30,7 @@ bin/brain/search.go "who works where" --as-of 2025-01-01  # D24 intervals
 bin/brain/add.go --text T --root facts --source "a.md x b.md"
 bin/brain/get.go <id> --body                           # full chunk only when needed
 bin/brain/stats.go                                     # index health
-bin/brain/eval.go                                      # recall@5 >= 0.95 gate (Go; Python bin/kb/eval is CI fallback)
+bin/brain/eval.go                                      # recall@5 >= 0.95 gate (Go, via Zig CGO)
 ```
 
 `bin/kb/search` is a deprecated wrapper. `--hop N` walks

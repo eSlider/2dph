@@ -7,7 +7,7 @@
 //	./bin/brain/get.go <id> --body
 //	./bin/brain/get.go <id> --json
 //
-// Shebang routes through bin/cgo/zig. Python bin/kb/get is the CI fallback (no cgo).
+// Shebang routes through bin/cgo/zig (Ladybug CGO via Zig).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

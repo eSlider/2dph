@@ -76,7 +76,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); Zig CGO (D21)
     cgo/zig zcc zc++        CGO toolchain (zig cc, not gcc)
     mail/import.go          JSON → markdown (no brain write)
-    markdown/import.go      H2 leaf split (Go); Python bin/md/import fallback
+    markdown/import.go      H2 leaf split (Go)
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
     git/import.go           go-git history (no git binary; conversion only)
     web/search.go           SearXNG client (throttled ≠ absence)
@@ -84,14 +84,13 @@ detective method: **a fact needs ≥2 independent sources or it is
     chats/sync.go import.go facts.go apply.go
                             (libs in internal/chats; no chats index)
     mail/ocr.go             tesseract eng+deu (pdftoppm scans)
-    md/import               (deprecated; bin/markdown/import.go)
     brain/extract  brain/audit       brain/deduce    (thinking wrapper)
     stack/start start-assistant start-mail-sync stop status
     web/search               (deprecated shim → web/search.go)
     db/psql-yq               (vendored)
     ssh-tunnel               onlyoffice pg tunnel 5433
   var/kb.lbug               single embedded store (gitignored)
-  .venv/                    ladybug + model2vec + mistune + numpy
+  .venv/                    legacy python facts tools only (kblib)
 ```
 
 ## Schema (first pass)
@@ -165,11 +164,9 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 1. go vet + go test ./... (root module; packages without ladybug cgo)
 2. `go test ./internal/brain/rank` (cgo-free ranking + flag parser)
-3. python -m unittest discover -s bin/tools (includes published-docs SoT)
-4. `bin/facts/audit self` (lexicon internal consistency; `bin/facts/audit.go` is the D14 wrapper)
-5. `bin/brain/eval.go` via Zig (recall@5 ≥ 0.95). Python `bin/kb/eval` is an
-   explicit fallback, not the CI SoT.
-6. `bin/cgo/zig go build -tags system_ladybug` (compile search with zig cc; fetches pinned zig+libs).
+3. `bin/facts/audit self` (lexicon internal consistency; `bin/facts/audit.go` is the D14 wrapper)
+4. `bin/brain/eval.go` via Zig (recall@5 ≥ 0.95) — the CI SoT.
+5. `bin/cgo/zig go build -tags system_ladybug` (compile search with zig cc; fetches pinned zig+libs).
 
 Feedback loop: every commit → PR → CI → green/gate → merge. Same discipline as
 `db/tech-poc`: contract first where there is an OpenAPI/message shape.
@@ -179,8 +176,7 @@ Feedback loop: every commit → PR → CI → green/gate → merge. Same discipl
 1. scaffold repo (:done after this file + AGENTS.md + .gitignore + ci)
 2. gh repo create eSlider/2dph --private + initial commit + CI
 3. vendored skill integration (web-search, postgres, brain, diataxis-docs) — no remote links
-4. .venv: ladybug + model2vec + mistune
-5. schema + tools with TDD (kb + md + facts + brain)
+4. schema + tools with TDD (kb + md + facts + brain)
 6. ~/.config/brain config
 7. corpus extraction (facts/info) — **in**: [#18](https://git.produktor.io/eSlider/2dph/issues/18)
 8. verify: web-search smoke, onlyoffice pg, md-db round-trip, eval, audit
@@ -198,7 +194,7 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | **in** — `--hop N` walks `FROM_FILE` → `HAS_VERSION` → `AUTHORED` (max 3). |
 | 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | **in** — `--with-facts` / `--facts-json` land `root=facts`; `--with-chats` indexes `var/chats/md`. WhatsApp sync is out of v1. |
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
-| 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. Python `bin/kb/eval` stays as an explicit fallback. |
+| 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. |
 
 Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.
 ## 2026-08-18 — Go-only write path sync (gitea #41)

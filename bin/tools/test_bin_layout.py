@@ -194,16 +194,6 @@ class BinLayoutTest(unittest.TestCase):
         self.assertIn("bin/mail/import.go", shim)
         self.assertNotIn("from docling", shim)
         self.assertNotIn("import docling", shim)
-        conv = (ROOT / "bin" / "tools" / "mailconv.py").read_text()
-        self.assertIn("pdftotext", conv)
-        self.assertIn("pdftoppm", conv)
-        self.assertIn("tesseract", conv)
-        self.assertIn("eng+deu", conv)
-        self.assertNotIn("from docling", conv)
-        self.assertNotIn("import docling", conv)
-        self.assertNotIn("gocv", conv.lower())
-        proj = (ROOT / "pyproject.toml").read_text()
-        self.assertNotIn("docling", proj)
         ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
         self.assertIn("tesseract-ocr", ci)
         self.assertIn("./internal/ocr", ci)
@@ -253,11 +243,6 @@ class BinLayoutTest(unittest.TestCase):
         self._assert_shebang("bin/web/search.go")
         py = (ROOT / "bin" / "web" / "search").read_text()
         self.assertIn("bin/web/search.go", py)
-
-    def test_gitimport_py_has_no_git_binary(self) -> None:
-        py = (ROOT / "bin" / "tools" / "gitimport.py").read_text()
-        self.assertNotIn("subprocess", py)
-        self.assertNotIn("git log", py)
 
     def test_gogit_is_direct_go_mod_require(self) -> None:
         text = (ROOT / "go.mod").read_text()

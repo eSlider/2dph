@@ -46,7 +46,7 @@ graph TB
     end
 
     subgraph ai["AI"]
-        M2V["model2vec<br/>potion-multilingual-128M"]
+        M2V["potion-multilingual-128M<br/>(Go embedder)"]
     end
 
     subgraph ext["External"]
@@ -135,7 +135,7 @@ bin/brain/search.go "invoice from last week"                            # same s
   Python fallbacks stay for CI until the runner fetches Zig. Incremental
   write is `bin/brain/add.go` (Python `kblib.add_leafs`). Bulk rebuild is
   Compose profile `index` (`bin/brain/index.go --rebuild`).
-- **model2vec** — `potion-multilingual-128M` (256-dim), CPU, no Ollama
+- **potion-multilingual-128M** — 256-dim embeddings (Go/Ladybug, CPU, no Ollama)
   runtime dependency.
 - facts and info split by `root` but written in the same transaction.
 
@@ -153,10 +153,8 @@ machines. Tests gate every commit. HTTP: `bin/brain/serve.go` calls
 See the portable runbook: [docs/runbook.md](docs/runbook.md).
 
 ```bash
-uv venv .venv
-uv pip install -r requirements.lock.txt
 bin/facts/audit.go self
-go test ./... && uv run python -m unittest discover -s bin/tools -t .
+go test ./...
 ```
 
 Docker (optional, cached model + var volumes):

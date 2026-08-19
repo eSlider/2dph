@@ -6,7 +6,6 @@
 //	./bin/markdown/import.go --files a.md,b.md --json
 //
 // Conversion only. Brain write is bin/brain/index.go.
-// Python bin/md/import remains as a fallback.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
