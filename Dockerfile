@@ -1,51 +1,9 @@
 # syntax=docker/dockerfile:1
 #
 #   docker build --target api -t 2dph:api .
-#   docker build --target index -t 2dph:index .
 #
-# API: Go + ladybug via Zig CGO (no CPython).
-# Index: Python write path (profile `index` until brain/add is v2).
-
-# --- mail-sync: standalone M365/OnlyOffice/Gmail puller (pure Go, no CGO) ---
-FROM golang:1.26-bookworm AS mail-build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY bin/mail ./bin/mail
-COPY internal ./internal
-RUN CGO_ENABLED=0 go build -o /mail-sync ./bin/mail/sync.go
-
-# --- Python sidecar (Ladybug write / rebuild) ---
-FROM python:3.12-slim AS index
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/home/2dph/.cache/huggingface
-
-WORKDIR /app
-RUN id -u 2dph 2>/dev/null || useradd --create-home --uid 1001 2dph
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-         poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.lock.txt /tmp/requirements.lock.txt
-RUN python -m pip install --no-cache-dir -r /tmp/requirements.lock.txt \
-    && rm /tmp/requirements.lock.txt
-
-COPY . .
-RUN chmod +x /app/bin/docker-entrypoint \
-    && chown -R 2dph:2dph /app
-COPY --from=mail-build /mail-sync /app/bin/mail-sync
-USER 2dph
-
-ENV PATH="/app/bin:${PATH}" \
-    KB_PY=python3 \
-    KB_ROOT=/app
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import model2vec, ladybug, mistune; print('ok')" || exit 1
-ENTRYPOINT ["/app/bin/docker-entrypoint"]
+# API: Go + ladybug via Zig CGO (no CPython). The write path is Go
+# (brain-index/brain-add); there is no Python sidecar.
 
 # --- Go API: CGO with Zig, not gcc ---
 FROM golang:1.26-bookworm AS api-build
