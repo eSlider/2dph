@@ -37,8 +37,8 @@ negative finding. See `skills/picoclaw/SKILL.md`.
 System performance (MCP gates + qwen3.5:9b tool_call + PicoClaw gateway):
 
 ```bash
-./qa/system_perf.py --json | yq '.gates'
-REASONER_MODEL=qwen3.5:9b ./qa/system_perf.py --reasoner --picoclaw --json | yq '.reasoner'
+./qa/system_perf.go --json | yq '.gates'
+REASONER_MODEL=qwen3.5:9b ./qa/system_perf.go --reasoner --picoclaw --json | yq '.reasoner'
 ```
 
 The default agent model is `qwen3.5:9b`. PicoClaw `context_window` is 8192

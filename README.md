@@ -163,7 +163,7 @@ bin/stack/start-assistant                      # + qwen3.5:9b + PicoClaw agent
 bin/stack/status
 bin/stack/stop
 docker compose up -d brain                     # API (Zig CGO serve :8630)
-docker compose --profile index run --rm index  # Python Ladybug rebuild
+docker compose --profile index run --rm index  # Go Ladybug rebuild (zig cgo)
 docker compose --profile picoclaw up brain-mcp # MCP on 127.0.0.1:8630
 docker compose --profile reasoner up -d reasoner  # CPU Ollama 127.0.0.1:11435
 docker compose up brain-watch                  # auto re-index on change

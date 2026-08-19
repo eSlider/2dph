@@ -36,7 +36,6 @@ func TestStampEmptyForMissingDir(t *testing.T) {
 func TestFromEnvDefaults(t *testing.T) {
 	t.Setenv("KB_WATCH_INTERVAL", "")
 	t.Setenv("KB_WATCH_DIRS", "")
-	t.Setenv("KB_PY", "")
 	opts := fromEnv(nil)
 	if len(opts.Dirs) == 0 || opts.Dirs[0] != "/corpus" {
 		t.Fatalf("default dirs = %v, want [/corpus]", opts.Dirs)
@@ -44,8 +43,8 @@ func TestFromEnvDefaults(t *testing.T) {
 	if opts.Interval != 30*time.Second {
 		t.Fatalf("default interval = %s, want 30s", opts.Interval)
 	}
-	if !strings.Contains(opts.IndexCmd, "kb/index") {
-		t.Fatalf("default index cmd = %q, want kb/index", opts.IndexCmd)
+	if !strings.Contains(opts.IndexCmd, "brain/index.go") {
+		t.Fatalf("default index cmd = %q, want brain/index.go", opts.IndexCmd)
 	}
 	if !strings.Contains(opts.IndexCmd, "--with-mail") {
 		t.Fatalf("default index cmd must include --with-mail, got %q", opts.IndexCmd)

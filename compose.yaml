@@ -2,7 +2,7 @@
 #
 #   bin/stack/start / start-assistant / status / stop
 #   docker compose up -d brain                  # API (Zig CGO serve)
-#   docker compose --profile index run --rm index   # Python rebuild
+#   docker compose --profile index run --rm index   # Go rebuild (zig cgo)
 #   docker compose --profile picoclaw up -d     # brain-mcp + CPU reasoner + PicoClaw gateway
 #   docker compose --profile reasoner up -d reasoner   # CPU Ollama :11435
 #   docker compose --profile searxng up -d
