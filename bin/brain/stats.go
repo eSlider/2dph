@@ -6,7 +6,7 @@
 //	./bin/brain/stats.go
 //	./bin/brain/stats.go --json
 //
-// Shebang routes through bin/cgo/zig. Python bin/kb/stats is the CI fallback (no cgo).
+// Shebang routes through bin/cgo/zig (Ladybug CGO via Zig).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

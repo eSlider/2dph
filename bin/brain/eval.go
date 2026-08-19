@@ -6,7 +6,7 @@
 //	./bin/brain/eval.go
 //	./bin/brain/eval.go --json
 //
-// Shebang routes through bin/cgo/zig. Python bin/kb/eval is the CI fallback (no cgo).
+// Shebang routes through bin/cgo/zig (Ladybug CGO via Zig).
 // Control questions live in internal/brain/rank (cgo-free).
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
