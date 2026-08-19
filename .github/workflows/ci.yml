@@ -120,10 +120,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
       - name: Compute next semver from conventional commits
         id: semver
         run: |
-          bin/ci/semver > /tmp/next
+          bin/ci/semver.go > /tmp/next
           echo "next=$(cat /tmp/next)" >> "$GITHUB_OUTPUT"
 
       - name: Create tag + GitHub Release
