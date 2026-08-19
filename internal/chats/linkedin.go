@@ -183,7 +183,9 @@ func linkedInTimestamp(day, clock string) string {
 	}
 	now := time.Now()
 	var d time.Time
+	weekday := false
 	if wd, ok := lnWeekdays[day]; ok {
+		weekday = true
 		diff := (int(now.Weekday()) - int(wd) + 7) % 7
 		d = now.AddDate(0, 0, -diff)
 	} else {
@@ -213,6 +215,12 @@ func linkedInTimestamp(day, clock string) string {
 		}
 	}
 	res := time.Date(d.Year(), d.Month(), d.Day(), t.Hour(), t.Minute(), 0, 0, time.UTC)
+	// A weekday label must resolve to the most recent occurrence that is
+	// not in the future: on the matching weekday, a clock later than now
+	// belongs to the previous week (e.g. WEDNESDAY 10:02 at 09:44 -> -7d).
+	if weekday && res.After(now) {
+		res = res.AddDate(0, 0, -7)
+	}
 	return res.UTC().Format(time.RFC3339)
 }
 
