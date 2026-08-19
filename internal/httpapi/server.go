@@ -24,7 +24,7 @@ import (
 
 // API is the in-process brain surface. Production serve.go wires internal/brain.
 type API interface {
-	Search(ctx context.Context, query string, limit int, asOf string) ([]byte, error)
+	Search(ctx context.Context, query string, limit int, asOf, root string) ([]byte, error)
 	Get(ctx context.Context, id string, body bool) ([]byte, error)
 	Stats(ctx context.Context) ([]byte, error)
 	Audit(ctx context.Context) ([]byte, error)
@@ -86,11 +86,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 	asOf := strings.TrimSpace(r.URL.Query().Get("as_of"))
+	root := strings.TrimSpace(r.URL.Query().Get("root"))
 	if !s.acquire(w, r) {
 		return
 	}
 	defer s.release()
-	body, err := s.api.Search(r.Context(), q, limit, asOf)
+	body, err := s.api.Search(r.Context(), q, limit, asOf, root)
 	writeAPI(w, body, err)
 }
 
@@ -188,13 +189,16 @@ type ExecSearcher struct {
 	Timeout time.Duration
 }
 
-func (b ExecSearcher) Search(ctx context.Context, query string, limit int, asOf string) ([]byte, error) {
+func (b ExecSearcher) Search(ctx context.Context, query string, limit int, asOf, root string) ([]byte, error) {
 	if b.Timeout == 0 {
 		b.Timeout = 60 * time.Second
 	}
 	ctx, cancel := context.WithTimeout(ctx, b.Timeout)
 	defer cancel()
 	args := []string{"--json", "-n", strconv.Itoa(limit)}
+	if root != "" {
+		args = append(args, "--root", root)
+	}
 	if asOf != "" {
 		args = append(args, "--as-of", asOf)
 	}
