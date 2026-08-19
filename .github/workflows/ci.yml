@@ -29,14 +29,6 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install uv
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Sync toolchain (ladybug, model2vec, mistune)
-        run: uv sync --frozen
-
       - name: Shell syntax check
         run: |
           bash -n bin/db/psql-yq
@@ -47,10 +39,6 @@ jobs:
           sh -n bin/cgo/zcc
           sh -n bin/cgo/zc++
 
-      - name: Python unit tests (offline, vendored tools)
-        run: |
-          uv run python -m unittest discover -s bin/tools -t .
-
       - name: Go tests (root module; duckdb-go CGO via gcc, no ladybug)
         run: |
           CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go vet ./...
@@ -60,7 +48,7 @@ jobs:
         run: go test ./internal/brain/rank -count=1
 
       - name: facts/audit self (lexicon consistency, no network)
-        run: ./bin/facts/audit self
+        run: ./bin/facts/audit.go self
 
       - name: CGO via Zig (compile brain/search + index + add + eval)
         run: |
@@ -80,8 +68,8 @@ jobs:
 
       - name: recall@5 SoT (Go index + Zig bin/brain/eval.go)
         run: |
-          # weights via Python model2vec (A/B side only, no python indexing)
-          uv run python -c "from model2vec import StaticModel; StaticModel.from_pretrained('minishlab/potion-multilingual-128M')"
+          # Go downloader fetches potion weights into the HF cache (skips if cached)
+          go run ./bin/brain/model.go
           /tmp/brain-index --rebuild --json
           KB_ROOT="$PWD" /tmp/brain-eval --json
 
