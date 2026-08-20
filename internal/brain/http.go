@@ -60,6 +60,7 @@ func (HTTP) Get(_ context.Context, id string, body bool) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 	if !res.HasNext() {
 		return nil, fmt.Errorf("no leaf %s", id)
 	}
@@ -92,6 +93,7 @@ func (HTTP) Stats(context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 	byRoot := map[string]int{}
 	total := 0
 	for res.HasNext() {
@@ -118,6 +120,7 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 	var rows []map[string]any
 	for res.HasNext() {
 		row, err := res.Next()
