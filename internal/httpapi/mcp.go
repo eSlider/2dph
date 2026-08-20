@@ -119,11 +119,20 @@ func (s *Server) mcpCall(r *http.Request, params json.RawMessage) (any, error) {
 				root = ""
 			}
 		}
+		noWeb := false
+		if raw, ok := p.Arguments["noweb"]; ok {
+			switch v := raw.(type) {
+			case bool:
+				noWeb = v
+			case string:
+				noWeb = v == "1" || strings.EqualFold(v, "true")
+			}
+		}
 		if !s.tryAcquire(r) {
 			return nil, fmt.Errorf("cancelled")
 		}
 		defer s.release()
-		body, err = s.api.Search(r.Context(), q, limit, asOf, root)
+		body, err = s.api.Search(r.Context(), q, limit, asOf, root, noWeb)
 	case "get":
 		id := strings.TrimSpace(fmt.Sprint(p.Arguments["id"]))
 		if id == "" || id == "<nil>" {
