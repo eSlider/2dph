@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,6 +45,11 @@ func OpenWritable(path string) (*lbug.Database, *lbug.Connection, error) {
 	cfg.ReadOnly = false
 	cfg.MaxNumThreads = 8
 	cfg.BufferPoolSize = 1 << 30
+	if v := os.Getenv("KB_BUFFER_POOL"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
+			cfg.BufferPoolSize = uint64(n)
+		}
+	}
 	db, err := lbug.OpenDatabase(path, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("OpenDatabase: %w", err)
@@ -75,9 +81,13 @@ func filepathDir(path string) string {
 }
 
 func loadExt(conn *lbug.Connection, name string) error {
-	_, _ = conn.Query("INSTALL " + name)
-	if _, err := conn.Query("LOAD EXTENSION " + name); err != nil {
+	res, _ := conn.Query("INSTALL " + name)
+	qClose(res)
+	if res, err := conn.Query("LOAD EXTENSION " + name); err != nil {
+		qClose(res)
 		return fmt.Errorf("LOAD EXTENSION %s: %w", name, err)
+	} else {
+		qClose(res)
 	}
 	return nil
 }
@@ -104,12 +114,16 @@ author STRING, email STRING, date STRING, PRIMARY KEY(id))`,
 		`CREATE REL TABLE IF NOT EXISTS AUTHORED (FROM Commit TO Person)`,
 	}
 	for _, s := range stmts {
-		if _, err := conn.Query(s); err != nil {
+		if res, err := conn.Query(s); err != nil {
+			qClose(res)
 			return err
+		} else {
+			qClose(res)
 		}
 	}
 	for _, col := range []string{"valid_from", "valid_to"} {
-		_, _ = conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
+		res, _ := conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
+		qClose(res)
 	}
 	return nil
 }
@@ -209,23 +223,30 @@ func AddLeafs(conn *lbug.Connection, leafs []LeafInput) ([]string, error) {
 		return nil, nil
 	}
 	started := false
-	if _, err := conn.Query("BEGIN TRANSACTION"); err == nil {
+	if res, err := conn.Query("BEGIN TRANSACTION"); err == nil {
+		qClose(res)
 		started = true
+	} else {
+		qClose(res)
 	}
 	ids := make([]string, 0, len(leafs))
 	for _, lf := range leafs {
 		id, err := UpsertLeaf(conn, lf)
 		if err != nil {
 			if started {
-				_, _ = conn.Query("ROLLBACK")
+				res, _ := conn.Query("ROLLBACK")
+				qClose(res)
 			}
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
 	if started {
-		if _, err := conn.Query("COMMIT"); err != nil {
+		if res, err := conn.Query("COMMIT"); err != nil {
+			qClose(res)
 			return nil, err
+		} else {
+			qClose(res)
 		}
 	}
 	return ids, nil
@@ -290,15 +311,21 @@ func EnsureIndexes(conn *lbug.Connection) error {
 		return err
 	}
 	if !names["id"] {
-		if _, err := conn.Query("CALL CREATE_FTS_INDEX('Leaf', 'id', ['text'])"); err != nil {
+		if res, err := conn.Query("CALL CREATE_FTS_INDEX('Leaf', 'id', ['text'])"); err != nil {
+			qClose(res)
 			return fmt.Errorf("CREATE_FTS_INDEX: %w (delete kb.lbug and --rebuild)", err)
+		} else {
+			qClose(res)
 		}
 	}
 	if !names["Leaf_vec"] {
-		if _, err := conn.Query(
+		if res, err := conn.Query(
 			"CALL CREATE_VECTOR_INDEX('Leaf', 'Leaf_vec', 'embedding', metric := 'cosine')",
 		); err != nil {
+			qClose(res)
 			return fmt.Errorf("CREATE_VECTOR_INDEX: %w (delete kb.lbug and --rebuild)", err)
+		} else {
+			qClose(res)
 		}
 	}
 	names, err = leafIndexNames(conn)

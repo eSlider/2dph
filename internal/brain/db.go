@@ -94,28 +94,46 @@ func openWithSandbox(epsv string) error {
 			closeBrain()
 			return fmt.Errorf("SET STREAM_SANDBOX: invalid value")
 		}
-		if _, err := conn.Query("SET STREAM_SANDBOX = '" + epsv + "'"); err != nil {
+		if res, err := conn.Query("SET STREAM_SANDBOX = '" + epsv + "'"); err != nil {
+			qClose(res)
 			closeBrain()
 			return fmt.Errorf("SET STREAM_SANDBOX: %w", err)
+		} else {
+			qClose(res)
 		}
 	}
-	if _, err := conn.Query("LOAD EXTENSION FTS"); err != nil {
+	if res, err := conn.Query("LOAD EXTENSION FTS"); err != nil {
+		qClose(res)
 		closeBrain()
 		return fmt.Errorf("LOAD EXTENSION FTS: %w", err)
+	} else {
+		qClose(res)
 	}
-	if _, err := conn.Query("LOAD EXTENSION VECTOR"); err != nil {
+	if res, err := conn.Query("LOAD EXTENSION VECTOR"); err != nil {
+		qClose(res)
 		closeBrain()
 		return fmt.Errorf("LOAD EXTENSION VECTOR: %w", err)
+	} else {
+		qClose(res)
 	}
 	migrateIntervalColumns()
 	return nil
+}
+
+// qClose destroys a QueryResult's C buffers even when the result set is empty.
+func qClose(res *lbug.QueryResult) {
+	if res != nil {
+		res.Close()
+	}
 }
 
 // migrateIntervalColumns adds D24 valid_from/valid_to on existing Leaf tables.
 // Fresh CREATE already has them; ALTER is a no-op when the column exists.
 func migrateIntervalColumns() {
 	for _, col := range []string{"valid_from", "valid_to"} {
-		_, _ = conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
+		res, err := conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
+		qClose(res)
+		_ = err
 	}
 }
 
