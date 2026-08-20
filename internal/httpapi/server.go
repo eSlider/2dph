@@ -14,6 +14,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,7 +25,7 @@ import (
 
 // API is the in-process brain surface. Production serve.go wires internal/brain.
 type API interface {
-	Search(ctx context.Context, query string, limit int, asOf, root string) ([]byte, error)
+	Search(ctx context.Context, query string, limit int, asOf, root string, noWeb bool) ([]byte, error)
 	Get(ctx context.Context, id string, body bool) ([]byte, error)
 	Stats(ctx context.Context) ([]byte, error)
 	Audit(ctx context.Context) ([]byte, error)
@@ -87,11 +88,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	asOf := strings.TrimSpace(r.URL.Query().Get("as_of"))
 	root := strings.TrimSpace(r.URL.Query().Get("root"))
+	noWeb := r.URL.Query().Get("noweb") == "1" || r.URL.Query().Get("noweb") == "true"
 	if !s.acquire(w, r) {
 		return
 	}
 	defer s.release()
-	body, err := s.api.Search(r.Context(), q, limit, asOf, root)
+	body, err := s.api.Search(r.Context(), q, limit, asOf, root, noWeb)
 	writeAPI(w, body, err)
 }
 
@@ -189,7 +191,7 @@ type ExecSearcher struct {
 	Timeout time.Duration
 }
 
-func (b ExecSearcher) Search(ctx context.Context, query string, limit int, asOf, root string) ([]byte, error) {
+func (b ExecSearcher) Search(ctx context.Context, query string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
 	if b.Timeout == 0 {
 		b.Timeout = 60 * time.Second
 	}
@@ -201,6 +203,9 @@ func (b ExecSearcher) Search(ctx context.Context, query string, limit int, asOf,
 	}
 	if asOf != "" {
 		args = append(args, "--as-of", asOf)
+	}
+	if noWeb {
+		args = append(args, "--no-web")
 	}
 	args = append(args, query)
 	cmd := exec.CommandContext(ctx, b.CmdPath, args...)
@@ -283,6 +288,15 @@ func Run(api API) {
 	}
 	addr := host + ":" + strconv.Itoa(port)
 	log.Printf("serve: %s (workers=%d)", addr, workers)
+	if pprofPort := os.Getenv("KB_PPROF"); pprofPort != "" {
+		go func() {
+			paddr := host + ":" + pprofPort
+			log.Printf("pprof: %s (cpu/heap/goroutine via /debug/pprof/)", paddr)
+			if err := http.ListenAndServe(paddr, nil); err != nil {
+				log.Printf("pprof: %v", err)
+			}
+		}()
+	}
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}

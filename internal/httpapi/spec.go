@@ -36,6 +36,7 @@ var Ops = []Op{
 			{Name: "q", In: "query", Type: "string", Description: "search query", Required: true},
 			{Name: "n", In: "query", Type: "integer", Description: "hit limit 1..100 (default 10)"},
 			{Name: "root", In: "query", Type: "string", Description: "facts or info (default: all roots)"},
+			{Name: "noweb", In: "query", Type: "boolean", Description: "skip the web second source (D17)"},
 			{Name: "as_of", In: "query", Type: "string", Description: "YYYY-MM-DD; keep facts active on that day (D24)"},
 		},
 	},
