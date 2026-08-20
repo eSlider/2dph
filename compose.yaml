@@ -40,6 +40,7 @@ services:
       KB_ROOT: /data
       KB_WORKERS: "4"
       KB_PORT: "8630"
+      KB_PPROF: "1707"
     network_mode: host
     volumes:
       - ./var:/data/var

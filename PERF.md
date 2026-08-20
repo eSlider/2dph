@@ -33,6 +33,28 @@ Measured: daemon 1.1GB + API 100MB, zero zombies.
   (`bin-build/brain-{serve,search,index}`) with Zig CGO, then starts both
   processes with reuse logic (curl health, keep running daemon/API).
 
+## Buffer-pool leak (2026-08-20)
+
+Sustained concurrent searches pinned the whole Ladybug FTS/vector buffer
+pool: every `conn.Query`/`conn.Execute` result that was not closed kept its
+C buffer pages pinned. After a load burst the pool was permanently full
+(`Buffer manager exception: Unable to allocate memory! The buffer pool is
+full and no memory could be freed!`) and **every** endpoint — even `/stats`
+— returned 502 until a process restart.
+
+Fixed in `internal/brain/*.go`: `defer res.Close()` on every QueryResult
+(read + one-shot statements via `qClose`). Regression:
+`TestConcurrentSearchesDontExhaustBufferPool` (red without the fix).
+Live proof: `qa/stress` at c=8/16 sustained now holds 0% errors.
+
+## Tuning
+
+- `KB_BUFFER_POOL` (bytes) sizes the Ladybug buffer pool (default 1GB).
+  Smaller pools exhaust faster under concurrency; keep the default unless
+  the host cannot commit 1GB.
+- `KB_PPROF` (port) enables `net/http/pprof` on the API for
+  cpu/heap/goroutine profiles (`go tool pprof`).
+
 ## Env
 
 - `KBSEARCH_PORT` (default 17830) — embed daemon port.
