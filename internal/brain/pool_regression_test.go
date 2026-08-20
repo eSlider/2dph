@@ -13,6 +13,7 @@ import (
 // allocate memory! The buffer pool is full" made every endpoint 502 until a
 // process restart. With defer res.Close() the pool stays evictable under load.
 func TestConcurrentSearchesDontExhaustBufferPool(t *testing.T) {
+	t.Setenv("KB_BUFFER_POOL", "134217728")
 	dir := t.TempDir()
 	d, c, err := OpenWritable(dir + "/kb.lbug")
 	if err != nil {
