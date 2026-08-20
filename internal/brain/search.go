@@ -138,6 +138,7 @@ func attachHops(hits []Hit, n int) error {
 			for res.HasNext() {
 				row, err := res.Next()
 				if err != nil {
+					res.Close()
 					return err
 				}
 				vals, err := row.GetAsSlice()
@@ -151,6 +152,7 @@ func attachHops(hits []Hit, n int) error {
 					Depth: int(asInt(vals[2])),
 				})
 			}
+			res.Close()
 		}
 		hits[i].Hops = hops
 	}
@@ -174,6 +176,7 @@ func queryFTS(text string, limit int) ([]Hit, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 	return rowsToHits(res)
 }
 
@@ -191,6 +194,7 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 	hits, err := rowsToHits(res)
 	if err != nil {
 		return nil, err

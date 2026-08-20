@@ -182,6 +182,7 @@ func lookupLeaf(id string) (map[string]string, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	defer res.Close()
 	if !res.HasNext() {
 		return nil, "", fmt.Errorf("no leaf %s", id)
 	}
@@ -211,6 +212,7 @@ func leafStats() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 	byRoot := map[string]int{}
 	total := 0
 	for res.HasNext() {
