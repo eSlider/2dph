@@ -18,16 +18,6 @@ import (
 var corpusDefaults = []string{"README.md", "PLAN.md", "AGENTS.md", "docs", "skills"}
 
 // CorpusLeaf is a markdown-derived info leaf before embed/write.
-type CorpusLeaf struct {
-	Source  string
-	Repo    string
-	Heading string
-	Text    string
-	Type    string
-	How     string
-	Date    string
-}
-
 // LoadDefaultCorpus walks README/PLAN/AGENTS/docs/skills.
 func LoadDefaultCorpus(root string) ([]CorpusLeaf, error) {
 	var files []string
@@ -266,8 +256,24 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 	if opt.Limit > 0 && len(leafs) > opt.Limit {
 		leafs = leafs[:opt.Limit]
 	}
+
+	// Resume: drop leafs already present before embedding, so a re-run skips
+	// the costly embedding step entirely.
+	if opt.Skip {
+		existing, err := existingLeafIDSet(conn)
+		if err != nil {
+			return 0, err
+		}
+		leafs = filterExistingLeafs(leafs, existing)
+	}
 	if opt.Progress != nil {
 		opt.Progress.Report(0, len(leafs))
+	}
+	if len(leafs) == 0 {
+		if opt.Progress != nil {
+			opt.Progress.Finish(0, 0)
+		}
+		return 0, nil
 	}
 
 	items := make([]poolItem, len(leafs))
@@ -310,22 +316,6 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 			How: how, Loc: lf.Source, Type: typ, Embedding: r.emb, ValidFrom: lf.Date,
 		})
 		repos = append(repos, lf.Repo)
-	}
-
-	if opt.Skip {
-		existing, err := existingLeafIDSet(conn)
-		if err != nil {
-			return 0, err
-		}
-		keptIn, keptRepo := inputs[:0], repos[:0]
-		for k, in := range inputs {
-			if existing[LeafID(in.Text, in.Source)] {
-				continue
-			}
-			keptIn = append(keptIn, in)
-			keptRepo = append(keptRepo, repos[k])
-		}
-		inputs, repos = keptIn, keptRepo
 	}
 
 	n := 0
