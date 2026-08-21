@@ -1,6 +1,6 @@
 ---
 type: explanation
-status: current
+status: historical (v1 closed, epic #16; current board: Gitea #66 + milestone v2)
 related:
   - PLAN.md
   - docs/design.md

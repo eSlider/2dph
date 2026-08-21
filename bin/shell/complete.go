@@ -16,7 +16,7 @@ import (
 
 	mailsync "github.com/eSlider/2dph/internal/mailsync"
 	"github.com/eSlider/2dph/internal/brain/rank"
-	"github.com/eSlider/2dph/internal/chats"
+	"github.com/eSlider/2dph/internal/chat"
 	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/gitlog"
 	"github.com/eSlider/2dph/internal/markdown"
@@ -42,10 +42,10 @@ func tools() []cli.Tool {
 		{Path: "bin/reasoner/bench.go", Name: "reasoner-bench", New: reasoner.Parser},
 		{Path: "bin/mail/ocr.go", Name: "mail-ocr", New: ocr.Parser},
 		{Path: "bin/mail/sync.go", Name: "mail-sync", New: mailsync.Parser},
-		{Path: "bin/chats/mailsync.go", Name: "chats-sync", New: chats.SyncParser},
-		{Path: "bin/chats/import.go", Name: "chats-import", New: chats.ImportParser},
-		{Path: "bin/chats/facts.go", Name: "chats-facts", New: chats.FactsParser},
-		{Path: "bin/chats/apply.go", Name: "chats-apply", New: chats.ApplyParser},
+		{Path: "bin/chat/mailsync.go", Name: "chat-sync", New: chat.SyncParser},
+		{Path: "bin/chat/import.go", Name: "chat-import", New: chat.ImportParser},
+		{Path: "bin/chat/facts.go", Name: "chat-facts", New: chat.FactsParser},
+		{Path: "bin/chat/apply.go", Name: "chat-apply", New: chat.ApplyParser},
 	}
 }
 
