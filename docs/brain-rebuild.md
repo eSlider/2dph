@@ -21,8 +21,20 @@ Fresh rebuild of info + mail + facts with control flags:
 - `--skip`        resume: skip leafs whose id is already in the db
 
 Because leaf ids are deterministic (`LeafID(text, source)`), `--skip` makes a
-re-run cheap: it embeds only new leafs. After a partial/aborted run, re-running
-with `--skip` skips the already-written corpus and goes straight to index build.
+re-run cheap: it filters existing ids before embedding, so it embeds only new
+leafs. After a partial/aborted run, re-running with `--skip` skips the
+already-written corpus and goes straight to index build.
+
+> Note: `--rebuild` deletes the db, so `--skip` + `--rebuild` always restarts
+> fresh. To resume a crashed build (leafs already written, indexes missing),
+> run `--skip` **without** `--rebuild` so the db is preserved and only missing
+> indexes are built:
+>
+>     KB_BUFFER_POOL=10737418240 bin-build/brain-index --skip \
+>         --with-mail --with-facts --workers 12 --batch 256 --progress 5
+
+Observed rates: embedding is fast (~16k/s, 256-dim); the db **write** phase is
+the bottleneck (~100/s, ~40 min for 242k leafs).
 
 Before a fresh rebuild, remove the old db (daemons must be down first):
 
