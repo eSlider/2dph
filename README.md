@@ -60,57 +60,69 @@ a system gcc. CI/CD lives separately in `.github/workflows/ci.yml`.
 ## Architecture
 
 ```mermaid
-graph TB
-    subgraph corpus["Corpus"]
-        OPS["ops stack<br/>chat · onlyoffice · npm · observability · ai-bot"]
-        SSH["~/.ssh/config"]
-        CV["portfolio yaml"]
-        GH["git history · authors"]
+graph LR
+    subgraph src["Sources"]
+        direction TB
+        DOC["documents"]
+        MAIL["mail"]
+        CHAT["chats"]
+        CONTACT["contacts"]
+        GIT["git history"]
     end
 
-    subgraph dph["2dph tools"]
-        EX["bin/facts/extract.go<br/>2-source pairing"]
-        AU["bin/facts/audit.go<br/>confidence + staleness"]
-        IDX["bin/brain/index.go<br/>chunk + embed"]
-        MD["bin/markdown/split-leaf.go<br/>H2 leaf split"]
-        SR["bin/brain/search.go<br/>deduction"]
+    subgraph etl["Adapters → leafs"]
+        direction TB
+        SPLIT["markdown/split-leaf"]
+        MAILI["mail/sync · mail/import"]
+        CHATI["chat/sync · chat/import"]
+        CONV["contact/list"]
+        GITI["brain/import-git"]
     end
 
-    subgraph store["Ladybug var/kb.lbug"]
-        FACTS["facts root<br/>confirmed"]
-        INFO["info root<br/>narrative"]
-        VEC["HNSW cosine"]
-        FTS["BM25 FTS"]
-        GR["File→HAS_VERSION→Commit→AUTHORED→Person"]
+    subgraph store["Embedded store — Ladybug (one kb.lbug)"]
+        ROOTS["roots: facts | info<br/>one ACID transaction"]
+        IDXN["HNSW vectors + BM25 FTS<br/>(model2vec embeddings)"]
+        GRAPH["property graph · Cypher<br/>File→Commit→Person hops"]
     end
 
-    subgraph ai["AI"]
-        M2V["potion-multilingual-128M<br/>(Go embedder)"]
+    subgraph read["Deduction read path"]
+        SRCH["brain/search<br/>facts → info → web"]
+        SERVE["brain/serve<br/>HTTP · OpenAPI · MCP"]
     end
 
-    subgraph ext["External"]
-        WS["web-search skill<br/>(2nd independent source)"]
+    subgraph gate["Evidence gate"]
+        EXTR["facts/extract<br/>2-source pairing"]
+        AUD["facts/audit-db<br/>confidence + staleness"]
     end
 
-    OPS --> EX
-    SSH --> EX
-    CV --> EX
-    GH --> EX
-    EX --> FACTS
-    EX --> INFO
-    MD --> GR
-    MD --> INFO
-    IDX --> M2V
-    IDX --> VEC
-    IDX --> FTS
-    IDX --> FACTS
-    SR --> FACTS
-    SR --> INFO
-    SR --> VEC
-    SR --> FTS
-    SR --> WS
-    AU --> FACTS
+    WEB["web-search<br/>independent 2nd source"]
+    AGENT["agents · operators"]
+
+    DOC --> SPLIT
+    MAIL --> MAILI
+    CHAT --> CHATI
+    CONTACT --> CONV
+    GIT --> GITI
+
+    SPLIT --> ROOTS
+    MAILI --> ROOTS
+    CHATI --> ROOTS
+    CONV --> ROOTS
+    GITI --> GRAPH
+    EXTR --> ROOTS
+    IDXN --- ROOTS
+    GRAPH --- ROOTS
+
+    ROOTS --> SRCH
+    SRCH <-.-> WEB
+    SRCH --> SERVE
+    SERVE --> AGENT
+    AUD --> ROOTS
 ```
+
+Reads are deduction: confirmed `facts` first, supporting `info` second,
+`web-search` as the independent second source when the local graph cannot
+confirm. Writes never bypass the store's single transaction.
 
 ## The method
 
