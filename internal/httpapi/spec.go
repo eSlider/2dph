@@ -49,11 +49,10 @@ var Ops = []Op{
 			{Name: "body", In: "query", Type: "boolean", Description: "include full text"},
 		},
 	},
-	{Path: PathStats, Method: "get", ID: "stats", Summary: "index health", MCP: true},
+	{Path: PathStats, Method: "get", ID: "stats", Summary: "index health"},
 	{Path: PathAudit, Method: "get", ID: "audit", Summary: "facts confidence histogram", MCP: true},
 	{
 		Path: PathIngest, Method: "post", ID: "ingest", Summary: "add a leaf without rebuild",
-		MCP: true,
 		Params: []Param{
 			{Name: "text", In: "query", Type: "string", Description: "leaf text (omit for CLI hint)"},
 			{Name: "root", In: "query", Type: "string", Description: "facts or info (default info)"},

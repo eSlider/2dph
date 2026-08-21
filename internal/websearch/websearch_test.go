@@ -16,7 +16,7 @@ func loadFixture(t *testing.T, name string) Payload {
 	if !ok {
 		t.Fatal("runtime.Caller")
 	}
-	path := filepath.Join(filepath.Dir(file), "..", "..", "bin", "tools", "web-search", "fixtures", name)
+	path := filepath.Join(filepath.Dir(file), "testdata", name)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -199,5 +199,5 @@ func fixtureDir(t *testing.T) string {
 	if !ok {
 		t.Fatal("runtime.Caller")
 	}
-	return filepath.Join(filepath.Dir(file), "..", "..", "bin", "tools", "web-search", "fixtures")
+	return filepath.Join(filepath.Dir(file), "testdata")
 }
