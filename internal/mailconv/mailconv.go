@@ -2,6 +2,7 @@
 package mailconv
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -186,6 +187,7 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		if !force {
 			if st, err := os.Stat(mdPath); err == nil && st.Size() > 0 {
 				skip++
+				writeMessageJSON(msgDir, p, id) // keep reconcilers' view fresh (#79)
 				return nil
 			}
 		}
@@ -213,6 +215,7 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 			TextBody: env.Text,
 			HTMLBody: env.HTML,
 		}
+		writeMessageJSON(msgDir, p, id)
 		body := BodyMarkdown(msg)
 		if dryRun {
 			ok++
@@ -234,6 +237,36 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		return nil
 	})
 	return ok, skip, fail, err
+}
+
+// writeMessageJSON persists the decoded envelope as message.json next to the
+// source .eml so JSON-based consumers (reconcilers, stack sync) see raw-mail
+// sources without reparsing every .eml on each run.
+func writeMessageJSON(msgDir, srcPath, id string) {
+	data, err := os.ReadFile(srcPath)
+	if err != nil {
+		return
+	}
+	env, err := enmime.ReadEnvelope(bytes.NewReader(data))
+	if err != nil {
+		return
+	}
+	date, _ := env.Date()
+	msg := Message{
+		Source: "raw-email", ID: id, Folder: filepath.Base(msgDir),
+		Subject:  env.GetHeader("Subject"),
+		From:     env.GetHeader("From"),
+		To:       env.GetHeader("To"),
+		CC:       env.GetHeader("Cc"),
+		Date:     date,
+		TextBody: env.Text,
+		HTMLBody: env.HTML,
+	}
+	out, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(msgDir, "message.json"), out, 0o644)
 }
 
 // writeEMLAttachments writes each decoded MIME part to disk and converts it to
