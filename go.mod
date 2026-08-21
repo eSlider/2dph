@@ -48,6 +48,7 @@ require (
 	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.10505.0 // indirect
 	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10505.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/emersion/go-vcard v0.0.0-20260618161152-d854b7e0e2d3
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
