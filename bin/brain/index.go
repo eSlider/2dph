@@ -137,13 +137,15 @@ func run(args []string) int {
 		}
 		return 0
 	}
-	if !v.rebuild {
-		fmt.Fprintln(os.Stderr, "brain/index: refuse non-rebuild write; pass --rebuild (fresh db)")
+	if !v.rebuild && !v.skip {
+		fmt.Fprintln(os.Stderr, "brain/index: refuse write; pass --rebuild (fresh db) or --skip (resume existing db)")
 		return 2
 	}
 
-	_ = os.Remove(dbpath)
-	_ = os.Remove(dbpath + ".wal")
+	if !v.skip {
+		_ = os.Remove(dbpath)
+		_ = os.Remove(dbpath + ".wal")
+	}
 
 	model, err := brain.LoadModel()
 	if err != nil {
