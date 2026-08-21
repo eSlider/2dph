@@ -142,6 +142,36 @@ func TestParallelEmbedEmpty(t *testing.T) {
 	}
 }
 
+func TestFilterExistingLeafs(t *testing.T) {
+	leafs := []CorpusLeaf{
+		{Heading: "h1", Text: "t1", Source: "s1"},
+		{Heading: "h2", Text: "t2", Source: "s2"},
+		{Heading: "h3", Text: "t3", Source: "s3"},
+	}
+	// Present: id of leaf 0 only. Also present with a source that differs in
+	// case so ToValidUTF8 + exact source matching matter.
+	existing := map[string]bool{
+		LeafID("h1\n\nt1", "s1"): true,
+		LeafID("h2\n\nt2", "s2"): true,
+	}
+	got := filterExistingLeafs(leafs, existing)
+	if len(got) != 1 || got[0].Source != "s3" {
+		t.Fatalf("filterExistingLeafs kept %+v, want only s3", got)
+	}
+	// Empty existing -> keep all.
+	if all := filterExistingLeafs(leafs, map[string]bool{}); len(all) != 3 {
+		t.Fatalf("empty existing should keep all, got %d", len(all))
+	}
+	// All present -> keep none.
+	allSet := map[string]bool{}
+	for _, lf := range leafs {
+		allSet[LeafID(lf.Heading+"\n\n"+lf.Text, lf.Source)] = true
+	}
+	if none := filterExistingLeafs(leafs, allSet); len(none) != 0 {
+		t.Fatalf("all present should keep none, got %d", len(none))
+	}
+}
+
 func TestChunkBounds(t *testing.T) {
 	cases := []struct {
 		n, size int

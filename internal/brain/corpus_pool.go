@@ -4,12 +4,34 @@ package brain
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// LeafID matches kblib: sha256(source\0text)[:24].
+func LeafID(text, source string) string {
+	sum := sha256.Sum256([]byte(source + "\x00" + text))
+	return hex.EncodeToString(sum[:])[:24]
+}
+
+// CorpusLeaf is a unit of corpus input to be embedded and written. Kept in the
+// cgo-free file so pure helpers (resume filter, batching) test without the
+// Ladybug library.
+type CorpusLeaf struct {
+	Source  string
+	Repo    string
+	Heading string
+	Text    string
+	Type    string
+	How     string
+	Date    string
+}
 
 // poolItem is one unit of parallel work: embed text for item at index i.
 type poolItem struct {
@@ -65,6 +87,22 @@ func parallelEmbed(ctx context.Context, items []poolItem, embed func(string) ([]
 	close(jobs)
 	wg.Wait()
 	return results, nil
+}
+
+// filterExistingLeafs drops leafs whose deterministic id is already in existing
+// (resume path). text/source are normalized the same way UpsertLeaf normalizes
+// them before hashing, so ids match what the DB stores.
+func filterExistingLeafs(leafs []CorpusLeaf, existing map[string]bool) []CorpusLeaf {
+	kept := leafs[:0]
+	for _, lf := range leafs {
+		text := strings.ToValidUTF8(lf.Heading+"\n\n"+lf.Text, "\uFFFD")
+		src := strings.ToValidUTF8(lf.Source, "\uFFFD")
+		if existing[LeafID(text, src)] {
+			continue
+		}
+		kept = append(kept, lf)
+	}
+	return kept
 }
 
 // chunkBounds splits [0,n) into [start,end) batches of at most size. size<=0
