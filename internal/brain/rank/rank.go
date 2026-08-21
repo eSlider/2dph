@@ -43,6 +43,13 @@ func RankAndFilter(fts, vec []Hit, root, repo string, limit int) []Hit {
 
 // RankAndFilterAsOf is RankAndFilter with D24 fact-interval filter.
 func RankAndFilterAsOf(fts, vec []Hit, root, repo, asOf string, limit int) []Hit {
+	return RankAndFilterSort(fts, vec, root, repo, asOf, limit, false, false)
+}
+
+// RankAndFilterSort is RankAndFilterAsOf with an optional date sort. When
+// sortDate is true the fused list is ordered by ValidFrom before the limit cut
+// so `--sort date` orders the full result set, not just the top N.
+func RankAndFilterSort(fts, vec []Hit, root, repo, asOf string, limit int, sortDate, desc bool) []Hit {
 	out := Hybrid(fts, vec, 0)
 	if root != "" {
 		out = FilterRoot(out, root)
@@ -53,9 +60,36 @@ func RankAndFilterAsOf(fts, vec []Hit, root, repo, asOf string, limit int) []Hit
 	if asOf != "" {
 		out = FilterAsOf(out, asOf)
 	}
+	if sortDate {
+		out = SortByDate(out, desc)
+	}
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
+	return out
+}
+
+// SortByDate orders hits by ValidFrom ascending (or descending). Undated hits
+// sort last in either direction; ties are stable.
+func SortByDate(hits []Hit, desc bool) []Hit {
+	out := make([]Hit, len(hits))
+	copy(out, hits)
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i].ValidFrom, out[j].ValidFrom
+		if a == b {
+			return false
+		}
+		if a == "" {
+			return false // empty sorts last
+		}
+		if b == "" {
+			return true
+		}
+		if desc {
+			return a > b
+		}
+		return a < b
+	})
 	return out
 }
 

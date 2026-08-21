@@ -19,8 +19,16 @@ func Ready() error {
 // HTTP is the in-process API used by bin/brain/serve.go.
 type HTTP struct{}
 
-func (HTTP) Search(ctx context.Context, query string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
-	hits, err := searchHits(query, root, "", limit, asOf)
+func (HTTP) Search(ctx context.Context, query string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
+	sortDate, sortDesc := false, false
+	if sort != "" {
+		if sort == "date" || sort == "date:asc" {
+			sortDate = true
+		} else if sort == "date:desc" {
+			sortDate, sortDesc = true, true
+		}
+	}
+	hits, err := searchHits(query, root, "", limit, asOf, sortDate, sortDesc)
 	if err != nil {
 		return nil, err
 	}
