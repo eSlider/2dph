@@ -1,9 +1,9 @@
-// System tests for bin/chats.
+// System tests for bin/chat.
 //
 // These are integration tests using real data and real Telegram API (when
 // credentials are available). They follow the TDD workflow pattern:
 // sync → import → facts → verify.
-package chats
+package chat
 
 import (
 	"encoding/json"

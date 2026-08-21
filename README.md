@@ -44,7 +44,7 @@ domain area it acts on:
 | `bin/mail` | `sync.go` / `import.go` / `ocr.go` | mail ETL (Gmail/OO/M365) |
 | `bin/web` | `search.go` | SearXNG second source |
 | `bin/git` | `import.go` | commit history leafs |
-| `bin/chats` | `sync.go` / `import.go` / `apply.go` | conversations |
+| `bin/chat` | `sync.go` / `import.go` / `apply.go` | conversations |
 | `bin/stack` | `start` / `status` / `stop` | compose dispatcher |
 
 Go methods are executable (`go run` shebang); a few are thin bash launchers

@@ -1,10 +1,9 @@
-package chats
+package chat
 
 import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -76,23 +75,10 @@ func RunSyncLinkedIn(args []string) int {
 }
 
 // refreshLinkedInSession re-syncs the LinkedIn source session from the live
-// webtop browser via the vendored refresh-linkedin-session helper.
+// webtop browser (CDP cookies + profile copy) — in-process, no helper script.
 func refreshLinkedInSession(userDataDir string) int {
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "chats: resolve executable: %v\n", err)
-		return 1
-	}
-	helper := filepath.Join(filepath.Dir(exe), "refresh-linkedin-session")
-	if _, err := os.Stat(helper); err != nil {
-		// Fall back to the source tree helper next to this command file.
-		helper = "bin/chats/refresh-linkedin-session"
-	}
 	root := filepath.Dir(userDataDir)
-	cmd := exec.Command(helper, "--root", root)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	if err := RefreshLinkedInSession(RefreshLinkedInSessionOpts{Root: root}); err != nil {
 		fmt.Fprintf(os.Stderr, "chats: linkedin session refresh: %v\n", err)
 		return 1
 	}

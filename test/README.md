@@ -10,4 +10,4 @@ Tiers (refactor v1.0 P5):
 
 CI runs the offline **system** tier by default.
 
-Historical load report: [docs/load-test-summary-2026-08-11.md](../docs/load-test-summary-2026-08-11.md).
+Historical load baseline 2026-08-11: Gitea issue #58 (comment archive).
