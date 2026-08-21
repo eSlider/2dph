@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# bin/mail/import — deprecated shim. Prefer bin/mail/import.go (Go mailconv).
-set -euo pipefail
-ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
-echo "bin/mail/import is deprecated; use bin/mail/import.go" >&2
-exec go run -tags=mail_import "$ROOT/bin/mail/import.go" "$@"

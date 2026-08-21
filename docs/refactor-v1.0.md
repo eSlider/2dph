@@ -30,7 +30,7 @@ Parallel to cash-sprint [epic #62](https://git.produktor.io/eSlider/2dph/issues/
 
 ### Keep (verified not dup)
 - `bin/chat` — launcher bash that builds+execs `bin/chats/` (not a dup of `chats/`). Keep.
-- `bin/markdown/import.go` — real tool (H2→leaf), wired into `bin/cli/complete.go`. Keep.
+- `bin/markdown/split-leaf.go` — real tool (H2→leaf), wired into `bin/shell/complete.go`. Keep.
 - `bin/postgres/query.go` — active Go read-only wrapper over `bin/db/psql-yq`, documented. Keep.
 - `bin/ci/semver.go` — **active**: CI Release job computes semver. Keep.
 - `bin/fulfill-assoc.go` — active (recent commit c6d27c9, #52/#55). Keep.
@@ -39,15 +39,15 @@ Parallel to cash-sprint [epic #62](https://git.produktor.io/eSlider/2dph/issues/
 - `bin/brain/*` (11) — core read/write/search/serve.
 - `bin/cgo/*` (zig/zcc/zc++) — toolchain.
 - `bin/chats/*` — conversations.
-- `bin/onlyoffice/import-contact.go`, `bin/brain/import-contact.go`, `bin/contact/import.go` — contacts (subject = target).
+- `bin/onlyoffice/import-contact.go`, `bin/brain/import-contact.go`, `bin/contact/list.go` — contacts (subject = target).
 - `bin/db/*` — psql-yq, ssh-tunnel.
 - `bin/facts/*` — audit/extract/crm.
-- `bin/git/import.go` — history.
+- `bin/brain/import-git.go` — history.
 - `bin/mail/*` — sync/import/ocr.
-- `bin/qa/stats.go` — duckdb.
-- `bin/reasoner/bakeoff.go` — CPU bake-off.
+- `bin/jsonl/stats.go` — duckdb.
+- `bin/reasoner/bench.go` — CPU bake-off.
 - `bin/stack/*` — compose dispatcher.
-- `bin/cli/complete.go` — flaggy completion.
+- `bin/shell/complete.go` — flaggy completion.
 - `bin/web/search.go` — SearXNG.
 
 ## compose (verified 2026-08-21)
@@ -131,5 +131,5 @@ Project must read as "what is this, how to use it" from a cold start:
 - No Python reintroduction.
 - No behavior change to graph/search semantics.
 - No rework of PLUGABLE reasoner / CGO toolchain.
-- `bin/qa/stats.go` (DuckDB) stays — it is a tool, not the test taxonomy `qa/`.
+- `bin/jsonl/stats.go` (DuckDB) stays — it is a tool, not the test taxonomy `qa/`.
 - Not blocking cash-sprint #62.

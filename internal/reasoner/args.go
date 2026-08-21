@@ -32,7 +32,7 @@ func NewCLI() CLI {
 }
 
 func Bind(c *CLI) *flaggy.Parser {
-	p := cli.New("reasoner-bakeoff")
+	p := cli.New("reasoner-bench")
 	p.Description = "CPU tool-call bake-off"
 	p.Bool(&c.JSONOut, "", "json", "JSON output")
 	p.String(&c.Model, "", "model", "Ollama/HF model id")

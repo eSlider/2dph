@@ -48,12 +48,12 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D15 | repo | Gitea [`eSlider/2dph`](https://git.produktor.io/eSlider/2dph) is origin + [issues](https://git.produktor.io/eSlider/2dph/issues). GitHub `eSlider/2dph` is the public clone (PRs + Actions CI). No direct `main` pushes. TDD → PR → CI green → merge. |
 | D16 | contradictions | ≥2 yes vs ≥2 no → hypothesis → `(not confirmed)` until a rule fires. Order: **temporal_freshness** (fresh ≥2 vs stale minority), then **authority_pairing** (runtime/config A×B beats narrative C). Store as `a x b vs c x d` on hypothesis leafs. `bin/facts/audit contradict`. [#29](https://git.produktor.io/eSlider/2dph/issues/29). |
 | D17 | assertion gate | Fact-check every *claim* (facts → info → live → web), not every edit. `bin/brain/search.go` adds a `web` block when there is no facts hit (`throttled`/`skipped`/`refused` ≠ absence). `--root` and `--no-web` stay local. Missing graph ≠ “does not exist”. |
-| D18 | reasoner | Pluggable OpenAI-compatible URL (`REASONER_BASE_URL`). RAM: `Qwen/Qwen3.5-9B`. Quality: `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B. CPU bake-off: `bin/reasoner/bakeoff.go` + compose profile `reasoner` (`OLLAMA_NUM_GPU=0`, `:11435`). PicoClaw is compose profile `picoclaw`; tools are `search`/`get`/`audit`. Weights are not copied into the 2dph image. Agent lever/loop: [#15](https://git.produktor.io/eSlider/2dph/issues/15). |
-| D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/git/import.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
+| D18 | reasoner | Pluggable OpenAI-compatible URL (`REASONER_BASE_URL`). RAM: `Qwen/Qwen3.5-9B`. Quality: `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B. CPU bake-off: `bin/reasoner/bench.go` + compose profile `reasoner` (`OLLAMA_NUM_GPU=0`, `:11435`). PicoClaw is compose profile `picoclaw`; tools are `search`/`get`/`audit`. Weights are not copied into the 2dph image. Agent lever/loop: [#15](https://git.produktor.io/eSlider/2dph/issues/15). |
+| D19 | git history | [go-git](https://github.com/go-git/go-git) via `bin/brain/import-git.go`. No subprocess of the git binary. Conversion prints commit leafs; brain write is `bin/brain/index.go`. |
 | D20 | agent API | OpenAPI + MCP are generated from the same `pkg/httpapi.Ops` table as `bin/brain/serve.go` handlers. `GET /openapi.json`, `POST /mcp` (JSON-RPC tools/list + tools/call). Tool names match OpenAPI paths (`search`/`get`/`stats`/`audit`/`ingest`). |
 | D21 | CGO | Ladybug/tokenizers CGO is compiled with **Zig** (`bin/cgo/zcc` → `zig cc -target …-linux-gnu`), not gcc. `bin/cgo/zig` pins Zig 0.14.1 + liblbug 0.19.1 + libtokenizers 1.27.0. Compose `target: api` has no CPython; write/rebuild is profile `index`. |
-| D22 | analytics | **duckdb-go** in-process (`pkg/duckstats`, `bin/qa/stats.go`) for quantiles/JSONL. Links with **gcc/g++**, not Zig. Ladybug stays the graph; web-search cache stays modernc sqlite. Slice small structured docs with **mikefarah/yq**, not kislyuk/jq. [#30](https://git.produktor.io/eSlider/2dph/issues/30). |
-| D23 | CLI | **flaggy** (`github.com/integrii/flaggy`, 0 deps). Flags at any position. Wrapper `pkg/cli`. Bash complete: `source <(./bin/cli/complete.go bash)`. No cobra, no stdlib `flag` in Go tools. Search does not intercept the word `completion`. [#34](https://git.produktor.io/eSlider/2dph/issues/34). |
+| D22 | analytics | **duckdb-go** in-process (`pkg/duckdb`, `bin/jsonl/stats.go`) for quantiles/JSONL. Links with **gcc/g++**, not Zig. Ladybug stays the graph; web-search cache stays modernc sqlite. Slice small structured docs with **mikefarah/yq**, not kislyuk/jq. [#30](https://git.produktor.io/eSlider/2dph/issues/30). |
+| D23 | CLI | **flaggy** (`github.com/integrii/flaggy`, 0 deps). Flags at any position. Wrapper `pkg/cli`. Bash complete: `source <(./bin/shell/complete.go bash)`. No cobra, no stdlib `flag` in Go tools. Search does not intercept the word `completion`. [#34](https://git.produktor.io/eSlider/2dph/issues/34). |
 | D24 | fact intervals | Leaf `valid_from` / `valid_to` (YYYY-MM-DD, inclusive; empty = open/legacy). Search `--as-of` / MCP `as_of` keeps facts active that day. Not D16 `temporal_freshness` (source stale vs HEAD). Empty interval = always visible. [#36](https://git.produktor.io/eSlider/2dph/issues/36). |
 | D25 | deploy data path | Brain serves from host `var/`, not named volumes. Compose binds `./var:/data/var` (kb.lbug at `/data/var/kb.lbug`), HF model from `var/hf`, Ladybug FTS/VECTOR extensions mounted read-only into `$HOME/.lbdb/extension`. `brain` uses `network_mode: host` so `127.0.0.1:8630` works with any image (KB_HOST-independent). Named volumes `kb-model`/`kb-var` dropped — live data is host `var/` (gitignored). |
 
@@ -71,14 +71,14 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); Zig CGO (D21)
     brain/get.go stats.go eval.go watch.go model.go   # Go read/ops (cgo)
     facts/extract.go audit.go crm.go  # 2-source pairing, confidence, CRM proof
-    mail/sync.go import.go ocr.go    # mail ETL (Gmail/OO/M365), PDF OCR
+    mail/sync.go import.go convert-mbox.go ocr.go    # mail ETL (Gmail/OO/M365), PDF OCR
     chats/sync.go import.go facts.go apply.go  # conversations (no chats index)
     contacts/*.go           CRM contacts importer
     web/search.go           SearXNG client (throttled ≠ absence)
     git/import.go           go-git history (no git binary; conversion only)
     markdown/import.go      H2 leaf split (Go)
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
-    reasoner/bakeoff.go     CPU tool-call bake-off (D18; OpenAI tools)
+    reasoner/bench.go        CPU tool-call bench (D18; OpenAI tools)
     qa/stats.go             DuckDB quantiles / JSONL (D22; not the test taxonomy)
     ci/semver.go            next semver from conventional commits (Release job)
     cli/complete.go         flaggy bash/zsh/fish complete (D23)
@@ -134,7 +134,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
   `eng+deu` (`bin/mail/ocr.go`, `internal/ocr`). No gocv, no gosseract CGO
   (D21 Zig owns Ladybug CGO). Optional `OCR_ENGINE=paddle` / compose profile
   `ocr-paddle`. Docling left the default path. [#6](https://git.produktor.io/eSlider/2dph/issues/6).
-- OQ3: **in** — duckdb-go (`pkg/duckstats`, `bin/qa/stats.go`) for
+- OQ3: **in** — duckdb-go (`pkg/duckdb`, `bin/jsonl/stats.go`) for
   quantiles / JSONL count. Not a second graph. [#30](https://git.produktor.io/eSlider/2dph/issues/30).
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
   serialize and unambiguous; YAML only where humans edit files.

@@ -63,7 +63,7 @@ echo '{"claim":"X works at Y","left":"a x b","right":"c x d"}' | bin/facts/audit
 For one subject, compare `source` lists. If two facts assert the same claim with
 disjoint refs, or one contradicts the other, run `audit contradict`. A 2v2 with
 no authority/temporal rule stays `(not confirmed)`. Cross-check against the
-OnlyOffice CRM graph and the corpus SoT (`bin/facts/crm --mismatches`).
+OnlyOffice CRM graph and the corpus SoT (`bin/facts/prove-crm --mismatches`).
 
 ### 3. Stale status
 

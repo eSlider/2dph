@@ -2,7 +2,7 @@
 //
 // flaggy: zero deps, flags at any position, shell completion scripts.
 // Individual tools keep ShowCompletion off so a query like "completion" is
-// not stolen; dump scripts with bin/cli/complete.go.
+// not stolen; dump scripts with bin/shell/complete.go.
 package cli
 
 import (
@@ -172,7 +172,7 @@ type Tool struct {
 // function to the shebang path (./bin/subject/method.go).
 func BashScript(tools []Tool) string {
 	var b strings.Builder
-	b.WriteString("# 2dph flaggy completions (D23). source <(./bin/cli/complete.go bash)\n")
+	b.WriteString("# 2dph flaggy completions (D23). source <(./bin/shell/complete.go bash)\n")
 	for _, t := range tools {
 		p := t.New()
 		p.Name = t.Name
