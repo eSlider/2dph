@@ -146,6 +146,9 @@ func runner(tool string, args []string) *exec.Cmd {
 		return exec.Command("bash", argv...)
 	case tool == "bin/mail/import.go":
 		return exec.Command("go", append([]string{"run", "-tags=mail_import", tool}, args...)...)
+	case strings.HasPrefix(tool, "bin/onlyoffice/"):
+		tag := "onlyoffice_" + strings.ReplaceAll(strings.TrimSuffix(filepath.Base(tool), ".go"), "-", "_")
+		return exec.Command("go", append([]string{"run", "-tags=" + tag, tool}, args...)...)
 	default:
 		return exec.Command("go", append([]string{"run", tool}, args...)...)
 	}

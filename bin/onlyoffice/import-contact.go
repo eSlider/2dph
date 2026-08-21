@@ -1,4 +1,5 @@
-//usr/bin/env go run "$0" "$@"; exit
+//usr/bin/env go run -tags=onlyoffice_import_contact "$0" "$@"; exit
+//go:build onlyoffice_import_contact
 //
 // bin/onlyoffice/import-contact.go - read address-book files and reconcile
 // each contact into the OnlyOffice CRM (best effort; skip existing by email).
