@@ -7,7 +7,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/eSlider/2dph?style=social)](https://github.com/eSlider/2dph/stargazers)
 
 An evidence-first brain. **Facts need two independent sources, or they are
-`(not confirmed)`.** Cursor is not the runtime.
+`(not confirmed)`.**
 
 `2dph` is a single embedded knowledge graph (LadybugDB) with native **HNSW
 vector** + **BM25 full-text** indexes. Search is *deduction*: confirmed facts
