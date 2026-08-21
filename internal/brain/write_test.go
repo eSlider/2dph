@@ -160,7 +160,7 @@ func TestFactsAndChatsLandOnRebuild(t *testing.T) {
 	if len(chats) == 0 {
 		t.Fatal("chats fixture must load")
 	}
-	chatN, err := WriteCorpus(conn, chats, nil, 0)
+	chatN, err := WriteCorpus(conn, chats, nil, WriteOptions{Workers: 2, Batch: 8})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestFactsAndChatsLandOnRebuild(t *testing.T) {
 		t.Fatalf("chatN=%d", chatN)
 	}
 	if _, err := UpsertLeaf(conn, LeafInput{
-		Text: "container 'brain' unique-fact-token is running and declared in compose.yaml",
+		Text:   "container 'brain' unique-fact-token is running and declared in compose.yaml",
 		Source: "docker ps x compose.yaml", Root: "facts", Confidence: "confirmed",
 		Type: "fact", How: "facts/extract",
 	}); err != nil {

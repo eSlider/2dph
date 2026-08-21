@@ -3,6 +3,7 @@
 package brain
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -17,15 +18,6 @@ import (
 var corpusDefaults = []string{"README.md", "PLAN.md", "AGENTS.md", "docs", "skills"}
 
 // CorpusLeaf is a markdown-derived info leaf before embed/write.
-type CorpusLeaf struct {
-	Source  string
-	Repo    string
-	Heading string
-	Text    string
-	Type    string
-	How     string
-}
-
 // LoadDefaultCorpus walks README/PLAN/AGENTS/docs/skills.
 func LoadDefaultCorpus(root string) ([]CorpusLeaf, error) {
 	var files []string
@@ -192,6 +184,12 @@ func LoadMailLeafs(root, since string, limit int) ([]CorpusLeaf, error) {
 	}
 	var out []CorpusLeaf
 	for _, md := range mds {
+		date := ""
+		if raw, err := os.ReadFile(md); err == nil {
+			if fm, _ := mdleaves.ExtractFrontmatter(string(raw)); len(fm["date"]) >= 10 {
+				date = fm["date"][:10]
+			}
+		}
 		files := []string{md}
 		att := filepath.Join(filepath.Dir(md), "attachments")
 		if entries, err := os.ReadDir(att); err == nil {
@@ -211,7 +209,7 @@ func LoadMailLeafs(root, since string, limit int) ([]CorpusLeaf, error) {
 				src := fmt.Sprintf("ooMail:%s:%s", id, filepath.Base(f))
 				out = append(out, CorpusLeaf{
 					Source: src, Repo: "ooMail", Heading: lf.Heading,
-					Text: lf.Text, Type: lf.Type, How: "mail/import",
+					Text: lf.Text, Type: lf.Type, How: "mail/import", Date: date,
 				})
 			}
 		}
@@ -237,22 +235,73 @@ func msgDate(md string) string {
 	return ""
 }
 
-// WriteCorpus embeds and upserts corpus leafs, linking FROM_FILE.
-func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, limit int) (int, error) {
-	n := 0
+// WriteOptions controls corpus writing (worker concurrency, batch size, resume).
+type WriteOptions struct {
+	Limit    int               // max leafs to embed/write (0 = all)
+	Workers  int               // parallel embedding workers (0 = 4)
+	Batch    int               // leafs per transaction (0 = 64)
+	Skip     bool              // skip leafs whose id already exists (resume)
+	Progress *ProgressReporter // optional progress/ETA monitor
+}
+
+// WriteCorpus embeds (in parallel) and upserts corpus leafs in batches, linking
+// FROM_FILE. Embedding errors abort; per-batch writes use one transaction.
+func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, opt WriteOptions) (int, error) {
+	if opt.Workers <= 0 {
+		opt.Workers = 4
+	}
+	if opt.Batch <= 0 {
+		opt.Batch = 64
+	}
+	if opt.Limit > 0 && len(leafs) > opt.Limit {
+		leafs = leafs[:opt.Limit]
+	}
+
+	// Resume: drop leafs already present before embedding, so a re-run skips
+	// the costly embedding step entirely.
+	if opt.Skip {
+		existing, err := existingLeafIDSet(conn)
+		if err != nil {
+			return 0, err
+		}
+		leafs = filterExistingLeafs(leafs, existing)
+	}
+	if opt.Progress != nil {
+		opt.Progress.Report(0, len(leafs))
+	}
+	if len(leafs) == 0 {
+		if opt.Progress != nil {
+			opt.Progress.Finish(0, 0)
+		}
+		return 0, nil
+	}
+
+	items := make([]poolItem, len(leafs))
 	for i, lf := range leafs {
-		if limit > 0 && i >= limit {
-			break
+		items[i] = poolItem{i: i, text: lf.Heading + "\n\n" + lf.Text}
+	}
+	embed := func(text string) ([]float64, error) {
+		if model == nil || text == "" {
+			return nil, nil
 		}
-		query := strings.ToValidUTF8(lf.Heading+"\n\n"+lf.Text, "\uFFFD")
-		var emb []float64
-		if model != nil && lf.Text != "" {
-			var err error
-			emb, err = model.Embed(lf.Text)
-			if err != nil {
-				return n, err
-			}
+		return model.Embed(text)
+	}
+	var progress func(int, int)
+	if opt.Progress != nil {
+		progress = opt.Progress.Report
+	}
+	results, err := parallelEmbed(context.Background(), items, embed, opt.Workers, progress)
+	if err != nil {
+		return 0, err
+	}
+
+	inputs := make([]LeafInput, 0, len(results))
+	repos := make([]string, 0, len(results))
+	for i, r := range results {
+		if r.err != nil {
+			return 0, fmt.Errorf("embed %d: %w", i, r.err)
 		}
+		lf := leafs[r.i]
 		typ := lf.Type
 		if typ == "" {
 			typ = "reference"
@@ -261,18 +310,55 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 		if how == "" {
 			how = "kb/index"
 		}
-		id, err := UpsertLeaf(conn, LeafInput{
-			Text: query, Root: "info", Confidence: "confirmed",
-			Source: lf.Source, SourceRev: "working-tree", How: how,
-			Loc: lf.Source, Type: typ, Embedding: emb,
+		inputs = append(inputs, LeafInput{
+			Text: strings.ToValidUTF8(items[r.i].text, "\uFFFD"), Root: "info",
+			Confidence: "confirmed", Source: lf.Source, SourceRev: "working-tree",
+			How: how, Loc: lf.Source, Type: typ, Embedding: r.emb, ValidFrom: lf.Date,
 		})
+		repos = append(repos, lf.Repo)
+	}
+
+	n := 0
+	for _, b := range chunkBounds(len(inputs), opt.Batch) {
+		ids, err := AddLeafs(conn, inputs[b[0]:b[1]])
 		if err != nil {
 			return n, err
 		}
-		if _, err := LinkFromFile(conn, id, lf.Source, lf.Repo, ""); err != nil {
-			return n, err
+		for j, id := range ids {
+			in := inputs[b[0]+j]
+			if _, err := LinkFromFile(conn, id, in.Source, repos[b[0]+j], ""); err != nil {
+				return n, err
+			}
+			n++
 		}
-		n++
+		if opt.Progress != nil {
+			opt.Progress.Report(n, len(inputs))
+		}
+	}
+	if opt.Progress != nil {
+		opt.Progress.Finish(n, len(leafs))
 	}
 	return n, nil
+}
+
+// existingLeafIDSet returns the set of all current leaf ids (for resume).
+func existingLeafIDSet(conn *lbug.Connection) (map[string]bool, error) {
+	res, err := conn.Query("MATCH (l:Leaf) RETURN l.id")
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+	set := map[string]bool{}
+	for res.HasNext() {
+		row, err := res.Next()
+		if err != nil {
+			return nil, err
+		}
+		vals, err := row.GetAsSlice()
+		if err != nil || len(vals) < 1 {
+			continue
+		}
+		set[fmt.Sprint(vals[0])] = true
+	}
+	return set, nil
 }

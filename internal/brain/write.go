@@ -128,12 +128,7 @@ author STRING, email STRING, date STRING, PRIMARY KEY(id))`,
 	return nil
 }
 
-// LeafID matches kblib: sha256(source\0text)[:24].
-func LeafID(text, source string) string {
-	sum := sha256.Sum256([]byte(source + "\x00" + text))
-	return hex.EncodeToString(sum[:])[:24]
-}
-
+// textSHA hashes text for the leaf.sha256 property.
 func textSHA(text string) string {
 	sum := sha256.Sum256([]byte(text))
 	return hex.EncodeToString(sum[:])

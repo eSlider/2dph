@@ -23,3 +23,11 @@ mnt/
 
 # native brain binaries built by bin/stack/serve-brain
 /bin-build/
+
+# local compiled binaries dropped in repo root (go run -o . / go build)
+/brain
+/contacts
+/web
+
+# knowledge-mesh corpus dump (data, not source)
+/corpus/

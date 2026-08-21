@@ -1,5 +1,6 @@
-//usr/bin/env bash -c 'exec "${0%/*}/../cgo/zig" go run -tags=system_ladybug,brain_index "$0" "$@"' "$0" "$@"; exit
 //go:build cgo && system_ladybug && brain_index
+
+// usr/bin/env bash -c 'exec "${0%/*}/../cgo/zig" go run -tags=system_ladybug,brain_index "$0" "$@"' "$0" "$@"; exit
 //
 // bin/brain/index.go - rebuild the Ladybug graph (Go+Zig write path).
 //
@@ -9,6 +10,7 @@
 //
 // Bulk mail/corpus still --rebuild (fresh file, indexes last).
 // NOTE: never run gofmt -w on this file — it breaks the shebang.
+//
 package main
 
 import (
@@ -18,9 +20,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
-	cliparse "github.com/eSlider/2dph/internal/cli"
 	"github.com/eSlider/2dph/internal/brain"
+	cliparse "github.com/eSlider/2dph/internal/cli"
 )
 
 func main() {
@@ -28,10 +31,10 @@ func main() {
 }
 
 type indexFlags struct {
-	db, factsJSON, withChats, since string
-	corpus                          []string
-	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut bool
-	limit                           int
+	db, factsJSON, withChats, since                                              string
+	corpus                                                                       []string
+	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut, skip bool
+	limit, workers, batch, progress                                              int
 }
 
 func run(args []string) int {
@@ -50,6 +53,10 @@ func run(args []string) int {
 	p.Bool(&v.dryRun, "", "dry-run", "count leafs, write nothing")
 	p.Bool(&v.skipIndexes, "", "skip-indexes", "write leafs only")
 	p.Int(&v.limit, "", "limit", "max leafs to embed")
+	p.Int(&v.workers, "", "workers", "parallel embedding workers (default 4)")
+	p.Int(&v.batch, "", "batch", "leafs per transaction (default 64)")
+	p.Int(&v.progress, "", "progress", "progress/ETA line every N seconds")
+	p.Bool(&v.skip, "", "skip", "skip leafs already in the db (resume)")
 	p.Bool(&v.jsonOut, "", "json", "JSON stats")
 	// --corpus may repeat: parse manually from args leftovers after flaggy
 	if err := cliparse.Parse(p, filterCorpusArgs(args, &v.corpus)); err != nil {
@@ -130,13 +137,15 @@ func run(args []string) int {
 		}
 		return 0
 	}
-	if !v.rebuild {
-		fmt.Fprintln(os.Stderr, "brain/index: refuse non-rebuild write; pass --rebuild (fresh db)")
+	if !v.rebuild && !v.skip {
+		fmt.Fprintln(os.Stderr, "brain/index: refuse write; pass --rebuild (fresh db) or --skip (resume existing db)")
 		return 2
 	}
 
-	_ = os.Remove(dbpath)
-	_ = os.Remove(dbpath + ".wal")
+	if !v.skip {
+		_ = os.Remove(dbpath)
+		_ = os.Remove(dbpath + ".wal")
+	}
 
 	model, err := brain.LoadModel()
 	if err != nil {
@@ -157,7 +166,12 @@ func run(args []string) int {
 		return 1
 	}
 
-	infoN, err := brain.WriteCorpus(conn, leafs, model, v.limit)
+	prog := brain.NewProgressReporter(os.Stderr, time.Duration(v.progress)*time.Second)
+	opt := brain.WriteOptions{
+		Limit: v.limit, Workers: v.workers, Batch: v.batch, Skip: v.skip,
+		Progress: prog,
+	}
+	infoN, err := brain.WriteCorpus(conn, leafs, model, opt)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brain/index: write info: %v\n", err)
 		return 1
