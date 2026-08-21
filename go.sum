@@ -63,6 +63,8 @@ github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
 github.com/eslider/go-onlyoffice v0.13.0 h1:VLRIz1I0KiiwSR6B+O5gpJDgXb67KXjJRUpoqw9Os2g=
 github.com/eslider/go-onlyoffice v0.13.0/go.mod h1:TdEl0Cd74CWSk4B1K4+okR+feGNYoCsTSt4Cecz8jGI=
+github.com/eslider/go-onlyoffice v0.14.0 h1:2hXWyC67aBpqPglmEOFPg86Auo/cijE/zxY8Z3vqOBw=
+github.com/eslider/go-onlyoffice v0.14.0/go.mod h1:TdEl0Cd74CWSk4B1K4+okR+feGNYoCsTSt4Cecz8jGI=
 github.com/fatih/color v1.19.0 h1:Zp3PiM21/9Ld6FzSKyL5c/BULoe/ONr9KlbYVOfG8+w=
 github.com/fatih/color v1.19.0/go.mod h1:zNk67I0ZUT1bEGsSGyCZYZNrHuTkJJB+r6Q9VuMi0LE=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
