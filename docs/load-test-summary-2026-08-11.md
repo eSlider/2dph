@@ -94,7 +94,7 @@ This validates the core design principle from PLAN.md (D8/D11): **a fact needs â
 | Info (root=info) | 47 (from markdown corpus) |
 | Audit result | `ok: true, problems: []` |
 
-## Files in `qa/`
+## Files (historical, `qa/` at the time)
 
 - `load_test_search.py` - Search latency test (FT/Vector/Hybrid)
 - `load_test_graph.py` - Graph traversal test (1-hop, 2-hop, 3-hop)

@@ -19,7 +19,7 @@ SEARXNG_SECRET=$(openssl rand -hex 32) docker compose --profile searxng up -d
 ```
 
 Pinned image: `docker.io/searxng/searxng:2026.8.10-0a118066d`.
-Settings: `deploy/searxng/settings.yml` + `limiter.toml` (RFC1918 `pass_ip`,
+Settings: `etc/searxng/settings.yml` + `limiter.toml` (RFC1918 `pass_ip`,
 short `suspended_times`, `formats: [html, json]`). No secrets in git. Bind is
 `127.0.0.1:8888`.
 

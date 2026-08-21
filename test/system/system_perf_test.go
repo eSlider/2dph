@@ -1,4 +1,4 @@
-// qa/system_perf.go is an offline-gated system test (no live brain in CI).
+// test/system/system_perf.go is an offline-gated system test (no live brain in CI).
 package main
 
 import (

@@ -14,6 +14,18 @@ vector** + **BM25 full-text** indexes. Search is *deduction*: confirmed facts
 first, supporting info second, `web-search` as the independent second source
 when the local graph cannot confirm.
 
+## What's in 2dph today
+
+- **Single embedded store** — one file `var/kb.lbug` (LadybugDB).
+- **Native property graph** + Cypher.
+- **Native HNSW** (vectors, 256-dim model2vec) + **BM25 FTS**.
+- **Hybrid search** — `facts → info → web`.
+- **Graph-hop** (`--hop N`: File → Commit → Person).
+- **ACID transactions** — facts + info in one transaction.
+- **Incremental write** + bulk rebuild.
+- **DuckDB** as auxiliary (D22 / OQ3): quantiles, JSONL stats via duckdb-go
+  in-process — a helper tool, **not** the primary store.
+
 Run it: [docs/runbook.md](docs/runbook.md). Design: [docs/design.md](docs/design.md).
 Docs index: [docs/README.md](docs/README.md).
 

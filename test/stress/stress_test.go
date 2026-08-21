@@ -1,4 +1,4 @@
-// qa/stress.go is a live-brain load generator (no live brain in CI).
+// test/stress/stress.go is a live-brain load generator (no live brain in CI).
 package main
 
 import (

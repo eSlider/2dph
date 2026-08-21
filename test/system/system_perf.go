@@ -1,11 +1,11 @@
 // usr/bin/env go run "$0" "$@"; exit
 //
-// qa/system_perf.go - system performance test: PicoClaw surface (brain MCP)
+// test/system/system_perf.go - system performance test: PicoClaw surface (brain MCP)
 // + optional reasoner.
 //
-//	BRAIN_URL=http://127.0.0.1:8630 ./qa/system_perf.go --json
+//	BRAIN_URL=http://127.0.0.1:8630 ./test/system/system_perf.go --json
 //	REASONER_BASE_URL=http://127.0.0.1:11435/v1 REASONER_MODEL=qwen3.5:9b \
-//	  ./qa/system_perf.go --reasoner --picoclaw --json
+//	  ./test/system/system_perf.go --reasoner --picoclaw --json
 //
 // Does not write Ladybug. Search includes web (D17); expect ~10s+ per search.
 // Exit 1 if health/get/audit gates fail. Reasoner is measured, not gated.

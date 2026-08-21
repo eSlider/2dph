@@ -1,9 +1,9 @@
 // usr/bin/env go run "$0" "$@"; exit
 //
-// qa/stress.go - concurrent load generator for the live brain (REST surface).
+// test/stress/stress.go - concurrent load generator for the live brain (REST surface).
 //
-//	BRAIN_URL=http://127.0.0.1:8630 ./qa/stress.go --c 8 --d 30 --json
-//	./qa/stress.go --mix search:6,get:2,stats:1,audit:1 --q "oo catalog" --json
+//	BRAIN_URL=http://127.0.0.1:8630 ./test/stress/stress.go --c 8 --d 30 --json
+//	./test/stress/stress.go --mix search:6,get:2,stats:1,audit:1 --q "oo catalog" --json
 //
 // Read-only by default (search/get/stats/audit). Ingests are never sent.
 // Gates: health < 500ms, search p95 < 1000ms, per-type error rate < 1%.
