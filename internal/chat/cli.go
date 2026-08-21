@@ -1,4 +1,4 @@
-package chats
+package chat
 
 import (
 	cliparse "github.com/eSlider/2dph/pkg/cli"

@@ -5,36 +5,45 @@ related:
   - docs/runbook.md
   - docs/design.md
   - PLAN.md
-  - docs/roadmap.md
 ---
 
-# 2dph docs (Diataxis)
+# 2dph docs
 
 Evidence-first knowledge graph. Facts need proof or they are
 `(not confirmed)`.
 
+**Docs policy:** only what is true and current — what works, or what is
+open (tracked as Gitea issues). Plans and historical proofs live as Gitea
+issue comments, not here.
+
 | Type | Doc |
 |------|-----|
-| tutorial / howto | [runbook](runbook.md) — run anywhere (uv, Go, Docker) |
-| explanation | [design](design.md) — two roots, deduction, D17/D20/D18 |
-| explanation | [roadmap](roadmap.md) — gap to v1 (epic #16) |
-| howto | [picoclaw](picoclaw.md) — MCP agent (`bin/stack/start-assistant`) |
-| howto | [reasoner](reasoner.md) — CPU bake-off (D18) |
-| reference | [PLAN.md](../PLAN.md) — decisions D1–D24 |
+| howto (run) | [runbook](runbook.md) — build, config, serve/search/index |
+| explanation | [design](design.md) — two roots, deduction, versioning, read path |
+| reference | [PLAN.md](../PLAN.md) — decisions D1–D25 |
+| howto (brain ops) | [brain/rebuild](brain/rebuild.md) — parallel write, resume |
+| howto (facts) | [facts/audit-recipes](facts/audit-recipes.md) — audit recipes |
+| howto (agent) | [picoclaw](picoclaw.md) — MCP gateway (`bin/stack/start-assistant`) |
+| howto (reasoner) | [reasoner](reasoner.md) — CPU bench (D18) |
 | testing | [test/README.md](../test/README.md) — system / stress / integration tiers |
 | config | `etc/{searxng,picoclaw}` — operator config (FHS) |
 
-Decisions the public face must name: **D3** SearXNG compose, **D6** Go service /
-Python write sidecar, **D14** `bin/{subject}/{method}.go`, **D15** Gitea origin,
-**D17** assertion gate (facts → info → web), **D18** pluggable reasoner.
+Historical: roadmap (gap to v1, closed epic #16) kept for context;
+load baseline 2026-08-11 → Gitea #58.
 
-Search: `bin/brain/search.go "query"` (HTTP: `bin/brain/serve.go` —
-`/health` `/search` `/get` `/stats` `/audit` `/ingest`). `--hop N` walks
-`FROM_FILE` → Commit → Person from each hit (max 3). Rebuild writes
-File edges ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
+## Quick start
 
-Work board: [Gitea issues](https://git.produktor.io/eSlider/2dph/issues)
-([epic #16](https://git.produktor.io/eSlider/2dph/issues/16)).
+```bash
+bin/brain/search.go "query"          # deduction: facts → info → web
+bin/brain/serve.go                   # HTTP + OpenAPI + MCP (:8630)
+bin/brain/index.go --rebuild         # bulk rebuild (Zig CGO)
+```
+
+MCP surface: `search` / `get` / `audit`. Full OpenAPI: `GET /openapi.json`.
+
+## Work board
+
+[Gitea issues](https://git.produktor.io/eSlider/2dph/issues):
+epic #66 (import → brain + CRM, priority), #62 (cash sprint),
+#64 (conversations v2), milestone [v2](https://git.produktor.io/eSlider/2dph/milestone/13).
 PRs and CI: GitHub [`eSlider/2dph`](https://github.com/eSlider/2dph).
-
-Published docs live here and match live commands.

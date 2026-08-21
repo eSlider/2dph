@@ -49,11 +49,22 @@ OnlyOffice → `bin/onlyoffice/import-contact.go`; reading contacts → `bin/con
 Never `contacts/…`, never `brainwrite.go` (that is `bin/brain/import-contact.go`).
 Same rule for `var/` and `etc/` subdirs: `var/{subject}/…`, `etc/{subject}/…`.
 
+**Standing rules:**
+- **Go only, no Python** — new tooling is Go (shebang mains); Python never
+  returns to the pipeline.
+- **Libs named by domain** — `internal/{domain}` / `pkg/{domain}` mirror their
+  `bin/{subject}`; files inside are concrete artifacts (`leaf.go`, `yaml.go`).
+  No output-type namespaces (`mdleaves`-style) — no `mdroot`/`mdcontent` creep.
+- **docs/ = truth only** — what works or what is open; plans/proofs go to
+  Gitea issues, then get deleted here.
+- **Non-goals (standing):** no behavior change to graph/search semantics;
+  no rework of the pluggable reasoner / CGO toolchain (D18/D21).
+
 bin/          self-describing tools (singular, `{subject}/{verb}-{object}.go`)
 bin/brain/    import-contact.go import-git.go search.go serve.go index.go add.go get.go stats.go eval.go watch.go
 bin/contact/  list.go (read/normalize csv/vcf/mab → stdout/file)
 bin/onlyoffice/ import-contact.go (reconcile contacts into OO CRM)
-bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
+bin/chat/     sync.go import.go facts.go apply.go refresh-session.go; lib: internal/chat
 bin/mail/     sync.go import.go convert-mbox.go ocr.go (lib: internal/mailsync)
 bin/markdown/ split-leaf.go (H2 leaf split; lib: internal/markdown)
 bin/jsonl/    stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
@@ -63,7 +74,7 @@ bin/reasoner/ bench.go (D18 CPU OpenAI tool-call bench)
 bin/facts/    extract.go audit.go audit-db.go prove-crm.go
 bin/shell/    complete.go (flaggy completions dump, D23)
 pkg/          public reusable Go (cli flaggy D23; repo; contact; duckdb; httpapi) — no 2dph deps
-internal/     private 2dph Go (brain, chats, facts D16, gitlog, websearch, reasoner, mailsync, mailconv, corpuswatch, markdown)
+internal/     private 2dph Go by domain (brain, chat, facts D16, gitlog, websearch, reasoner, mailsync, mailconv, corpuswatch, markdown)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
 bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
 bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|mail-sync)
@@ -149,7 +160,9 @@ duckdb-go (`pkg/duckdb`, `skills/duckdb/SKILL.md`), not Ladybug.
 4. **Curasoft, edelweiss — no files, no mentions.** Remove all traces if found.
 5. **Check git history before push.** If any commit contains leaks, rewrite
    history (rebase + force push) AND delete affected GitHub releases/tags.
-6. **`docs/chat-import-plan.md`** — reference Gitea issue, never embed secrets.
+6. **Plans live in Gitea issues, not docs/.** docs/ holds only what is true
+   and current (design, runbook, roadmap). Historical plans/proofs are
+   archived as comments on their Gitea issue, then deleted from the repo.
 
 ## Communication
 

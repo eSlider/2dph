@@ -36,7 +36,7 @@ bin/brain/search.go "question"
 
 `--hop N` walks `Leaf-[:FROM_FILE]->File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`
 from each hit (1=File, 2=Commit, 3=Person). Rebuild writes FROM_FILE;
-git import writes HAS_VERSION/AUTHORED ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
+`bin/brain/import-git.go` writes HAS_VERSION/AUTHORED ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
 Go CLIs parse with **flaggy** via `pkg/cli` (D23). Flags may appear
 after positionals (`search q --hop 1`). Completions:
@@ -63,10 +63,10 @@ Content leafs: `sha256`, `observed_at`, `source_rev`, `confidence`. Stale = a
 file changed on disk (git HEAD/mtime) after its last observed `source_rev`.
 `File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person` records the history of every
 content leaf. Commit records come from `bin/brain/import-git.go` (go-git, no git
-binary); conversion prints leafs, brain write is `bin/brain/index.go`.
+binary); it upserts commit leafs into the brain directly, `--dry-run` previews.
 
-`bin/facts/audit stale` flags leafs whose observed revision is behind the
-corpus HEAD.
+`bin/facts/audit-db` gates evidence over the store (`root=facts`); leafs whose
+observed revision is behind the corpus HEAD are flagged there.
 
 Fact **interval of truth** (D24 / OQ5): leaf props `valid_from` /
 `valid_to` (YYYY-MM-DD, inclusive; empty end = open; both empty = legacy
@@ -95,15 +95,14 @@ Conflicting pairings (≥2 yes vs ≥2 no) stay hypothesis until
 They do not exec Python. Control questions for recall@5 live in
 `internal/brain/rank` so CI can test the table without libladybug.
 Bulk index/write is Go-only: `bin/brain/index.go` + `bin/brain/add.go`
-(both Zig CGO, `docker compose --profile index`). Python `bin/kb/index` is
-deprecated, kept only for A/B comparison.
+(both Zig CGO, `docker compose --profile index`).
 
 ## Agent API (D20)
 
 `bin/brain/serve.go` exposes the same `pkg/httpapi.Ops` table as OpenAPI
 (`GET /openapi.json`) and MCP (`POST /mcp` JSON-RPC `tools/list` +
-`tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`,
-`ingest` (add a leaf; omit body for the CLI hint).
+`tools/call`). **MCP surface is 3 tools** — `search`, `get`, `audit` (the
+detective lever). `stats` and `ingest` remain OpenAPI HTTP paths only.
 Agents should use these endpoints instead of shebang CLIs.
 
 ## Reasoner (D18)
