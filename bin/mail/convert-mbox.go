@@ -1,5 +1,6 @@
-//usr/bin/env go run -tags=mail_convert_mbox "$0" "$@"; exit
 //go:build mail_convert_mbox
+
+// usr/bin/env go run -tags=mail_convert_mbox "$0" "$@"; exit
 //
 // bin/mail/convert-mbox.go - split mbox mailboxes into one .eml per message.
 //
@@ -9,6 +10,7 @@
 // splits each on mbox "From " separators, and writes each message to
 // <out>/<source>/<folder>/<NNN>/<NNN>.eml so mailconv.FromEML can ingest them.
 // <source> is derived from a --source tag or the top-level dir under --in.
+//
 package main
 
 import (
@@ -23,6 +25,10 @@ import (
 	"sort"
 	"strings"
 )
+
+// reSkipName matches Thunderbird folders we must not import: drafts,
+// templates, trash, spam/junk, unsent queue (#79 exclusion policy).
+var reSkipName = regexp.MustCompile(`(?i)^(drafts?|templates?|trash|junk|spam(assassin)?|unsent( messages)?)(\.sbd)?$`)
 
 // reEnvelope matches the sender + ctime-date tail of a real mbox separator.
 var reEnvelope = regexp.MustCompile(`^\S+ [A-Z][a-z]{2} [A-Z][a-z]{2} `)
@@ -68,6 +74,11 @@ func main() {
 		}
 		rel, _ := filepath.Rel(in, p)
 		parts := strings.Split(filepath.ToSlash(rel), "/")
+		for _, part := range parts {
+			if reSkipName.MatchString(part) {
+				return nil
+			}
+		}
 		src := source
 		if src == "" && len(parts) > 0 {
 			src = parts[0]
