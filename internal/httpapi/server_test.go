@@ -21,10 +21,10 @@ type fakeSearcher struct {
 	calls    int
 	active   atomic.Int32
 	maxSeen  atomic.Int32
-	callback func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error)
+	callback func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error)
 }
 
-func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 	f.mu.Lock()
 	f.calls++
 	f.mu.Unlock()
@@ -44,7 +44,7 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit int, asOf
 		}
 	}
 	if f.callback != nil {
-		return f.callback(query, limit, asOf, root, noWeb)
+		return f.callback(query, limit, asOf, root, sort, noWeb)
 	}
 	return []byte(`{"query":"` + query + `","count":0,"results":[]}`), nil
 }
@@ -109,7 +109,7 @@ func TestSearchMissingQuery(t *testing.T) {
 }
 
 func TestSearchReturnsSearcherResult(t *testing.T) {
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 		return []byte(`{"query":"` + q + `","count":1,"results":[{"id":"x"}]}`), nil
 	}}
 	h := NewServer(fs, 1)
@@ -131,7 +131,7 @@ func TestSearchReturnsSearcherResult(t *testing.T) {
 
 func TestSearchPassesRootFilter(t *testing.T) {
 	var gotRoot string
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 		gotRoot = root
 		return []byte(`{"query":"` + q + `","count":0,"results":[]}`), nil
 	}}
@@ -152,7 +152,7 @@ func TestSearchPassesRootFilter(t *testing.T) {
 
 func TestSearchPassesNoweb(t *testing.T) {
 	var gotNoWeb bool
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 		gotNoWeb = noWeb
 		return []byte(`{"query":"` + q + `","count":0,"results":[]}`), nil
 	}}
@@ -173,7 +173,7 @@ func TestSearchPassesNoweb(t *testing.T) {
 
 func TestMCPSearchPassesRootFilter(t *testing.T) {
 	var gotRoot string
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 		gotRoot = root
 		return []byte(`{"query":"` + q + `","count":0,"results":[]}`), nil
 	}}
@@ -189,7 +189,7 @@ func TestMCPSearchPassesRootFilter(t *testing.T) {
 
 func TestMCPSearchPassesNoweb(t *testing.T) {
 	var gotNoWeb bool
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 		gotNoWeb = noWeb
 		return []byte(`{"query":"` + q + `","count":0,"results":[]}`), nil
 	}}
@@ -242,7 +242,7 @@ func TestSearchRejectsBadLimit(t *testing.T) {
 }
 
 func TestGetLeaf(t *testing.T) {
-	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root string, noWeb bool) ([]byte, error) {
+	fs := &fakeSearcher{callback: func(q string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
 		return []byte(`{}`), nil
 	}}
 	h := NewServer(fs, 1)
