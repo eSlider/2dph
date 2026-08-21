@@ -113,6 +113,7 @@ type SyncConfig struct {
 	Offset  int               // skip first N messages per source
 	Force   bool              // overwrite existing message.json + attachments
 	DryRun  bool              // list without writing
+	Raw     bool              // fetch raw RFC 822 (.eml) for RawMailer sources
 	Query   string            // Gmail search query; default in:inbox
 	Policy  RetryPolicy
 }
@@ -138,6 +139,14 @@ type Source interface {
 // ids have been downloaded successfully. Sources that only advance durable state
 // on success (e.g. a Graph delta link) implement this so a killed or failed run
 // stays retryable without gaps.
+
+// RawMailer is an optional Source capability: GetRaw returns the raw RFC 822
+// email for an id, written as <folder>/<id>/<id>.eml for the enmime importer.
+// When SyncConfig.Raw is set, only sources implementing RawMailer are synced
+// (e.g. Gmail, which can return format=raw).
+type RawMailer interface {
+	GetRaw(ctx context.Context, id string) ([]byte, error)
+}
 type Committer interface {
 	Commit() error
 }
@@ -157,6 +166,7 @@ type ooMailAPI interface {
 type gmailAPI interface {
 	ListIDs(ctx context.Context, q string, maxIDs int, pageToken string) ([]string, string, error)
 	GetMessage(ctx context.Context, id string) (*Message, error)
+	GetMessageRaw(ctx context.Context, id string) ([]byte, error)
 	DownloadAttachment(ctx context.Context, msgID, attID string) ([]byte, error)
 }
 
@@ -206,6 +216,10 @@ func (s *gmailSource) ListIDs(ctx context.Context, limit int, cursor string) ([]
 
 func (s *gmailSource) Get(ctx context.Context, id string) (*Message, error) {
 	return s.c.GetMessage(ctx, id)
+}
+
+func (s *gmailSource) GetRaw(ctx context.Context, id string) ([]byte, error) {
+	return s.c.GetMessageRaw(ctx, id)
 }
 
 func (s *gmailSource) DownloadAttachment(ctx context.Context, msg *Message, att Attachment) ([]byte, error) {
@@ -364,6 +378,32 @@ func processOne(ctx context.Context, src Source, id string, cfg SyncConfig) (sta
 		return statusNew, nil
 	}
 	dir := filepath.Join(cfg.Out, src.Folder(), id)
+	if cfg.Raw {
+		rm, ok := src.(RawMailer)
+		if !ok {
+			return statusSkipped, nil // non-raw sources skipped in raw mode
+		}
+		emlPath := filepath.Join(dir, id+".eml")
+		if !cfg.Force {
+			if _, err := os.Stat(emlPath); err == nil {
+				return statusSkipped, nil
+			}
+		}
+		err := Retry(ctx, cfg.Policy, func() error {
+			b, err := rm.GetRaw(ctx, id)
+			if err != nil {
+				return retryWrap(err)
+			}
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			return os.WriteFile(emlPath, b, 0o644)
+		})
+		if err != nil {
+			return statusFailed, err
+		}
+		return statusNew, nil
+	}
 	jsonPath := filepath.Join(dir, "message.json")
 	if !cfg.Force {
 		if _, err := os.Stat(jsonPath); err == nil {
