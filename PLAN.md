@@ -65,30 +65,34 @@ detective method: **a fact needs ≥2 independent sources or it is
   docs/                     published docs (this conversation → docs/ as md)
   skills/                   in-project skills (web-search, postgres, brain, picoclaw, diataxis-docs)
   bin/
-    facts/extract.go audit.go crm.go  # D14 shebang; Go implementation
-    kb/index                deprecated bash shim → bin/brain/index.go
-    kb/add                  deprecated bash shim → bin/brain/add.go
+    brain/search.go         deduction: facts → info → web
     brain/index.go          rebuild FTS + HNSW (incl. --with-mail)
     brain/add.go            incremental leaf write (no rebuild)
-    brain/get.go stats.go eval.go  # Go read (cgo)
-    brain/watch.go
-    brain/search.go         deduction: facts → info → web
-    cli/complete.go         flaggy bash/zsh/fish complete (D23)
     brain/serve.go          HTTP API in-process + OpenAPI/MCP (D20); Zig CGO (D21)
-    cgo/zig zcc zc++        CGO toolchain (zig cc, not gcc)
-    mail/import.go          JSON → markdown (no brain write)
+    brain/get.go stats.go eval.go watch.go model.go   # Go read/ops (cgo)
+    facts/extract.go audit.go crm.go  # 2-source pairing, confidence, CRM proof
+    mail/sync.go import.go ocr.go    # mail ETL (Gmail/OO/M365), PDF OCR
+    chats/sync.go import.go facts.go apply.go  # conversations (no chats index)
+    contacts/*.go           CRM contacts importer
+    web/search.go           SearXNG client (throttled ≠ absence)
+    git/import.go           go-git history (no git binary; conversion only)
     markdown/import.go      H2 leaf split (Go)
     postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
-    git/import.go           go-git history (no git binary; conversion only)
-    web/search.go           SearXNG client (throttled ≠ absence)
     reasoner/bakeoff.go     CPU tool-call bake-off (D18; OpenAI tools)
-    chats/sync.go import.go facts.go apply.go
-                            (libs in internal/chats; no chats index)
-    mail/ocr.go             tesseract eng+deu (pdftoppm scans)
-    brain/extract  brain/audit       brain/deduce    (thinking wrapper)
+    qa/stats.go             DuckDB quantiles / JSONL (D22; not the test taxonomy)
+    ci/semver.go            next semver from conventional commits (Release job)
+    cli/complete.go         flaggy bash/zsh/fish complete (D23)
+    cgo/zig zcc zc++        CGO toolchain (zig cc, not gcc)
     stack/start start-assistant start-mail-sync stop status
-    db/psql-yq               (vendored)
-    ssh-tunnel               onlyoffice pg tunnel 5433
+    db/psql-yq              (vendored)
+    ssh-tunnel              onlyoffice pg tunnel 5433
+  test/
+    system/                 offline-gated system tests (CI default)
+    stress/                 live-brain load generator
+    integration/            opt-in live-dependency tests
+    README.md               how to run each tier
+  etc/
+    searxng/ picoclaw/      operator config (FHS; moved from deploy/)
   var/kb.lbug               single embedded store (gitignored)
 ```
 
