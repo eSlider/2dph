@@ -1,0 +1,136 @@
+package mailconv
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const emlFixture = `From: "Andriy" <andriy@example.com>
+To: eslider@gmail.com
+Subject: Re: contract review
+Date: Tue, 19 Aug 2026 13:47:04 +0100
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+
+Please review the attached terms.
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<p>Please review the attached terms.</p>
+--ALT--
+`
+
+func TestFromEMLWritesDatedMessageMD(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "inbox", "1234")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "msg.eml"), []byte(emlFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ok, skip, fail, err := FromEML(root, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok != 1 || skip != 0 || fail != 0 {
+		t.Fatalf("ok=%d skip=%d fail=%d, want 1/0/0", ok, skip, fail)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "message.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	md := string(raw)
+	for _, want := range []string{
+		"id: \"msg\"",
+		"source: \"raw-email\"",
+		"subject: \"Re: contract review\"",
+		"date: \"2026-08-19\"",
+		"type: mail",
+		"# Re: contract review",
+		"Please review the attached terms.",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("message.md missing %q; got:\n%s", want, md)
+		}
+	}
+}
+
+func TestFromEMLAttachmentsRoutedByMIME(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "inbox", "5")
+	os.MkdirAll(dir, 0o755)
+	eml := `From: a@example.com
+To: b@example.com
+Subject: with attachment
+Date: Mon, 18 Aug 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MX"
+
+--MX
+Content-Type: text/plain
+
+body text
+--MX
+Content-Type: text/plain; name="terms.txt"
+Content-Disposition: attachment; filename="terms.txt"
+
+the terms
+--MX
+Content-Type: application/octet-stream; name="blob.bin"
+Content-Disposition: attachment; filename="blob.bin"
+
+binary-data
+--MX--
+`
+	if err := os.WriteFile(filepath.Join(dir, "m.eml"), []byte(eml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ok, _, fail, err := FromEML(root, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok != 1 || fail != 0 {
+		t.Fatalf("ok=%d fail=%d", ok, fail)
+	}
+	att := filepath.Join(dir, "attachments")
+	if raw, err := os.ReadFile(filepath.Join(att, "terms.txt.md")); err != nil {
+		t.Errorf("terms.txt.md missing: %v", err)
+	} else if strings.TrimSpace(string(raw)) != "the terms" {
+		t.Errorf("terms.txt.md = %q", string(raw))
+	}
+	raw, err := os.ReadFile(filepath.Join(att, "blob.bin.md"))
+	if err != nil {
+		t.Fatalf("blob.bin.md missing: %v", err)
+	}
+	if !strings.Contains(string(raw), "attachment: blob.bin") {
+		t.Errorf("blob.bin.md = %q", string(raw))
+	}
+}
+
+func TestFromEMLDryRunAndSkip(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "inbox", "9")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "m.eml"), []byte(emlFixture), 0o644)
+	ok, _, _, err := FromEML(root, false, false, true)
+	if err != nil || ok != 1 {
+		t.Fatalf("dry-run ok=%d err=%v", ok, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "message.md")); err == nil {
+		t.Fatal("dry-run should not write message.md")
+	}
+	ok, _, _, err = FromEML(root, false, false, false)
+	if err != nil || ok != 1 {
+		t.Fatalf("write ok=%d err=%v", ok, err)
+	}
+	_, skip, _, err := FromEML(root, false, false, false)
+	if err != nil || skip != 1 {
+		t.Fatalf("skip=%d err=%v, want 1", skip, err)
+	}
+}
