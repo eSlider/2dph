@@ -27,7 +27,7 @@ type CLIConfig struct {
 type flagVals struct {
 	env, out, srcs, query string
 	workers, limit, offset int
-	force, dryRun         bool
+	force, dryRun, raw    bool
 }
 
 func Parser() *flaggy.Parser {
@@ -54,6 +54,7 @@ func bind(v *flagVals) *flaggy.Parser {
 	p.Int(&v.offset, "", "offset", "skip first N messages per source")
 	p.Bool(&v.force, "", "force", "overwrite existing message.json")
 	p.Bool(&v.dryRun, "", "dry-run", "list counts without writing")
+	p.Bool(&v.raw, "", "raw", "fetch raw RFC 822 (.eml) for Gmail instead of message.json")
 	p.String(&v.query, "", "query", "Gmail search query")
 	p.String(&v.srcs, "", "source", "comma list: onlyoffice,gmail,m365")
 	return p
@@ -90,6 +91,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		Offset:  v.offset,
 		Force:   v.force,
 		DryRun:  v.dryRun,
+		Raw:     v.raw,
 		Query:   v.query,
 		Policy:  RetryPolicy{},
 	}
@@ -150,7 +152,7 @@ func Main(args []string) int {
 		return code
 	}
 	if cfg.Help {
-		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--raw] [--dry-run]")
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)

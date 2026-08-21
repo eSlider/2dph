@@ -292,6 +292,24 @@ func collectParts(p gmailPart, mime string, msgID string, depth int) (text, html
 	return
 }
 
+// GetMessageRaw fetches a message in format=raw and returns the decoded RFC
+// 822 bytes (headers + multipart body + inline attachments). This is the raw
+// email that the enmime-based importer (mailconv.FromEML) reads.
+func (g *GmailClient) GetMessageRaw(ctx context.Context, id string) ([]byte, error) {
+	var out struct {
+		Raw string `json:"raw"`
+	}
+	path := "/gmail/v1/users/me/messages/" + url.PathEscape(id) + "?format=raw"
+	if err := g.getJSON(ctx, path, &out); err != nil {
+		return nil, err
+	}
+	b, err := base64.URLEncoding.DecodeString(out.Raw)
+	if err != nil {
+		return nil, fmt.Errorf("gmail decode raw %s: %w", id, err)
+	}
+	return b, nil
+}
+
 // DownloadAttachment fetches an attachment's bytes from the Gmail API.
 func (g *GmailClient) DownloadAttachment(ctx context.Context, msgID, attID string) ([]byte, error) {
 	// attID format is "<msgId>:<partId>"; the API needs the bare attachment id.
@@ -325,7 +343,7 @@ func (g *GmailClient) getJSON(ctx context.Context, path string, out any) error {
 		return err
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 96<<20))
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("gmail %s: status %d: %s", path, resp.StatusCode, truncate(string(body), 300))
 	}

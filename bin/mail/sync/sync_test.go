@@ -235,6 +235,9 @@ func (f *fakeGmailAPI) ListIDs(_ context.Context, q string, maxIDs int, _ string
 func (f *fakeGmailAPI) GetMessage(context.Context, string) (*Message, error) {
 	return nil, errors.New("unused")
 }
+func (f *fakeGmailAPI) GetMessageRaw(context.Context, string) ([]byte, error) {
+	return nil, errors.New("unused")
+}
 func (f *fakeGmailAPI) DownloadAttachment(context.Context, string, string) ([]byte, error) {
 	return nil, errors.New("unused")
 }
