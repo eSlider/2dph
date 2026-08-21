@@ -8,7 +8,7 @@
 //	./bin/facts/audit.go contradict   # D16 adjudication (Go; JSON claim(s) on stdin)
 //
 // `self` and `contradict` run pure Go. `db` builds the ladybug read via
-// bin/facts/audit_db.go (bin/cgo/zig CGO toolchain).
+// bin/facts/audit-db.go (bin/cgo/zig CGO toolchain).
 // Exit 0 = all checks pass, 1 = audit failures, 2 = could not evaluate.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	"github.com/eSlider/2dph/pkg/repo"
 	"github.com/eSlider/2dph/internal/facts"
 )
 
@@ -47,11 +47,11 @@ func main() {
 }
 
 func auditDB() int {
-	root := cmdbin.Root()
+	root := repo.Root()
 	cmd := exec.Command(
 		filepath.Join(root, "bin", "cgo", "zig"),
 		"go", "run", "-tags=system_ladybug,facts_audit_db",
-		filepath.Join(root, "bin", "facts", "audit_db.go"),
+		filepath.Join(root, "bin", "facts", "audit-db.go"),
 	)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -68,7 +68,7 @@ func auditDB() int {
 }
 
 func auditSelf() int {
-	root := cmdbin.Root()
+	root := repo.Root()
 	plan, err := os.ReadFile(filepath.Join(root, "PLAN.md"))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "audit self: PLAN.md:", err)

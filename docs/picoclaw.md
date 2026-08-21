@@ -25,8 +25,8 @@ docker compose --profile picoclaw up -d --no-deps picoclaw
 ```
 
 Gateway: `127.0.0.1:18790`. Brain MCP: `http://127.0.0.1:8630/mcp`.
-Cursor-style clients can use [deploy/picoclaw/mcp.json.example](../deploy/picoclaw/mcp.json.example).
-PicoClaw itself uses [deploy/picoclaw/config.json](../deploy/picoclaw/config.json)
+Cursor-style clients can use [etc/picoclaw/mcp.json.example](../etc/picoclaw/mcp.json.example).
+PicoClaw itself uses [etc/picoclaw/config.json](../etc/picoclaw/config.json)
 (`127.0.0.1` + host network — loopback publishes are not reachable via docker0).
 
 OpenAPI: `GET http://127.0.0.1:8630/openapi.json`.
@@ -37,8 +37,8 @@ negative finding. See `skills/picoclaw/SKILL.md`.
 System performance (MCP gates + qwen3.5:9b tool_call + PicoClaw gateway):
 
 ```bash
-./qa/system_perf.go --json | yq '.gates'
-REASONER_MODEL=qwen3.5:9b ./qa/system_perf.go --reasoner --picoclaw --json | yq '.reasoner'
+./test/system/system_perf.go --json | yq '.gates'
+REASONER_MODEL=qwen3.5:9b ./test/system/system_perf.go --reasoner --picoclaw --json | yq '.reasoner'
 ```
 
 The default agent model is `qwen3.5:9b`. PicoClaw `context_window` is 8192

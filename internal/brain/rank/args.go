@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/facts"
 	"github.com/integrii/flaggy"
 )
@@ -12,7 +12,7 @@ import (
 const Usage = `usage: bin/brain/search.go "query" [--root facts|info] [--repo REPO] [-n N] [--hop N] [--as-of YYYY-MM-DD] [--sort date[:asc|:desc]] [--json] [--no-web]
        bin/brain/search.go serve [port]
        bin/brain/search.go --list-model
-       source <(./bin/cli/complete.go bash)`
+       source <(./bin/shell/complete.go bash)`
 
 type Options struct {
 	Query     string
@@ -29,7 +29,7 @@ type Options struct {
 	NoWeb     bool
 }
 
-// NewParser is the flaggy schema for search (also used by bin/cli/complete.go).
+// NewParser is the flaggy schema for search (also used by bin/shell/complete.go).
 func NewParser(opt *Options) *flaggy.Parser {
 	if opt.Limit == 0 {
 		opt.Limit = 20
@@ -94,7 +94,7 @@ func ParseArgs(args []string) (Options, error) {
 	return opt, nil
 }
 
-// Parser is the search schema for bin/cli/complete.go.
+// Parser is the search schema for bin/shell/complete.go.
 func Parser() *flaggy.Parser {
 	opt := Options{Limit: 20}
 	p := NewParser(&opt)

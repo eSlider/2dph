@@ -11,7 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 )
 
 func MainGet(args []string) int {

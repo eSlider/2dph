@@ -12,9 +12,9 @@ package main
 import (
 	"os"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	"github.com/eSlider/2dph/pkg/repo"
 )
 
 func main() {
-	os.Exit(cmdbin.ExecFile("bin/db/psql-yq", os.Args[1:]))
+	os.Exit(repo.ExecFile("bin/db/psql-yq", os.Args[1:]))
 }
