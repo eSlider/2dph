@@ -33,6 +33,14 @@ already-written corpus and goes straight to index build.
 >     KB_BUFFER_POOL=10737418240 bin-build/brain-index --skip \
 >         --with-mail --with-facts --workers 12 --batch 256 --progress 5
 
+> Warning: `--rebuild` refuses to run while a brain holds the db open (fd
+> holders via /proc, or an API answering on `127.0.0.1:$KB_PORT` when
+> rebuilding the repo-default `var/kb.lbug`) — deleting the file under a live
+> serve leaves it serving the removed inode and can lock the service out of
+> the fresh db. Stop/restart the brain first, pass `--force` to override, or
+> set `KB_INDEX_ALLOW_LIVE=1` in environments where the swap+restart flow is
+> intended (the compose `index` service already sets this).
+
 Observed rates: embedding is fast (~16k/s, 256-dim); the db **write** phase is
 the bottleneck (~100/s, ~40 min for 242k leafs).
 

@@ -81,7 +81,10 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
-    environment: *env
+    environment:
+      <<: *env
+      # sanctioned swap+restart flow: the live-holder guard must not block it
+      KB_INDEX_ALLOW_LIVE: "1"
     volumes:
       - ./var:/data/var
       - ./var/lbdb-extension:/data/.lbdb/extension:ro
