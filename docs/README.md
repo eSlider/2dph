@@ -21,6 +21,8 @@ Evidence-first knowledge graph. Facts need proof or they are
 | howto | [picoclaw](picoclaw.md) — MCP agent (`bin/stack/start-assistant`) |
 | howto | [reasoner](reasoner.md) — CPU bake-off (D18) |
 | reference | [PLAN.md](../PLAN.md) — decisions D1–D24 |
+| testing | [test/README.md](../test/README.md) — system / stress / integration tiers |
+| config | `etc/{searxng,picoclaw}` — operator config (FHS) |
 
 Decisions the public face must name: **D3** SearXNG compose, **D6** Go service /
 Python write sidecar, **D14** `bin/{subject}/{method}.go`, **D15** Gitea origin,

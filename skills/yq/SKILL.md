@@ -21,7 +21,7 @@ in-process tests.
 
 ```bash
 yq '.services.picoclaw.image' compose.yaml
-yq -P . deploy/picoclaw/config.json          # JSON → YAML
+yq -P . etc/picoclaw/config.json          # JSON → YAML
 yq -o=json '.gates'                           # JSON stdin (qa/system_perf.go --json)
 yq -p=csv -o=json .
 yq -p=xml -o=json .
