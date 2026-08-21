@@ -33,8 +33,19 @@ func main() {
 type indexFlags struct {
 	db, factsJSON, withChats, since                                              string
 	corpus                                                                       []string
-	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut, skip bool
+	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut, skip, force bool
 	limit, workers, batch, progress                                              int
+}
+
+// gitRepoRoot resolves the actual repository checkout (independent of
+// KB_ROOT, which points the corpus/db at arbitrary roots for tests and
+// throwaway builds).
+func gitRepoRoot() string {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func run(args []string) int {
@@ -57,6 +68,7 @@ func run(args []string) int {
 	p.Int(&v.batch, "", "batch", "leafs per transaction (default 64)")
 	p.Int(&v.progress, "", "progress", "progress/ETA line every N seconds")
 	p.Bool(&v.skip, "", "skip", "skip leafs already in the db (resume)")
+	p.Bool(&v.force, "", "force", "rebuild even if the db is open by a live process")
 	p.Bool(&v.jsonOut, "", "json", "JSON stats")
 	// --corpus may repeat: parse manually from args leftovers after flaggy
 	if err := cliparse.Parse(p, filterCorpusArgs(args, &v.corpus)); err != nil {
@@ -71,6 +83,10 @@ func run(args []string) int {
 	dbpath := v.db
 	if dbpath == "" {
 		dbpath = filepath.Join(root, "var", "kb.lbug")
+	}
+	port := os.Getenv("KB_PORT")
+	if port == "" {
+		port = "8630"
 	}
 
 	var leafs []brain.CorpusLeaf
@@ -143,6 +159,30 @@ func run(args []string) int {
 	}
 
 	if !v.skip {
+		// A live holder of this file (e.g. brain-serve in a compose container
+		// bind-mounting the same var/) would keep serving the removed inode:
+		// reads go stale and the fresh db lands with the writer's uid, locking
+		// out the service. Refuse unless --force. Two probes: same-namespace
+		// fd holders via /proc, and (for the default repo db) any brain API
+		// answering on 127.0.0.1:$KB_PORT — container fds are invisible to
+		// host /proc when the service runs as another uid.
+		var reasons []string
+		if holders, err := brain.LiveHolders(dbpath); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: live-holder check: %v\n", err)
+			return 1
+		} else if len(holders) > 0 {
+			reasons = append(reasons, fmt.Sprintf("%s is open by %d process(es):\n  %s", dbpath, len(holders), strings.Join(holders, "\n  ")))
+		}
+		if gitRoot := gitRepoRoot(); gitRoot != "" &&
+			dbpath == filepath.Join(gitRoot, "var", "kb.lbug") &&
+			os.Getenv("KB_INDEX_ALLOW_LIVE") != "1" &&
+			brain.BrainAPIAlive("127.0.0.1:" + port) {
+			reasons = append(reasons, fmt.Sprintf("a brain API is answering on 127.0.0.1:%s (compose brain bind-mounts this db)", port))
+		}
+		if len(reasons) > 0 && !v.force {
+			fmt.Fprintf(os.Stderr, "brain/index: refuse --rebuild; stop/restart the brain first (or pass --force):\n%s\n", strings.Join(reasons, "\n"))
+			return 2
+		}
 		_ = os.Remove(dbpath)
 		_ = os.Remove(dbpath + ".wal")
 	}
