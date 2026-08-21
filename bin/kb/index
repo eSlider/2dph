@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# bin/kb/index — deprecated. Use bin/brain/index.go (Go+Zig rebuild).
-set -euo pipefail
-ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
-echo "bin/kb/index is deprecated; use bin/brain/index.go" >&2
-# historic: always include mail when called via brain/index.go wrapper
-exec "$ROOT/bin/cgo/zig" go run -tags=system_ladybug,brain_index "$ROOT/bin/brain/index.go" --with-mail "$@"

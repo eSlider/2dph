@@ -52,7 +52,6 @@ bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
 internal/     shared Go (brain/rank is cgo-free; facts D16; cli flaggy D23; chats; gitlog; websearch; reasoner; duckstats)
 bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
-bin/tools/    web-search fixtures (Go testdata for internal/websearch)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
 bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
 bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|mail-sync)
@@ -95,7 +94,6 @@ bin/stack/start-mail-sync                                               # compos
 ```bash
 bin/facts/audit.go ["self"|"db"|"contradict"]     # 2-source + D16 adjudication
 bin/facts/crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
-bin/kb/search "query" [--repo X]                  # deprecated wrapper → bin/brain/search.go
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --as-of 2025-01-01    # D24 fact intervals
 bin/brain/search.go "query" --no-web              # local graph only
