@@ -27,14 +27,16 @@ func main() {
 
 func run(args []string) int {
 	var (
+		c      gitlog.CLI
 		dbPath string
 		dryRun bool
 	)
-	c, err := gitlog.ParseArgs(args)
-	if err != nil {
-		return cli.Fail(err)
-	}
 	p := cli.New("brain-import-git")
+	p.Description = "read git history (go-git) and upsert commit leafs into the brain"
+	p.AddPositionalValue(&c.Repo, "repo", 1, false, "git repo path")
+	p.String(&c.Root, "", "root", "scan dir for git repos")
+	p.String(&c.Since, "", "since", "RFC3339 or YYYY-MM-DD")
+	p.Int(&c.Limit, "", "limit", "max commits per repo (0 = all)")
 	p.String(&dbPath, "", "db", "path to kb.lbug (default var/kb.lbug)")
 	p.Bool(&dryRun, "", "dry-run", "print counts only, write nothing")
 	if err := cli.Parse(p, args); err != nil {
@@ -80,8 +82,8 @@ func run(args []string) int {
 		}
 		cs, err := gitlog.Log(rp, opt)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "brain-import-git: %s: %v\n", rp, err)
-			return 1
+			fmt.Fprintf(os.Stderr, "brain-import-git: %s: skip: %v\n", name, err)
+			continue
 		}
 		for _, cm := range cs {
 			l := gitlog.ToLeaf(cm, name)
