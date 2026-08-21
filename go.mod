@@ -8,7 +8,7 @@ require (
 	github.com/chewxy/math32 v1.11.2
 	github.com/daulet/tokenizers v1.27.0
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
-	github.com/eslider/go-onlyoffice v0.13.0
+	github.com/eslider/go-onlyoffice v0.14.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/integrii/flaggy v1.8.0
 	golang.org/x/sys v0.47.0

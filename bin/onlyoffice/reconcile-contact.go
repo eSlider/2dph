@@ -17,14 +17,11 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	"github.com/eSlider/2dph/internal/mailconv"
 	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/eslider/go-onlyoffice"
 )
-
-func isTrue(v any) bool { b, _ := v.(bool); return b }
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -85,31 +82,16 @@ func run(args []string) int {
 
 	// One pass over all contacts → email→id index (per-sender FindPersonByEmail
 	// would rescan the whole CRM for every candidate).
-	all, err := c.ListAllContacts(ctx)
+	idx, err := c.BuildContactEmailIndex(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "reconcile-contact: list contacts: %v\n", err)
+		fmt.Fprintf(os.Stderr, "reconcile-contact: contact index: %v\n", err)
 		return 1
-	}
-	emailToID := map[string]bool{}
-	for _, person := range all {
-		if isTrue(person["isCompany"]) {
-			continue
-		}
-		for _, row := range onlyoffice.ContactInfoRows(person) {
-			if onlyoffice.NormalizeContactInfoType(fmt.Sprint(row["infoType"])) != "email" {
-				continue
-			}
-			data := strings.ToLower(strings.TrimSpace(fmt.Sprint(row["data"])))
-			if data != "" && data != "<nil>" {
-				emailToID[data] = true
-			}
-		}
 	}
 
 	var matched, created, failed int
 	for _, e := range emails {
 		cd := seen[e]
-		if emailToID[e] {
+		if _, hit := idx[e]; hit {
 			matched++
 			continue
 		}

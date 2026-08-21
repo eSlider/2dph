@@ -15,7 +15,6 @@
 //
 // Idempotency: processed message keys live in var/state/mail-interactions.json
 // (gitignored runtime state).
-//
 package main
 
 import (
@@ -68,44 +67,16 @@ func run(args []string) int {
 	c := onlyoffice.NewClient(onlyoffice.GetEnvironmentCredentials())
 	ctx := context.Background()
 
-	// 1. email → person id.
-	all, err := c.ListAllContacts(ctx)
+	// 1. email → person id; 2. person → representative opportunity (lib O(N) passes).
+	personByEmail, err := c.BuildContactEmailIndex(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "import-interaction: list contacts: %v\n", err)
+		fmt.Fprintf(os.Stderr, "import-interaction: contact index: %v\n", err)
 		return 1
 	}
-	personByEmail := map[string]string{}
-	for _, person := range all {
-		if isTrue(person["isCompany"]) {
-			continue
-		}
-		id := fmt.Sprint(person["id"])
-		for _, row := range onlyoffice.ContactInfoRows(person) {
-			if onlyoffice.NormalizeContactInfoType(fmt.Sprint(row["infoType"])) != "email" {
-				continue
-			}
-			data := strings.ToLower(strings.TrimSpace(fmt.Sprint(row["data"])))
-			if data != "" && data != "<nil>" {
-				personByEmail[data] = id
-			}
-		}
-	}
-
-	// 2. person id → first opportunity id (deterministic: lowest numeric).
-	opps, err := c.ListAllOpportunities(ctx)
+	oppByPerson, err := c.BuildPersonOpportunityIndex(ctx)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "import-interaction: list opportunities: %v\n", err)
+		fmt.Fprintf(os.Stderr, "import-interaction: opportunity index: %v\n", err)
 		return 1
-	}
-	oppByPerson := map[string]string{}
-	for _, opp := range opps {
-		oppID := fmt.Sprint(opp["id"])
-		for _, m := range onlyoffice.OpportunityMembers(opp) {
-			pid := fmt.Sprint(m["id"])
-			if cur, ok := oppByPerson[pid]; !ok || oppLess(oppID, cur) {
-				oppByPerson[pid] = oppID
-			}
-		}
 	}
 
 	stPath := filepath.Join(repo.Root(), "var", "state", "mail-interactions.json")
@@ -144,7 +115,7 @@ func run(args []string) int {
 		if !write || (limit > 0 && written >= limit) {
 			continue
 		}
-		if _, err := c.AddHistoryNote(ctx, "opportunity", atoi(oppID), mailconv.FormatNote(m), 0); err != nil {
+		if _, err := c.AddHistoryNote(ctx, onlyoffice.HistoryEntityOpportunity, atoi(oppID), mailconv.FormatNote(m), 0); err != nil {
 			fmt.Fprintf(os.Stderr, "  history msg %s: %v\n", key, err)
 			continue
 		}
@@ -161,20 +132,7 @@ func run(args []string) int {
 	return 0
 }
 
-func isTrue(v any) bool {
-	b, _ := v.(bool)
-	return b
-}
-
 func atoi(s string) int {
 	n, _ := strconv.Atoi(strings.TrimSpace(s))
 	return n
-}
-
-func oppLess(a, b string) bool {
-	na, nb := atoi(a), atoi(b)
-	if na != nb {
-		return na < nb
-	}
-	return a < b
 }
