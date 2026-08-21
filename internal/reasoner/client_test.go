@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/eSlider/2dph/internal/httpapi"
+	"github.com/eSlider/2dph/pkg/httpapi"
 )
 
 func TestHFIdsAreRealAndNoQwen36Nine(t *testing.T) {

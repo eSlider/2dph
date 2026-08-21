@@ -1,4 +1,4 @@
-package main
+package contact
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 // loadSources ingests every path in sources. A path may be a single file or a
 // directory (walked recursively). Supported extensions: .csv (Google Contacts),
 // .vcf / .vcard (vCard 2.1 + 3.0), .mab (Thunderbird Mork).
-func loadSources(sources []string) ([]Contact, error) {
+func Load(sources []string) ([]Contact, error) {
 	var out []Contact
 	seen := map[string]bool{}
 	for _, src := range sources {

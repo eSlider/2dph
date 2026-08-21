@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	"github.com/eSlider/2dph/pkg/cmdbin"
 	"github.com/eSlider/2dph/internal/facts"
 )
 

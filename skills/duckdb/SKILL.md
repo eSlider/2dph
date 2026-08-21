@@ -11,7 +11,7 @@ description: >-
 
 Use https://github.com/duckdb/duckdb-go where it makes sense to get better performance in code.
 
-In-process DuckDB (`internal/duckstats`, `database/sql` driver `duckdb`).
+In-process DuckDB (`pkg/duckstats`, `database/sql` driver `duckdb`).
 Vectorized SQL over tables, JSONL, CSV, Parquet. CGO with bundled libs
 (linux/darwin amd64/arm64). Links with **gcc/g++** (libstdc++), not Zig.
 D21 Zig (`bin/cgo/zcc`) is Ladybug/tokenizers only. After
@@ -19,7 +19,7 @@ D21 Zig (`bin/cgo/zcc`) is Ladybug/tokenizers only. After
 
 ```bash
 CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= ./bin/qa/stats.go <<< '[1,2,3,4,5]'
-CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go test ./internal/duckstats
+CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go test ./pkg/duckstats
 ```
 
 | Store | Job |

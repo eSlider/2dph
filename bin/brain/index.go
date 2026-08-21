@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
-	cliparse "github.com/eSlider/2dph/internal/cli"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
 )
 
 func main() {

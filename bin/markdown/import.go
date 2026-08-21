@@ -14,7 +14,7 @@ import (
 	"os"
 	"strings"
 
-	cliparse "github.com/eSlider/2dph/internal/cli"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/mdleaves"
 )
 

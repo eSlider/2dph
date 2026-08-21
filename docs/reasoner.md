@@ -2,7 +2,7 @@
 
 Pluggable OpenAI-compatible URL. 2dph does not ship weights. PicoClaw is
 compose profile `picoclaw` (`sipeed/picoclaw`); the bake-off hits the same
-tool names (`search` → `get` → `audit` from `internal/httpapi.Ops`).
+tool names (`search` → `get` → `audit` from `pkg/httpapi.Ops`).
 
 ```bash
 docker compose --profile reasoner up -d reasoner
@@ -11,7 +11,7 @@ REASONER_BASE_URL=http://127.0.0.1:11435/v1 REASONER_MODEL=qwen3.5:9b \
   ./bin/reasoner/bakeoff.go --json
 ```
 
-JSON includes `latency_p50_ms` / `latency_p95_ms` from DuckDB (`internal/duckstats`, D22).
+JSON includes `latency_p50_ms` / `latency_p95_ms` from DuckDB (`pkg/duckstats`, D22).
 
 Host Ollama on `:11434` is left alone. This sidecar binds `127.0.0.1:11435`
 with `OLLAMA_NUM_GPU=0` (CPU). Measure RSS (`/api/ps` `size`), not VRAM.

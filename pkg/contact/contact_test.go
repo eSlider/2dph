@@ -1,4 +1,4 @@
-package main
+package contact
 
 import (
 	"os"
@@ -150,7 +150,7 @@ func TestLoadSourcesDir(t *testing.T) {
 	sub := filepath.Join(dir, "sub")
 	_ = os.Mkdir(sub, 0o755)
 	_ = os.WriteFile(filepath.Join(sub, "y.vcf"), []byte(vcard21), 0o644)
-	cs, err := loadSources([]string{dir})
+	cs, err := Load([]string{dir})
 	if err != nil {
 		t.Fatal(err)
 	}

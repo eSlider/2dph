@@ -7,7 +7,7 @@
 //	./bin/reasoner/bakeoff.go --model MichelRosselli/bonsai-27b:Q1_0 --json
 //
 // Measures OpenAI tool_calls (search/get/audit) and RSS from Ollama /api/ps, not VRAM.
-// PicoClaw is compose profile picoclaw; tool names match internal/httpapi MCP ops.
+// PicoClaw is compose profile picoclaw; tool names match pkg/httpapi MCP ops.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
@@ -16,8 +16,8 @@ import (
 	"fmt"
 	"os"
 
-	cliparse "github.com/eSlider/2dph/internal/cli"
-	"github.com/eSlider/2dph/internal/duckstats"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
+	"github.com/eSlider/2dph/pkg/duckstats"
 	"github.com/eSlider/2dph/internal/reasoner"
 )
 

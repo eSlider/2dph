@@ -29,7 +29,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/eSlider/2dph/internal/brain"
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 )
 
 const repoID = "eSlider/2dph"

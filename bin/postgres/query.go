@@ -12,7 +12,7 @@ package main
 import (
 	"os"
 
-	"github.com/eSlider/2dph/internal/cmdbin"
+	"github.com/eSlider/2dph/pkg/cmdbin"
 )
 
 func main() {

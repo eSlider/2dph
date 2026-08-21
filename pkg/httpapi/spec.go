@@ -144,7 +144,7 @@ func MCPTools() []MCPTool {
 func SkillMarkdown() string {
 	var b strings.Builder
 	b.WriteString("# brain HTTP / MCP tools\n\n")
-	b.WriteString("Generated from `internal/httpapi.Ops`. Do not edit by hand.\n\n")
+	b.WriteString("Generated from `pkg/httpapi.Ops`. Do not edit by hand.\n\n")
 	b.WriteString("Serve: `bin/brain/serve.go` (`GET /openapi.json`, `POST /mcp`).\n\n")
 	for _, t := range MCPTools() {
 		b.WriteString("- `")
