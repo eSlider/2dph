@@ -45,7 +45,7 @@ full and no memory could be freed!`) and **every** endpoint — even `/stats`
 Fixed in `internal/brain/*.go`: `defer res.Close()` on every QueryResult
 (read + one-shot statements via `qClose`). Regression:
 `TestConcurrentSearchesDontExhaustBufferPool` (red without the fix).
-Live proof: `qa/stress` at c=8/16 sustained now holds 0% errors.
+Live proof: `test/stress` at c=8/16 sustained now holds 0% errors.
 
 ## Tuning
 

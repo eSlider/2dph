@@ -18,9 +18,9 @@ package main
 import (
 	"os"
 
-	"github.com/eSlider/2dph/bin/mail/sync"
+	"github.com/eSlider/2dph/internal/mailsync"
 )
 
 func main() {
-	os.Exit(sync.Main(os.Args[1:]))
+	os.Exit(mailsync.Main(os.Args[1:]))
 }

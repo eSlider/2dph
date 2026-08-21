@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/eSlider/2dph/internal/mdleaves"
+	"github.com/eSlider/2dph/internal/markdown"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 )
@@ -28,7 +28,7 @@ func LoadDefaultCorpus(root string) ([]CorpusLeaf, error) {
 			continue
 		}
 		if st.IsDir() {
-			mds, err := mdleaves.WalkMarkdown(p)
+			mds, err := markdown.WalkMarkdown(p)
 			if err != nil {
 				return nil, err
 			}
@@ -81,7 +81,7 @@ func LoadCorpusPath(source string) ([]CorpusLeaf, error) {
 	var files []string
 	if st.IsDir() {
 		repo = filepath.Base(source)
-		mds, err := mdleaves.WalkMarkdown(source)
+		mds, err := markdown.WalkMarkdown(source)
 		if err != nil {
 			return nil, err
 		}
@@ -145,7 +145,7 @@ func leafsFromMarkdownFiles(files []string, repo, how string) ([]CorpusLeaf, err
 			fmt.Fprintf(os.Stderr, "brain/index: skip %s: %v\n", path, err)
 			continue
 		}
-		for _, lf := range mdleaves.ToAll(string(raw), path, repo) {
+		for _, lf := range markdown.ToAll(string(raw), path, repo) {
 			out = append(out, CorpusLeaf{
 				Source: lf.Source, Repo: lf.Repo, Heading: lf.Heading,
 				Text: lf.Text, Type: lf.Type, How: how,
@@ -186,7 +186,7 @@ func LoadMailLeafs(root, since string, limit int) ([]CorpusLeaf, error) {
 	for _, md := range mds {
 		date := ""
 		if raw, err := os.ReadFile(md); err == nil {
-			if fm, _ := mdleaves.ExtractFrontmatter(string(raw)); len(fm["date"]) >= 10 {
+			if fm, _ := markdown.ExtractFrontmatter(string(raw)); len(fm["date"]) >= 10 {
 				date = fm["date"][:10]
 			}
 		}
@@ -205,7 +205,7 @@ func LoadMailLeafs(root, since string, limit int) ([]CorpusLeaf, error) {
 				continue
 			}
 			id := filepath.Base(filepath.Dir(md))
-			for _, lf := range mdleaves.ToAll(string(raw), f, "ooMail") {
+			for _, lf := range markdown.ToAll(string(raw), f, "ooMail") {
 				src := fmt.Sprintf("ooMail:%s:%s", id, filepath.Base(f))
 				out = append(out, CorpusLeaf{
 					Source: src, Repo: "ooMail", Heading: lf.Heading,

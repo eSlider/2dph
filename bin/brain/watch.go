@@ -12,9 +12,9 @@ package main
 import (
 	"os"
 
-	"github.com/eSlider/2dph/bin/watch"
+	"github.com/eSlider/2dph/internal/corpuswatch"
 )
 
 func main() {
-	watch.Run(os.Args[1:])
+	corpuswatch.Run(os.Args[1:])
 }

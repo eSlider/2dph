@@ -38,9 +38,9 @@ bin/brain/search.go "question"
 from each hit (1=File, 2=Commit, 3=Person). Rebuild writes FROM_FILE;
 git import writes HAS_VERSION/AUTHORED ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
-Go CLIs parse with **flaggy** via `internal/cli` (D23). Flags may appear
+Go CLIs parse with **flaggy** via `pkg/cli` (D23). Flags may appear
 after positionals (`search q --hop 1`). Completions:
-`source <(./bin/cli/complete.go bash)`.
+`source <(./bin/shell/complete.go bash)`.
 
 ## Who / What / How / Where / When + evidence
 
@@ -62,7 +62,7 @@ Every assertion edge carries:
 Content leafs: `sha256`, `observed_at`, `source_rev`, `confidence`. Stale = a
 file changed on disk (git HEAD/mtime) after its last observed `source_rev`.
 `File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person` records the history of every
-content leaf. Commit records come from `bin/git/import.go` (go-git, no git
+content leaf. Commit records come from `bin/brain/import-git.go` (go-git, no git
 binary); conversion prints leafs, brain write is `bin/brain/index.go`.
 
 `bin/facts/audit stale` flags leafs whose observed revision is behind the
@@ -100,7 +100,7 @@ deprecated, kept only for A/B comparison.
 
 ## Agent API (D20)
 
-`bin/brain/serve.go` exposes the same `internal/httpapi.Ops` table as OpenAPI
+`bin/brain/serve.go` exposes the same `pkg/httpapi.Ops` table as OpenAPI
 (`GET /openapi.json`) and MCP (`POST /mcp` JSON-RPC `tools/list` +
 `tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`,
 `ingest` (add a leaf; omit body for the CLI hint).
@@ -111,7 +111,7 @@ Agents should use these endpoints instead of shebang CLIs.
 Pluggable OpenAI-compatible URL. RAM: `Qwen/Qwen3.5-9B`. Quality:
 `prism-ml/Bonsai-27B-gguf` or `Qwen/Qwen3.6-27B`. No official Qwen3.6-9B.
 CPU sidecar: compose profile `reasoner` (`OLLAMA_NUM_GPU=0`,
-`127.0.0.1:11435`). Bake-off: `bin/reasoner/bakeoff.go`. Weights stay out
+`127.0.0.1:11435`). Bake-off: `bin/reasoner/bench.go`. Weights stay out
 of the 2dph image. See [docs/reasoner.md](reasoner.md).
 
 Gap to v1 (hops, corpus, CI eval): [roadmap](roadmap.md),

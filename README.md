@@ -14,8 +14,48 @@ vector** + **BM25 full-text** indexes. Search is *deduction*: confirmed facts
 first, supporting info second, `web-search` as the independent second source
 when the local graph cannot confirm.
 
+## What's in 2dph today
+
+- **Single embedded store** — one file `var/kb.lbug` (LadybugDB).
+- **Native property graph** + Cypher.
+- **Native HNSW** (vectors, 256-dim model2vec) + **BM25 FTS**.
+- **Hybrid search** — `facts → info → web`.
+- **Graph-hop** (`--hop N`: File → Commit → Person).
+- **ACID transactions** — facts + info in one transaction.
+- **Incremental write** + bulk rebuild.
+- **DuckDB** as auxiliary (D22 / OQ3): quantiles, JSONL stats via duckdb-go
+  in-process — a helper tool, **not** the primary store.
+
 Run it: [docs/runbook.md](docs/runbook.md). Design: [docs/design.md](docs/design.md).
 Docs index: [docs/README.md](docs/README.md).
+
+## Tool layout (D14)
+
+Every command lives at `bin/{subject}/{method}.go` — one method per file, shared
+logic in `internal/`. The filename *is* the invocation, and the subject is the
+domain area it acts on:
+
+| Subject | Method | Does |
+|---------|--------|------|
+| `bin/brain` | `search.go` | deduction search (facts → info → web) |
+| `bin/brain` | `index.go` / `add.go` | bulk rebuild / incremental write |
+| `bin/brain` | `serve.go` | HTTP API + OpenAPI/MCP |
+| `bin/facts` | `extract.go` / `audit.go` / `crm.go` | 2-source pairing, confidence, CRM proof |
+| `bin/mail` | `sync.go` / `import.go` / `ocr.go` | mail ETL (Gmail/OO/M365) |
+| `bin/web` | `search.go` | SearXNG second source |
+| `bin/git` | `import.go` | commit history leafs |
+| `bin/chats` | `sync.go` / `import.go` / `apply.go` | conversations |
+| `bin/stack` | `start` / `status` / `stop` | compose dispatcher |
+
+Go methods are executable (`go run` shebang); a few are thin bash launchers
+(`bin/chat`, `bin/db/psql-yq`). Shell completions for all tools (D23) come from
+`bin/shell/complete.go` — see the runbook. Keep it one-command-one-file so the
+surface stays deductive: you read the path, you know the tool.
+
+**`bin/cgo`** is the CGO toolchain, **not** CI/CD: `zig` (the pinned Zig
+compiler), `zcc` / `zc++` (wrappers). Ladybug and tokenizer C libraries are
+compiled with `zig cc` (D21), so brain read/write Go binaries link CGO without
+a system gcc. CI/CD lives separately in `.github/workflows/ci.yml`.
 
 ## Architecture
 
@@ -32,7 +72,7 @@ graph TB
         EX["bin/facts/extract.go<br/>2-source pairing"]
         AU["bin/facts/audit.go<br/>confidence + staleness"]
         IDX["bin/brain/index.go<br/>chunk + embed"]
-        MD["bin/markdown/import.go<br/>H2 leaf split"]
+        MD["bin/markdown/split-leaf.go<br/>H2 leaf split"]
         SR["bin/brain/search.go<br/>deduction"]
     end
 
@@ -95,13 +135,13 @@ bin/brain/stats.go                                   # index health
 bin/brain/eval.go                                    # recall@5 gate
 ```
 
-`--hop N` walks File/Commit/Person from each hit (max 3). `bin/kb/search` is a deprecated wrapper around `bin/brain/search.go`.
+`--hop N` walks File/Commit/Person from each hit (max 3). Search is `bin/brain/search.go`.
 
 Git history is read with [go-git](https://github.com/go-git/go-git) (no git binary):
 
 ```bash
-bin/git/import.go --json --limit 100              # commit leafs for this repo
-bin/git/import.go --root "$PROJECTS_ROOT" --json  # one pass per .git under root
+bin/brain/import-git.go --json --limit 100              # commit leafs for this repo
+bin/brain/import-git.go --root "$PROJECTS_ROOT" --json  # one pass per .git under root
 ```
 
 Conversion only. Graph write (`File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`) stays with `bin/brain/index.go`.

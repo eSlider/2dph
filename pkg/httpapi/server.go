@@ -1,0 +1,307 @@
+// Package httpapi serves the 2dph brain over HTTP.
+//
+// Async by design: every request runs on its own goroutine, and CPU-heavy
+// searches are serialized through a bounded worker pool so N requests can't
+// spawn N backends at once.
+//
+// Used by bin/brain/serve.go. Tests inject a fake API (no exec, no ladybug).
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// API is the in-process brain surface. Production serve.go wires internal/brain.
+type API interface {
+	Search(ctx context.Context, query string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error)
+	Get(ctx context.Context, id string, body bool) ([]byte, error)
+	Stats(ctx context.Context) ([]byte, error)
+	Audit(ctx context.Context) ([]byte, error)
+	Ingest(ctx context.Context, body []byte) ([]byte, error)
+}
+
+type Server struct {
+	api       API
+	semaphore chan struct{}
+}
+
+const defaultPort = 8630
+
+var errUnimplemented = errors.New("not implemented")
+
+func NewServer(api API, workers int) http.Handler {
+	return &Server{
+		api:       api,
+		semaphore: make(chan struct{}, workers),
+	}
+}
+
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case PathHealth:
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+	case PathSearch:
+		s.handleSearch(w, r)
+	case PathGet:
+		s.handleGet(w, r)
+	case PathStats:
+		s.handleJSON(w, r, s.api.Stats)
+	case PathAudit:
+		s.handleJSON(w, r, s.api.Audit)
+	case PathIngest:
+		s.handleIngest(w, r)
+	case PathOpenAPI:
+		s.handleOpenAPI(w, r)
+	case PathMCP:
+		s.handleMCP(w, r)
+	default:
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not found"})
+	}
+}
+
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "q required"})
+		return
+	}
+	limit := 10
+	if raw := r.URL.Query().Get("n"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 100 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "n must be int 1..100"})
+			return
+		}
+		limit = n
+	}
+	asOf := strings.TrimSpace(r.URL.Query().Get("as_of"))
+	root := strings.TrimSpace(r.URL.Query().Get("root"))
+	sort := strings.TrimSpace(r.URL.Query().Get("sort"))
+	noWeb := r.URL.Query().Get("noweb") == "1" || r.URL.Query().Get("noweb") == "true"
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.Search(r.Context(), q, limit, asOf, root, sort, noWeb)
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id required"})
+		return
+	}
+	body := r.URL.Query().Get("body") == "1" || r.URL.Query().Get("body") == "true"
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	out, err := s.api.Get(r.Context(), id, body)
+	writeAPI(w, out, err)
+}
+
+func (s *Server) handleJSON(w http.ResponseWriter, r *http.Request, fn func(context.Context) ([]byte, error)) {
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := fn(r.Context())
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	var raw []byte
+	if r.Method == http.MethodPost {
+		b, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body"})
+			return
+		}
+		raw = b
+	}
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.Ingest(r.Context(), raw)
+	writeAPI(w, body, err)
+}
+
+func (s *Server) tryAcquire(r *http.Request) bool {
+	return s.acquire(nopWriter{}, r)
+}
+
+type nopWriter struct{}
+
+func (nopWriter) Header() http.Header       { return http.Header{} }
+func (nopWriter) Write([]byte) (int, error) { return 0, nil }
+func (nopWriter) WriteHeader(int)           {}
+
+func (s *Server) acquire(w http.ResponseWriter, r *http.Request) bool {
+	select {
+	case s.semaphore <- struct{}{}:
+		return true
+	case <-r.Context().Done():
+		return false
+	}
+}
+
+func (s *Server) release() { <-s.semaphore }
+
+func writeAPI(w http.ResponseWriter, body []byte, err error) {
+	if err != nil {
+		code := http.StatusBadGateway
+		if errors.Is(err, errUnimplemented) {
+			code = http.StatusNotImplemented
+		}
+		writeJSON(w, code, map[string]any{"error": err.Error()})
+		return
+	}
+	writeRaw(w, http.StatusOK, body)
+}
+
+func writeJSON(w http.ResponseWriter, code int, obj any) {
+	body, _ := json.Marshal(obj)
+	writeRaw(w, code, body)
+}
+
+func writeRaw(w http.ResponseWriter, code int, body []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(code)
+	w.Write(body)
+}
+
+// ExecSearcher shells out to var/bin/brain-search. Fallback when the serve
+// binary is built without ladybug cgo (CI / tags=brain_serve only).
+type ExecSearcher struct {
+	CmdPath string
+	Timeout time.Duration
+}
+
+func (b ExecSearcher) Search(ctx context.Context, query string, limit int, asOf, root, sort string, noWeb bool) ([]byte, error) {
+	if b.Timeout == 0 {
+		b.Timeout = 60 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, b.Timeout)
+	defer cancel()
+	args := []string{"--json", "-n", strconv.Itoa(limit)}
+	if root != "" {
+		args = append(args, "--root", root)
+	}
+	if asOf != "" {
+		args = append(args, "--as-of", asOf)
+	}
+	if sort != "" {
+		args = append(args, "--sort", sort)
+	}
+	if noWeb {
+		args = append(args, "--no-web")
+	}
+	args = append(args, query)
+	cmd := exec.CommandContext(ctx, b.CmdPath, args...)
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, errors.New("search backend failed: " + strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
+func (ExecSearcher) Get(context.Context, string, bool) ([]byte, error) {
+	return nil, errUnimplemented
+}
+func (ExecSearcher) Stats(context.Context) ([]byte, error) { return nil, errUnimplemented }
+func (ExecSearcher) Audit(context.Context) ([]byte, error) { return nil, errUnimplemented }
+func (b ExecSearcher) Ingest(ctx context.Context, body []byte) ([]byte, error) {
+	if len(strings.TrimSpace(string(body))) == 0 {
+		return json.Marshal(map[string]any{
+			"mode":    "add",
+			"command": "bin/brain/add.go",
+			"rebuild": "bin/brain/index.go --rebuild",
+		})
+	}
+	root := os.Getenv("KB_ROOT")
+	if root == "" {
+		root = "."
+	}
+	cmd := exec.CommandContext(ctx, filepath.Join(root, "bin/brain/add.go"), "--json")
+	cmd.Stdin = strings.NewReader(string(body))
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return nil, errors.New("add failed: " + strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
+func defaultSearchCmd(root string) string {
+	if env := os.Getenv("KB_SEARCH_CMD"); env != "" {
+		return env
+	}
+	return filepath.Join(root, "var", "bin", "brain-search")
+}
+
+func workersAndPort() (int, int) {
+	workers := 4
+	if raw := os.Getenv("KB_WORKERS"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			workers = n
+		}
+	}
+	port := defaultPort
+	if raw := os.Getenv("KB_PORT"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			port = n
+		}
+	}
+	return workers, port
+}
+
+// Run starts the HTTP server with an injected API (in-process brain, or ExecSearcher).
+func Run(api API) {
+	if api == nil {
+		root := os.Getenv("KB_ROOT")
+		api = ExecSearcher{CmdPath: defaultSearchCmd(root), Timeout: 60 * time.Second}
+	}
+	workers, port := workersAndPort()
+	handler := NewServer(api, workers)
+	host := os.Getenv("KB_HOST")
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	addr := host + ":" + strconv.Itoa(port)
+	log.Printf("serve: %s (workers=%d)", addr, workers)
+	if pprofPort := os.Getenv("KB_PPROF"); pprofPort != "" {
+		go func() {
+			paddr := host + ":" + pprofPort
+			log.Printf("pprof: %s (cpu/heap/goroutine via /debug/pprof/)", paddr)
+			if err := http.ListenAndServe(paddr, nil); err != nil {
+				log.Printf("pprof: %v", err)
+			}
+		}()
+	}
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		log.Fatal(err)
+	}
+}

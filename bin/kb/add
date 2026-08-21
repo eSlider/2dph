@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# bin/kb/add — deprecated. Use bin/brain/add.go (Go+Zig Ladybug write).
-set -euo pipefail
-ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
-echo "bin/kb/add is deprecated; use bin/brain/add.go" >&2
-exec "$ROOT/bin/cgo/zig" go run -tags=system_ladybug,brain_add "$ROOT/bin/brain/add.go" "$@"
