@@ -8,6 +8,7 @@ require (
 	github.com/chewxy/math32 v1.11.2
 	github.com/daulet/tokenizers v1.27.0
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
+	github.com/eslider/go-onlyoffice v0.13.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/integrii/flaggy v1.8.0
 	golang.org/x/sys v0.47.0
@@ -23,6 +24,7 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/inbucket/html2text v1.0.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
@@ -56,7 +58,7 @@ require (
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
-	github.com/google/uuid v1.6.0 // indirect
+	github.com/google/uuid v1.6.0
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jhillyerd/enmime/v2 v2.4.1
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
@@ -74,7 +76,7 @@ require (
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/net v0.56.0
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	modernc.org/libc v1.74.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
