@@ -241,7 +241,7 @@ func (b ExecSearcher) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if root == "" {
 		root = "."
 	}
-	cmd := exec.CommandContext(ctx, filepath.Join(root, "bin/kb/add"), "--json")
+	cmd := exec.CommandContext(ctx, filepath.Join(root, "bin/brain/add.go"), "--json")
 	cmd.Stdin = strings.NewReader(string(body))
 	cmd.Dir = root
 	out, err := cmd.Output()

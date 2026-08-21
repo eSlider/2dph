@@ -8,7 +8,6 @@
 //	./bin/brain/search.go --list-model
 //
 // Shebang routes through bin/cgo/zig (Zig cc + liblbug), not gcc.
-// bin/kb/search builds a cached binary the same way.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

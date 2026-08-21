@@ -34,7 +34,6 @@ jobs:
           bash -n bin/db/psql-yq
           bash -n bin/db/ssh-tunnel
           bash -n bin/docker-entrypoint
-          bash -n bin/kb/search
           bash -n bin/cgo/zig
           sh -n bin/cgo/zcc
           sh -n bin/cgo/zc++
