@@ -17,8 +17,8 @@ import (
 	"io"
 	"os"
 
-	cliparse "github.com/eSlider/2dph/internal/cli"
-	"github.com/eSlider/2dph/internal/duckstats"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
+	"github.com/eSlider/2dph/pkg/duckstats"
 )
 
 func main() {

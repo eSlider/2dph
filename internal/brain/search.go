@@ -20,7 +20,7 @@ import (
 
 	lbug "github.com/LadybugDB/go-ladybug"
 	"github.com/eSlider/2dph/internal/brain/rank"
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 )
 
 const defaultPort = 17830

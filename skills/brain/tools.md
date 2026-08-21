@@ -1,6 +1,6 @@
 # brain HTTP / MCP tools
 
-Generated from `internal/httpapi.Ops`. Do not edit by hand.
+Generated from `pkg/httpapi.Ops`. Do not edit by hand.
 
 Serve: `bin/brain/serve.go` (`GET /openapi.json`, `POST /mcp`).
 

@@ -40,8 +40,19 @@ Read first: [PLAN](PLAN.md) → [docs](docs/) → [roadmap](docs/roadmap.md)
 PLAN.md       decisions + execution + open questions
 docs/         published docs
 skills/       in-project agent skills (vendored, no external links)
-bin/          self-describing tools bin/{subject}/{method}.go (shebang)
-bin/brain/    search.go serve.go index.go add.go get.go stats.go eval.go watch.go
+
+**Tool naming (D14, apply ALWAYS):** `bin/{subject}/{verb}-{object}.go` — singular,
+**no trailing "s"**. `subject` = the object/system you act on; `verb` = the
+action (import/write/read/list/sync…); `object` = what (last token, `-`-joined).
+You read the path and know what it does. Examples: importing contacts into
+OnlyOffice → `bin/onlyoffice/import-contact.go`; reading contacts → `bin/contact/list.go --csv`.
+Never `contacts/…`, never `brainwrite.go` (that is `bin/brain/import-contact.go`).
+Same rule for `var/` and `etc/` subdirs: `var/{subject}/…`, `etc/{subject}/…`.
+
+bin/          self-describing tools (singular, `{subject}/{verb}-{object}.go`)
+bin/brain/    import-contact.go search.go serve.go index.go add.go get.go stats.go eval.go watch.go
+bin/contact/  import.go list.go (read/normalize csv/vcf/mab → stdout/file)
+bin/onlyoffice/ import-contact.go (reconcile contacts into OO CRM)
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
 bin/mail/     sync.go import.go ocr.go
 bin/markdown/ import.go (H2 leaf split)
@@ -49,7 +60,8 @@ bin/postgres/ query.go (read-only YAML)
 bin/git/      import.go (go-git history)
 bin/web/      search.go (SearXNG)
 bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
-internal/     shared Go (brain/rank is cgo-free; facts D16; cli flaggy D23; chats; gitlog; websearch; reasoner; duckstats)
+pkg/          public reusable Go (cli flaggy D23; cmdbin; contact; duckstats; httpapi) — no 2dph deps
+internal/     private 2dph Go (brain/rank cgo-free; facts D16; chats; gitlog; websearch; reasoner)
 bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/watch/    corpus watcher (used by bin/brain/watch.go)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
@@ -124,7 +136,7 @@ bin/brain/deduce "question"                       # thinking wrapper
 Never start a shell command with `cd` — use the tool working-directory
 parameter. Search before reading whole files. For YAML/JSON/XML/CSV/TOML/HCL
 prefer mikefarah/yq (`skills/yq/SKILL.md`). For bulk rows and quantiles use
-duckdb-go (`internal/duckstats`, `skills/duckdb/SKILL.md`), not Ladybug.
+duckdb-go (`pkg/duckstats`, `skills/duckdb/SKILL.md`), not Ladybug.
 
 ## GitHub safety rules (ABSOLUTE — never violate)
 

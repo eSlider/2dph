@@ -16,7 +16,7 @@ import (
 	"os"
 	"path/filepath"
 
-	cliparse "github.com/eSlider/2dph/internal/cli"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/brain"
 )
 

@@ -3,7 +3,7 @@ package reasoner
 import (
 	"os"
 
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/integrii/flaggy"
 )
 

@@ -1,3 +1,9 @@
+//usr/bin/env go run "$0" "$@"; exit
+// bin/onlyoffice/import-contact.go - read address-book files and reconcile
+// each contact into the OnlyOffice CRM (best effort; skip existing by email).
+//
+//	OO_URL=… OO_USER=… OO_PASSWORD=… ./bin/onlyoffice/import-contact.go --sources a.csv
+//	./bin/onlyoffice/import-contact.go --sources dir/ --dry-run
 package main
 
 import (
@@ -11,19 +17,59 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/eSlider/2dph/pkg/cli"
+	"github.com/eSlider/2dph/pkg/contact"
 )
 
-// OO CRM contact write (best effort). Uses the OnlyOffice REST API family
-// /api/2.0/crm/contact/* documented in eSlider/go-onlyoffice (crm.go):
-//   - GET  /api/2.0/crm/contact/filter.json?search=...  list/search
-//   - POST /api/2.0/crm/contact/person.json             create person (form)
-//   - POST /api/2.0/crm/contact/{id}/data.json          add email/phone (form)
-//
-// Auth matches bin/mail/sync/onlyoffice.go: authentication.json bearer token.
-
-type ooConfig struct {
-	URL, User, Password string
+func main() {
+	os.Exit(run(os.Args[1:]))
 }
+
+func run(args []string) int {
+	var (
+		sources []string
+		dryRun  bool
+	)
+	p := cli.New("onlyoffice-import-contact")
+	p.Description = "reconcile address-book contacts into the OnlyOffice CRM"
+	p.StringSlice(&sources, "s", "sources", "comma-separated files or dirs to read")
+	p.Bool(&dryRun, "", "dry-run", "print parsed counts only, write nothing")
+	if err := cli.Parse(p, args); err != nil {
+		return cli.Fail(err)
+	}
+	if len(sources) == 0 {
+		fmt.Fprintln(os.Stderr, "onlyoffice-import-contact: --sources is required")
+		return 2
+	}
+	var srcs []string
+	for _, s := range sources {
+		for _, part := range strings.Split(s, ",") {
+			if p := strings.TrimSpace(part); p != "" {
+				srcs = append(srcs, p)
+			}
+		}
+	}
+	cs, err := contact.Load(srcs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "onlyoffice-import-contact: %v\n", err)
+		return 1
+	}
+	cs = contact.Dedupe(cs)
+	contact.PrintCounts(cs)
+	if dryRun {
+		return 0
+	}
+	created, matched, failed, err := writeOO(context.Background(), cs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "onlyoffice-import-contact: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "oo: created=%d matched=%d failed=%d\n", created, matched, failed)
+	return 0
+}
+
+type ooConfig struct{ URL, User, Password string }
 
 type ooClient struct {
 	cfg    ooConfig
@@ -44,16 +90,13 @@ func ooConfigFromEnv() (ooConfig, error) {
 		Password: pick("ONLYOFFICE_PASS", "OO_PASSWORD"),
 	}
 	if cfg.URL == "" || cfg.User == "" || cfg.Password == "" {
-		return cfg, fmt.Errorf("--write-oo needs ONLYOFFICE_URL/USER/PASS (or OO_URL/USER/PASSWORD) env vars")
+		return cfg, fmt.Errorf("needs ONLYOFFICE_URL/USER/PASS (or OO_URL/USER/PASSWORD) env vars")
 	}
 	return cfg, nil
 }
 
 func newOOClient(cfg ooConfig) (*ooClient, error) {
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return nil, err
-	}
+	jar, _ := cookiejar.New(nil)
 	c := &ooClient{cfg: cfg, client: &http.Client{Jar: jar, Timeout: 60 * time.Second}}
 	body, _ := json.Marshal(map[string]any{"userName": cfg.User, "password": cfg.Password, "type": 0})
 	resp, err := c.client.Post(strings.TrimRight(cfg.URL, "/")+"/api/2.0/authentication.json",
@@ -78,11 +121,7 @@ func newOOClient(cfg ooConfig) (*ooClient, error) {
 	return c, nil
 }
 
-// writeOOContacts reconciles contacts in OO CRM. For each contact it looks up
-// by primary email; if missing it creates a person and adds email/phone data.
-// Returns a summary of created vs matched. Intended as best effort: a failure
-// on one contact is reported but does not abort the batch.
-func writeOOContacts(ctx context.Context, cs []Contact) (created, matched, failed int, err error) {
+func writeOO(ctx context.Context, cs []contact.Contact) (created, matched, failed int, err error) {
 	cfg, err := ooConfigFromEnv()
 	if err != nil {
 		return 0, 0, 0, err
@@ -122,8 +161,6 @@ func first(xs []string) string {
 	return xs[0]
 }
 
-// findPersonByEmail searches CRM contacts and returns true when a person whose
-// primary email matches already exists.
 func (c *ooClient) findPersonByEmail(ctx context.Context, base, email string) (string, bool, error) {
 	if email == "" {
 		return "", false, nil
@@ -148,7 +185,7 @@ func (c *ooClient) findPersonByEmail(ctx context.Context, base, email string) (s
 	return "", false, nil
 }
 
-func (c *ooClient) createPerson(ctx context.Context, base string, ct Contact) (string, error) {
+func (c *ooClient) createPerson(ctx context.Context, base string, ct contact.Contact) (string, error) {
 	form := url.Values{}
 	form.Set("firstName", ct.Given)
 	form.Set("lastName", ct.Family)

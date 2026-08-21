@@ -39,7 +39,7 @@ Parallel to cash-sprint [epic #62](https://git.produktor.io/eSlider/2dph/issues/
 - `bin/brain/*` (11) — core read/write/search/serve.
 - `bin/cgo/*` (zig/zcc/zc++) — toolchain.
 - `bin/chats/*` — conversations.
-- `bin/contacts/*` — CRM importer.
+- `bin/onlyoffice/import-contact.go`, `bin/brain/import-contact.go`, `bin/contact/import.go` — contacts (subject = target).
 - `bin/db/*` — psql-yq, ssh-tunnel.
 - `bin/facts/*` — audit/extract/crm.
 - `bin/git/import.go` — history.

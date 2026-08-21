@@ -18,7 +18,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/websearch"
 	"golang.org/x/sys/unix"
 )

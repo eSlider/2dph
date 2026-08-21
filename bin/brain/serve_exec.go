@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"github.com/eSlider/2dph/internal/httpapi"
+	"github.com/eSlider/2dph/pkg/httpapi"
 )
 
 func main() {

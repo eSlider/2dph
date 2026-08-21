@@ -17,7 +17,7 @@ import (
 	mailsync "github.com/eSlider/2dph/bin/mail/sync"
 	"github.com/eSlider/2dph/internal/brain/rank"
 	"github.com/eSlider/2dph/internal/chats"
-	"github.com/eSlider/2dph/internal/cli"
+	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/gitlog"
 	"github.com/eSlider/2dph/internal/mdleaves"
 	"github.com/eSlider/2dph/internal/ocr"

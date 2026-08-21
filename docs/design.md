@@ -38,7 +38,7 @@ bin/brain/search.go "question"
 from each hit (1=File, 2=Commit, 3=Person). Rebuild writes FROM_FILE;
 git import writes HAS_VERSION/AUTHORED ([#17](https://git.produktor.io/eSlider/2dph/issues/17)).
 
-Go CLIs parse with **flaggy** via `internal/cli` (D23). Flags may appear
+Go CLIs parse with **flaggy** via `pkg/cli` (D23). Flags may appear
 after positionals (`search q --hop 1`). Completions:
 `source <(./bin/cli/complete.go bash)`.
 
@@ -100,7 +100,7 @@ deprecated, kept only for A/B comparison.
 
 ## Agent API (D20)
 
-`bin/brain/serve.go` exposes the same `internal/httpapi.Ops` table as OpenAPI
+`bin/brain/serve.go` exposes the same `pkg/httpapi.Ops` table as OpenAPI
 (`GET /openapi.json`) and MCP (`POST /mcp` JSON-RPC `tools/list` +
 `tools/call`). Tool names match paths: `search`, `get`, `stats`, `audit`,
 `ingest` (add a leaf; omit body for the CLI hint).

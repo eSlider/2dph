@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	cliparse "github.com/eSlider/2dph/internal/cli"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
 )
 
 func checkLinkedInSession(userDataDir string) (bool, error) {
