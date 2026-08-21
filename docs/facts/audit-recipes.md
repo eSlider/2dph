@@ -81,7 +81,7 @@ flags facts that lost their two-source form.
 Every claim's `source` must resolve to an artifact the brain actually holds:
 
 - mail: `var/mail/md` (M365 sync → `bin/mail/sync.go` → `brain/index --with-mail`)
-- telegram/n chat: `var/chats` (`bin/chats/sync.go n|linkedin`)
+- telegram/n chat: `var/chats` (`bin/chat/sync.go n|linkedin`)
 - corpus: `cv/`, `projects/knowledge-mesh-seed.yaml`
 
 ```bash
