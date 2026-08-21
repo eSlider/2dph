@@ -38,23 +38,15 @@ func TestMCPToolsMatchOpenAPIPaths(t *testing.T) {
 			t.Fatalf("MCP tool %s has no OpenAPI path %s", tool.Name, path)
 		}
 	}
-	for _, need := range []string{"search", "get", "stats", "audit", "ingest"} {
+	for _, need := range []string{"search", "get", "audit"} {
 		if !names[need] {
 			t.Fatalf("MCP tools missing %s: %v", need, names)
 		}
 	}
-	var ingest MCPTool
-	for _, tool := range tools {
-		if tool.Name == "ingest" {
-			ingest = tool
-			break
+	for _, no := range []string{"stats", "ingest"} {
+		if names[no] {
+			t.Fatalf("MCP tool %s should not be exposed (keep surface minimal): %v", no, names)
 		}
-	}
-	if strings.Contains(ingest.Description, "v2") {
-		t.Fatalf("ingest still a v2 hint: %s", ingest.Description)
-	}
-	if !strings.Contains(ingest.Description, "add") {
-		t.Fatalf("ingest should describe add: %s", ingest.Description)
 	}
 }
 
