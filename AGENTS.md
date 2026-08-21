@@ -32,6 +32,7 @@ Read first: [PLAN](PLAN.md) → [docs](docs/) → [roadmap](docs/roadmap.md)
 5. **TDD.** Failing test before tool code. Unit tests run offline against
    fixtures; network/db calls are wrapped.
 6. **docs reflect behaviour.** Any change updates `docs/` + `PLAN.md` status.
+7. **Gitea-задачи — на русском.** Все issues, комменты, milestone в `eSlider/2dph` ведутся на русском языке (код/имена команд — как есть).
 
 ## Layout
 
