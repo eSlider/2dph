@@ -49,7 +49,7 @@ domain area it acts on:
 
 Go methods are executable (`go run` shebang); a few are thin bash launchers
 (`bin/chat`, `bin/db/psql-yq`). Shell completions for all tools (D23) come from
-`bin/cli/complete.go` — see the runbook. Keep it one-command-one-file so the
+`bin/shell/complete.go` — see the runbook. Keep it one-command-one-file so the
 surface stays deductive: you read the path, you know the tool.
 
 **`bin/cgo`** is the CGO toolchain, **not** CI/CD: `zig` (the pinned Zig
@@ -72,7 +72,7 @@ graph TB
         EX["bin/facts/extract.go<br/>2-source pairing"]
         AU["bin/facts/audit.go<br/>confidence + staleness"]
         IDX["bin/brain/index.go<br/>chunk + embed"]
-        MD["bin/markdown/import.go<br/>H2 leaf split"]
+        MD["bin/markdown/split-leaf.go<br/>H2 leaf split"]
         SR["bin/brain/search.go<br/>deduction"]
     end
 
@@ -140,8 +140,8 @@ bin/brain/eval.go                                    # recall@5 gate
 Git history is read with [go-git](https://github.com/go-git/go-git) (no git binary):
 
 ```bash
-bin/git/import.go --json --limit 100              # commit leafs for this repo
-bin/git/import.go --root "$PROJECTS_ROOT" --json  # one pass per .git under root
+bin/brain/import-git.go --json --limit 100              # commit leafs for this repo
+bin/brain/import-git.go --root "$PROJECTS_ROOT" --json  # one pass per .git under root
 ```
 
 Conversion only. Graph write (`File-[:HAS_VERSION]->Commit-[:AUTHORED]->Person`) stays with `bin/brain/index.go`.

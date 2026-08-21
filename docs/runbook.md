@@ -50,7 +50,7 @@ bin/brain/index.go --rebuild --with-facts --with-chats
 bin/brain/search.go "LadybugDB vector index"     # facts → info → web (D17)
 bin/brain/search.go "upstream flag" --no-web
 bin/brain/search.go "who works where" --as-of 2025-01-01  # D24 intervals
-source <(./bin/cli/complete.go bash)            # D23 flaggy complete
+source <(./bin/shell/complete.go bash)            # D23 flaggy complete
 bin/brain/get.go <id> --body
 bin/brain/stats.go
 ```
@@ -92,7 +92,7 @@ CPU sidecar on `127.0.0.1:11435`. Weights are not in the 2dph image.
 
 ```bash
 docker compose --profile reasoner up -d reasoner
-REASONER_BASE_URL=http://127.0.0.1:11435/v1 ./bin/reasoner/bakeoff.go --json
+REASONER_BASE_URL=http://127.0.0.1:11435/v1 ./bin/reasoner/bench.go --json
 ```
 
 See [reasoner.md](reasoner.md).

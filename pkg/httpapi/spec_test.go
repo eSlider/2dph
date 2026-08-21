@@ -84,13 +84,13 @@ func TestMCPToolsListAndCall(t *testing.T) {
 }
 
 func TestSkillMarkdownMatchesCommittedFile(t *testing.T) {
-	want, err := os.ReadFile(filepath.Join("..", "..", "skills", "brain", "tools.md"))
+	want, err := os.ReadFile(filepath.Join("..", "..", "skills", "brain", "references", "tools.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := SkillMarkdown()
 	if got != string(want) {
-		t.Fatalf("skills/brain/tools.md stale; regenerate from SkillMarkdown()\n--- got ---\n%s\n--- want ---\n%s", got, want)
+		t.Fatalf("skills/brain/references/tools.md stale; regenerate from SkillMarkdown()\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 }
 

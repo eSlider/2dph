@@ -50,20 +50,20 @@ Never `contacts/…`, never `brainwrite.go` (that is `bin/brain/import-contact.g
 Same rule for `var/` and `etc/` subdirs: `var/{subject}/…`, `etc/{subject}/…`.
 
 bin/          self-describing tools (singular, `{subject}/{verb}-{object}.go`)
-bin/brain/    import-contact.go search.go serve.go index.go add.go get.go stats.go eval.go watch.go
-bin/contact/  import.go list.go (read/normalize csv/vcf/mab → stdout/file)
+bin/brain/    import-contact.go import-git.go search.go serve.go index.go add.go get.go stats.go eval.go watch.go
+bin/contact/  list.go (read/normalize csv/vcf/mab → stdout/file)
 bin/onlyoffice/ import-contact.go (reconcile contacts into OO CRM)
 bin/chats/    sync.go import.go facts.go apply.go; libs in internal/chats
-bin/mail/     sync.go import.go ocr.go
-bin/markdown/ import.go (H2 leaf split)
+bin/mail/     sync.go import.go convert-mbox.go ocr.go (lib: internal/mailsync)
+bin/markdown/ split-leaf.go (H2 leaf split; lib: internal/markdown)
+bin/jsonl/    stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
 bin/postgres/ query.go (read-only YAML)
-bin/git/      import.go (go-git history)
 bin/web/      search.go (SearXNG)
-bin/reasoner/ bakeoff.go (D18 CPU OpenAI tool-call bake-off)
-pkg/          public reusable Go (cli flaggy D23; cmdbin; contact; duckstats; httpapi) — no 2dph deps
-internal/     private 2dph Go (brain/rank cgo-free; facts D16; chats; gitlog; websearch; reasoner)
-bin/qa/       stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
-bin/watch/    corpus watcher (used by bin/brain/watch.go)
+bin/reasoner/ bench.go (D18 CPU OpenAI tool-call bench)
+bin/facts/    extract.go audit.go audit-db.go prove-crm.go
+bin/shell/    complete.go (flaggy completions dump, D23)
+pkg/          public reusable Go (cli flaggy D23; repo; contact; duckdb; httpapi) — no 2dph deps
+internal/     private 2dph Go (brain, chats, facts D16, gitlog, websearch, reasoner, mailsync, mailconv, corpuswatch, markdown)
 bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
 bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
 bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|mail-sync)
@@ -105,11 +105,11 @@ bin/stack/start-mail-sync                                               # compos
 
 ```bash
 bin/facts/audit.go ["self"|"db"|"contradict"]     # 2-source + D16 adjudication
-bin/facts/crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
+bin/facts/prove-crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
 bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
 bin/brain/search.go "query" --as-of 2025-01-01    # D24 fact intervals
 bin/brain/search.go "query" --no-web              # local graph only
-source <(./bin/cli/complete.go bash)              # flaggy completions (D23)
+source <(./bin/shell/complete.go bash)              # flaggy completions (D23)
 eval "$(bin/cgo/zig env)"                         # optional; Ladybug shebangs call bin/cgo/zig
 bin/brain/index.go --rebuild [--with-mail] [--with-facts] [--with-chats]
 bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
@@ -122,12 +122,12 @@ bin/stack/start                                  # brain HTTP/MCP (reuse healthy
 bin/stack/start-assistant                        # + reasoner + PicoClaw agent
 bin/stack/status                                 # YAML health
 bin/stack/stop                                   # compose stop; volumes kept
-bin/markdown/import.go [dir]                      # H2 leafs → YAML (Go)
-bin/git/import.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
+bin/markdown/split-leaf.go [dir]                      # H2 leafs → YAML (Go)
+bin/brain/import-git.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
 bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
-bin/reasoner/bakeoff.go [--model ID] [--json]     # D18 CPU tool-call bake-off
+bin/reasoner/bench.go [--model ID] [--json]     # D18 CPU tool-call bake-off
 bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
-bin/qa/stats.go                                  # D22 DuckDB quantiles / JSONL (gcc CGO)
+bin/jsonl/stats.go                                  # D22 DuckDB quantiles / JSONL (gcc CGO)
 bin/mail/ocr.go <image|pdf>                      # tesseract eng+deu (scans)
 bin/md/tables                                     # what the graph holds → YAML
 bin/brain/deduce "question"                       # thinking wrapper
@@ -136,7 +136,7 @@ bin/brain/deduce "question"                       # thinking wrapper
 Never start a shell command with `cd` — use the tool working-directory
 parameter. Search before reading whole files. For YAML/JSON/XML/CSV/TOML/HCL
 prefer mikefarah/yq (`skills/yq/SKILL.md`). For bulk rows and quantiles use
-duckdb-go (`pkg/duckstats`, `skills/duckdb/SKILL.md`), not Ladybug.
+duckdb-go (`pkg/duckdb`, `skills/duckdb/SKILL.md`), not Ladybug.
 
 ## GitHub safety rules (ABSOLUTE — never violate)
 
