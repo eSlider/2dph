@@ -55,7 +55,7 @@ func runSearch(args []string) int {
 	}
 	defer closeBrain()
 
-	hits, err := searchHits(query, root, repo, limit, opt.AsOf)
+	hits, err := searchHits(query, root, repo, limit, opt.AsOf, opt.SortDate, opt.SortDesc)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "search: %v\n", err)
 		return 1
@@ -103,7 +103,7 @@ func runSearch(args []string) int {
 	return 0
 }
 
-func searchHits(query, root, repo string, limit int, asOf string) ([]Hit, error) {
+func searchHits(query, root, repo string, limit int, asOf string, sortDate, sortDesc bool) ([]Hit, error) {
 	emb, err := embedQuery(query)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
@@ -116,7 +116,7 @@ func searchHits(query, root, repo string, limit int, asOf string) ([]Hit, error)
 	if vec, err = queryVector(emb, limit*3); err != nil {
 		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
 	}
-	return rank.RankAndFilterAsOf(fts, vec, root, repo, asOf, limit), nil
+	return rank.RankAndFilterSort(fts, vec, root, repo, asOf, limit, sortDate, sortDesc), nil
 }
 
 func attachHops(hits []Hit, n int) error {

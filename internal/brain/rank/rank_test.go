@@ -176,3 +176,36 @@ func TestFTSQueryOrdersByScoreDescending(t *testing.T) {
 		t.Fatal("FTS must return confidence for D16")
 	}
 }
+
+func TestSortByDate(t *testing.T) {
+	dated := func(id, vf string) Hit {
+		h := h(id, "info", "ooMail")
+		h.ValidFrom = vf
+		return h
+	}
+	in := []Hit{dated("a", "2026-08-01"), {ID: "e", Root: "info"}, dated("b", "2026-08-19"), dated("c", "2026-08-05")}
+	asc := ids(SortByDate(in, false))
+	if strings.Join(asc, ",") != "a,c,b,e" {
+		t.Errorf("asc = %v", asc)
+	}
+	desc := ids(SortByDate(in, true))
+	if strings.Join(desc, ",") != "b,c,a,e" {
+		t.Errorf("desc = %v", desc)
+	}
+}
+
+func TestParseSortFlag(t *testing.T) {
+	for _, in := range []string{"date", "date:asc"} {
+		opt, err := ParseArgs([]string{"q", "--sort", in})
+		if err != nil || !opt.SortDate || opt.SortDesc {
+			t.Errorf("--sort %s => %+v err=%v", in, opt, err)
+		}
+	}
+	opt, err := ParseArgs([]string{"q", "--sort", "date:desc"})
+	if err != nil || !opt.SortDate || !opt.SortDesc {
+		t.Errorf("--sort date:desc => %+v err=%v", opt, err)
+	}
+	if _, err := ParseArgs([]string{"q", "--sort", "score"}); err == nil {
+		t.Error("--sort score should error")
+	}
+}

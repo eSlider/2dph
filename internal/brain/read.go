@@ -37,6 +37,12 @@ func MainGet(args []string) int {
 		{"source", meta["source"]},
 		{"type", meta["type"]},
 	}
+	if meta["valid_from"] != "" {
+		out = append(out, KV{"valid_from", meta["valid_from"]})
+	}
+	if meta["valid_to"] != "" {
+		out = append(out, KV{"valid_to", meta["valid_to"]})
+	}
 	if body {
 		out = append(out, KV{"text", text})
 	} else {
@@ -172,7 +178,7 @@ func lookupLeaf(id string) (map[string]string, string, error) {
 		return nil, "", fmt.Errorf("brain not open")
 	}
 	stmt, err := conn.Prepare(
-		"MATCH (l:Leaf {id:$id}) RETURN l.id, l.text, l.root, l.confidence, l.source, l.type",
+		"MATCH (l:Leaf {id:$id}) RETURN l.id, l.text, l.root, l.confidence, l.source, l.type, l.valid_from, l.valid_to",
 	)
 	if err != nil {
 		return nil, "", err
@@ -191,7 +197,7 @@ func lookupLeaf(id string) (map[string]string, string, error) {
 		return nil, "", err
 	}
 	vals, err := row.GetAsSlice()
-	if err != nil || len(vals) < 6 {
+	if err != nil || len(vals) < 8 {
 		return nil, "", fmt.Errorf("leaf row")
 	}
 	meta := map[string]string{
@@ -200,6 +206,8 @@ func lookupLeaf(id string) (map[string]string, string, error) {
 		"confidence": fmt.Sprint(vals[3]),
 		"source":     fmt.Sprint(vals[4]),
 		"type":       fmt.Sprint(vals[5]),
+		"valid_from": nullStr(vals[6]),
+		"valid_to":   nullStr(vals[7]),
 	}
 	return meta, fmt.Sprint(vals[1]), nil
 }
