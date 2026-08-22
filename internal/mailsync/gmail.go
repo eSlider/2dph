@@ -187,10 +187,10 @@ func (g *GmailClient) ListIDs(ctx context.Context, q string, maxIDs int, pageTok
 // GetMessage fetches a message in format=full and normalizes it.
 func (g *GmailClient) GetMessage(ctx context.Context, id string) (*Message, error) {
 	var raw struct {
-		ID        string `json:"id"`
-		ThreadID  string `json:"threadId"`
+		ID           string `json:"id"`
+		ThreadID     string `json:"threadId"`
 		InternalDate string `json:"internalDate"` // ms epoch string
-		Payload   gmailPart
+		Payload      gmailPart
 	}
 	path := "/gmail/v1/users/me/messages/" + url.PathEscape(id) + "?format=full"
 	if err := g.getJSON(ctx, path, &raw); err != nil {
@@ -230,12 +230,12 @@ func (g *GmailClient) GetMessage(ctx context.Context, id string) (*Message, erro
 }
 
 type gmailPart struct {
-	PartID   string      `json:"partId"`
-	MimeType string      `json:"mimeType"`
-	Filename string      `json:"filename"`
-	Body     gmailBody   `json:"body"`
+	PartID   string        `json:"partId"`
+	MimeType string        `json:"mimeType"`
+	Filename string        `json:"filename"`
+	Body     gmailBody     `json:"body"`
 	Headers  []gmailHeader `json:"headers"`
-	Parts    []gmailPart `json:"parts"`
+	Parts    []gmailPart   `json:"parts"`
 }
 type gmailHeader struct {
 	Name  string `json:"name"`
@@ -294,7 +294,7 @@ func collectParts(p gmailPart, mime string, msgID string, depth int) (text, html
 
 // GetMessageRaw fetches a message in format=raw and returns the decoded RFC
 // 822 bytes (headers + multipart body + inline attachments). This is the raw
-// email that the enmime-based importer (mailconv.FromEML) reads.
+// email that the mailconv importer (mailconv.FromEML) reads.
 func (g *GmailClient) GetMessageRaw(ctx context.Context, id string) ([]byte, error) {
 	var out struct {
 		Raw string `json:"raw"`
