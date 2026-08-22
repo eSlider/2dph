@@ -3,6 +3,12 @@
 // Default engine is the tesseract CLI, not gosseract CGO: Ladybug CGO stays
 // Zig-only (D21). Same engine, no gocv. OCR_ENGINE=paddle selects paddleocr
 // when that binary is on PATH (compose profile ocr-paddle).
+//
+// PDFs go through the pdf-handler registry (internal/mailconv): pdftotext fast
+// path first; when there is no readable text layer (export-locked / oversized /
+// scanned), Ghostscript normalizes the PDF before extraction (NormalizePDF),
+// then the pdftotext fast path / tesseract fallback run on the normalized
+// artifact. The original is preserved; gs output is a transient var/tmp file.
 package ocr
 
 import (
@@ -31,7 +37,21 @@ func PDFFile(path string) (string, error) {
 	if err == nil && strings.TrimSpace(text) != "" {
 		return strings.TrimSpace(text), nil
 	}
-	ocr, oerr := pdfPages(path)
+	// Clean PDF has no text layer (scanned) or pdftotext failed (export-locked /
+	// oversized): normalize with Ghostscript BEFORE extraction. The original is
+	// preserved; gs output is a transient working artifact that we remove.
+	norm := path
+	if n, nerr := NormalizePDF(path); nerr == nil {
+		norm = n
+		if n != path {
+			defer os.Remove(n)
+		}
+		text, err = pdfToText(norm)
+		if err == nil && strings.TrimSpace(text) != "" {
+			return strings.TrimSpace(text), nil
+		}
+	}
+	ocr, oerr := pdfPages(norm)
 	if oerr != nil {
 		if err != nil {
 			return "", err
