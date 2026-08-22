@@ -148,6 +148,29 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 	return json.Marshal(map[string]any{"status": "ok", "by_confidence": rows})
 }
 
+// embedIngestLeafs fills missing embeddings for /ingest leafs. Package-level
+// var so tests can run the full Ingest path offline, without the HF model.
+var embedIngestLeafs = embedIngestLeafsWithModel
+
+func embedIngestLeafsWithModel(leafs []LeafInput) error {
+	model, err := LoadModel()
+	if err != nil {
+		return fmt.Errorf("model: %w", err)
+	}
+	defer model.Close()
+	for i := range leafs {
+		if len(leafs[i].Embedding) > 0 {
+			continue
+		}
+		vec, err := model.Embed(leafs[i].Text)
+		if err != nil {
+			return err
+		}
+		leafs[i].Embedding = vec
+	}
+	return nil
+}
+
 func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if len(bytes.TrimSpace(body)) == 0 {
 		return json.Marshal(map[string]any{
@@ -160,20 +183,8 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	model, err := LoadModel()
-	if err != nil {
-		return nil, fmt.Errorf("model: %w", err)
-	}
-	defer model.Close()
-	for i := range leafs {
-		if len(leafs[i].Embedding) > 0 {
-			continue
-		}
-		vec, err := model.Embed(leafs[i].Text)
-		if err != nil {
-			return nil, err
-		}
-		leafs[i].Embedding = vec
+	if err := embedIngestLeafs(leafs); err != nil {
+		return nil, err
 	}
 	dbpath := dbPath()
 	db, conn, err := OpenWritable(dbpath)
