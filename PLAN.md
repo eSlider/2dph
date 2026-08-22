@@ -295,3 +295,23 @@ Notes: rebased onto `release/v1` `36f5ec4` (after #90 landed). `internal/config`
 carries no reasoner fields, so a minimal `reasoner.LoadEnv()` accessor (env →
 `Config`) is kept; wiring `REASONER_BASE_URL` into `internal/config.Config` is
 deferred. Bench shebang is `gofmt`-protected (not reformatted).
+## 2026-08-22 — go-config wave 2: tools + tests (gitea #91, epic #88)
+
+Goal: extend `internal/config` to the remaining tools/packages, add a `reasoner`
+section and retire the ad-hoc `os.Getenv` config reads (KB_*, BRAIN_SEARCH_*,
+REASONER_*, HF_HOME, model, port/workers…).
+
+| Step | Status |
+|------|--------|
+| `config.ReasonerConfig{BaseURL,Model,Device}` + `Config.Reasoner` section + defaults | done |
+| legacy map: REASONER_BASE_URL→Reasoner.BaseURL, REASONER_MODEL→Reasoner.Model, REASONER_DEVICE→Reasoner.Device | done |
+| reasoner client config from typed stack: `reasoner.Configure(cfg)` + `FromTyped`; `LoadEnv()` reads `active` | done — `bin/reasoner/bench.go` loads `config.Load` + `Configure`; client tests green |
+| `bin/web/search.go`: BRAIN_SEARCH_CACHE/ENV → `cfg.Search.Cache/Env` (HOME fallback kept) | done |
+| `bin/brain/model.go`: HF_HOME/KB_ROOT → `cfg.HFHome/cfg.Root` | done |
+| `etc/brain/config.yml` template gains `reasoner:` section | done |
+| TDD fixtures: `reasoner` deep-merge in `testdata/basic`, legacy + defaults tests, `isolateEnv` covers REASONER_* | done — `go test -race ./internal/... ./pkg/...` green |
+
+Notes: `internal/chat/paths.go` KB_ROOT + `pkg/repo/exec.go` KB_ROOT left as
+ad-hoc env reads — chat sources are secret-heavy (no config accessor yet) and
+`pkg/` must not import `internal` (overlaps #92 `pkg/utils`). Bench/web shebangs
+are `gofmt`-protected (not reformatted).

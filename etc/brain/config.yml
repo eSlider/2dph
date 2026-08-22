@@ -44,3 +44,9 @@ search:
   pass: ""   # BRAIN_SEARCH_PASS
   cache: ""  # BRAIN_SEARCH_CACHE
   env: ""    # BRAIN_SEARCH_ENV
+
+# Reasoner (internal/reasoner client, bin/reasoner/bench.go). Legacy: REASONER_*.
+reasoner:
+  baseurl: "http://127.0.0.1:11435/v1"   # REASONER_BASE_URL
+  model: "qwen3.5:9b"                    # REASONER_MODEL
+  device: "cpu"                          # REASONER_DEVICE

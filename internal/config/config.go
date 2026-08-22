@@ -7,7 +7,8 @@
 // Semantics: maps recurse (sub-trees combine), scalar leaves are last-write-wins,
 // and every key is normalized to lower+alnum (so `Buffer-Pool`, `buffer_pool`
 // and `BUFFERPOOL` all resolve to the same field). Transitional legacy env names
-// (KB_*, BRAIN_SEARCH_*) map onto the same typed fields until they are retired.
+// (KB_*, BRAIN_SEARCH_*, REASONER_*) map onto the same typed fields until they
+// are retired.
 //
 // Note: the .env / process-env codec splits names on `_` into nested maps, so
 // `SEARCH_PASS` → `search.pass` (nested) while a flat field like `WATCH_INTERVAL`
@@ -61,6 +62,9 @@ type Config struct {
 
 	// SearXNG web search (internal/websearch). Legacy: BRAIN_SEARCH_*.
 	Search SearchConfig `mapstructure:"search"`
+
+	// Reasoner (internal/reasoner client). Legacy: REASONER_*.
+	Reasoner ReasonerConfig `mapstructure:"reasoner"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.
@@ -70,6 +74,13 @@ type SearchConfig struct {
 	Pass  string `mapstructure:"pass"`
 	Cache string `mapstructure:"cache"`
 	Env   string `mapstructure:"env"`
+}
+
+// ReasonerConfig mirrors REASONER_* (OpenAI-compatible reasoner client) settings.
+type ReasonerConfig struct {
+	BaseURL string `mapstructure:"baseurl"` // Legacy: REASONER_BASE_URL.
+	Model   string `mapstructure:"model"`   // Legacy: REASONER_MODEL.
+	Device  string `mapstructure:"device"`  // Legacy: REASONER_DEVICE.
 }
 
 // Defaults returns a Config with the built-in defaults. Load() applies the
@@ -82,6 +93,11 @@ func Defaults() Config {
 		SearchDaemonPort: 17830,
 		BufferPool:       1 << 30,
 		WatchInterval:    30,
+		Reasoner: ReasonerConfig{
+			BaseURL: "http://127.0.0.1:11435/v1",
+			Model:   "qwen3.5:9b",
+			Device:  "cpu",
+		},
 	}
 }
 

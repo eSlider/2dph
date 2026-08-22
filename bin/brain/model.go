@@ -11,6 +11,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/eSlider/2dph/internal/config"
 )
 
 const (
@@ -29,7 +32,12 @@ const (
 var files = []string{"tokenizer.json", "model.safetensors"}
 
 func main() {
-	to := flag.String("to", defaultTarget(), "target directory for the model files")
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "model: config:", err)
+		os.Exit(2)
+	}
+	to := flag.String("to", defaultTarget(cfg), "target directory for the model files")
 	flag.Parse()
 
 	if err := os.MkdirAll(*to, 0o755); err != nil {
@@ -53,8 +61,8 @@ func main() {
 	fmt.Println("model: OK at", *to)
 }
 
-func defaultTarget() string {
-	hf := os.Getenv("HF_HOME")
+func defaultTarget(cfg *config.Config) string {
+	hf := cfg.HFHome
 	if hf == "" {
 		if hd, err := os.UserHomeDir(); err == nil {
 			hf = filepath.Join(hd, ".cache", "huggingface")
@@ -63,7 +71,7 @@ func defaultTarget() string {
 	if hf != "" {
 		return filepath.Join(hf, "hub", hubDirName, "snapshots", "main")
 	}
-	if root := os.Getenv("KB_ROOT"); root != "" {
+	if root := cfg.Root; root != "" {
 		return filepath.Join(root, "models", "potion-multilingual-128m")
 	}
 	return filepath.Join("models", "potion-multilingual-128m")

@@ -67,5 +67,18 @@ func legacyEnv() map[string]any {
 		m["search"] = search
 	}
 
+	reasoner := map[string]any{}
+	putReasoner := func(key, name string) {
+		if v, ok := os.LookupEnv(name); ok && v != "" {
+			reasoner[key] = v
+		}
+	}
+	putReasoner("baseurl", "REASONER_BASE_URL")
+	putReasoner("model", "REASONER_MODEL")
+	putReasoner("device", "REASONER_DEVICE")
+	if len(reasoner) > 0 {
+		m["reasoner"] = reasoner
+	}
+
 	return m
 }

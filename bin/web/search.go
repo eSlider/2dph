@@ -12,14 +12,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/eSlider/2dph/pkg/cli"
+	"github.com/eSlider/2dph/internal/config"
 	"github.com/eSlider/2dph/internal/websearch"
+	"github.com/eSlider/2dph/pkg/cli"
 	"golang.org/x/sys/unix"
 )
 
@@ -28,6 +30,11 @@ func main() {
 }
 
 func run(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "web/search: config: %v\n", err)
+		return 1
+	}
 	c, err := websearch.ParseArgs(args)
 	if err != nil {
 		return cli.Fail(err)
@@ -60,9 +67,11 @@ func run(args []string) int {
 		params["engines"] = engines
 	}
 
-	cachePath := os.Getenv("BRAIN_SEARCH_CACHE")
+	cachePath := cfg.Search.Cache
 	if cachePath == "" {
-		cachePath = os.Getenv("HOME") + "/.cache/brain/web-search.sqlite"
+		if hd, err := os.UserHomeDir(); err == nil {
+			cachePath = hd + "/.cache/brain/web-search.sqlite"
+		}
 	}
 	cache, err := websearch.OpenCache(cachePath)
 	if err != nil {
@@ -84,9 +93,11 @@ func run(args []string) int {
 		}
 	}
 
-	envPath := os.Getenv("BRAIN_SEARCH_ENV")
+	envPath := cfg.Search.Env
 	if envPath == "" {
-		envPath = os.Getenv("HOME") + "/.config/brain/search.env"
+		if hd, err := os.UserHomeDir(); err == nil {
+			envPath = hd + "/.config/brain/search.env"
+		}
 	}
 	conf, err := websearch.LoadConfig(envPath)
 	if err != nil {
