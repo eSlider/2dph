@@ -269,3 +269,22 @@ Goal: replace `jhillyerd/enmime/v2` with `emersion/go-message` in
 | -benchmem before(env v2.4.1)/after(emersion v0.18.2): ~6–9× faster ns/op, B/op ≈ half, allocs ≈ 40–55% lower | done — bench in `eml_test.go` |
 
 Branch `feat/mime-emersion#95`: c8f7120 (test) → 7015ffc (feat) → 9b4425d (chore/deps).
+## 2026-08-22 — reasoner client → api-client canon (gitea #93, epic #88)
+
+Goal: apply `skills/api-client/SKILL.md` (go-ollama canon) to
+`internal/reasoner/client.go`, first candidate. Removes the 16× `map[string]any`
+(typed `Tool`/`ToolSchema`).
+
+| Step | Status |
+|------|--------|
+| test: offline httptest typed client — chat round-trip, tool-call, error/status, ctx cancel, NDJSON doStream | done — `-race` green |
+| feat: `Client{hc,cfg}` + `New(cfg)`, `doJSON`/`doStream` core, typed `ChatRequest`/`ChatResponse`, ctx-first | done |
+| config: `reasoner.Config` + `LoadEnv()` accessor; bench.go reads `REASONER_BASE_URL` from it | done |
+| bench.go: typed client, `ctx`; bake-off behaviour preserved | done |
+| `map[string]any` in `internal/reasoner/client.go` → 0 | done |
+| PLAN.md #93 status | done |
+
+Notes: rebased onto `release/v1` `36f5ec4` (after #90 landed). `internal/config`
+carries no reasoner fields, so a minimal `reasoner.LoadEnv()` accessor (env →
+`Config`) is kept; wiring `REASONER_BASE_URL` into `internal/config.Config` is
+deferred. Bench shebang is `gofmt`-protected (not reformatted).
