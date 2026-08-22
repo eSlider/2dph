@@ -31,3 +31,6 @@ mnt/
 
 # knowledge-mesh corpus dump (data, not source)
 /corpus/
+
+# machine-local config overrides (never committed; CI guard on absolute paths)
+etc/brain/config.local.yml

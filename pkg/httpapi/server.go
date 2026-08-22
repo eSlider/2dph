@@ -15,12 +15,13 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/eSlider/2dph/internal/config"
 )
 
 // API is the in-process brain surface. Production serve.go wires internal/brain.
@@ -189,6 +190,7 @@ func writeRaw(w http.ResponseWriter, code int, body []byte) {
 // binary is built without ladybug cgo (CI / tags=brain_serve only).
 type ExecSearcher struct {
 	CmdPath string
+	Root    string
 	Timeout time.Duration
 }
 
@@ -237,7 +239,7 @@ func (b ExecSearcher) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 			"rebuild": "bin/brain/index.go --rebuild",
 		})
 	}
-	root := os.Getenv("KB_ROOT")
+	root := b.Root
 	if root == "" {
 		root = "."
 	}
@@ -255,44 +257,38 @@ func (b ExecSearcher) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	return out, nil
 }
 
-func defaultSearchCmd(root string) string {
-	if env := os.Getenv("KB_SEARCH_CMD"); env != "" {
-		return env
+func defaultSearchCmd(root string, c *config.Config) string {
+	if c != nil && c.SearchCmd != "" {
+		return c.SearchCmd
 	}
 	return filepath.Join(root, "var", "bin", "brain-search")
 }
 
-func workersAndPort() (int, int) {
-	workers := 4
-	if raw := os.Getenv("KB_WORKERS"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			workers = n
-		}
+// Run starts the HTTP server with an injected API (in-process brain, or
+// ExecSearcher) using the typed config for host/port/workers/pprof/search-cmd.
+func Run(api API, c *config.Config) {
+	if c == nil {
+		c = &config.Config{}
 	}
-	port := defaultPort
-	if raw := os.Getenv("KB_PORT"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			port = n
-		}
-	}
-	return workers, port
-}
-
-// Run starts the HTTP server with an injected API (in-process brain, or ExecSearcher).
-func Run(api API) {
-	if api == nil {
-		root := os.Getenv("KB_ROOT")
-		api = ExecSearcher{CmdPath: defaultSearchCmd(root), Timeout: 60 * time.Second}
-	}
-	workers, port := workersAndPort()
-	handler := NewServer(api, workers)
-	host := os.Getenv("KB_HOST")
+	host := c.Host
 	if host == "" {
 		host = "127.0.0.1"
 	}
+	port := c.Port
+	if port <= 0 {
+		port = defaultPort
+	}
+	workers := c.Workers
+	if workers <= 0 {
+		workers = 4
+	}
+	if api == nil {
+		api = ExecSearcher{CmdPath: defaultSearchCmd(c.Root, c), Root: c.Root, Timeout: 60 * time.Second}
+	}
+	handler := NewServer(api, workers)
 	addr := host + ":" + strconv.Itoa(port)
 	log.Printf("serve: %s (workers=%d)", addr, workers)
-	if pprofPort := os.Getenv("KB_PPROF"); pprofPort != "" {
+	if pprofPort := c.Pprof; pprofPort != "" {
 		go func() {
 			paddr := host + ":" + pprofPort
 			log.Printf("pprof: %s (cpu/heap/goroutine via /debug/pprof/)", paddr)

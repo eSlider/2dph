@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	lbug "github.com/LadybugDB/go-ladybug"
@@ -23,7 +22,7 @@ func RepoRoot() string {
 }
 
 func repoRoot() string {
-	if v := os.Getenv("KB_ROOT"); v != "" {
+	if v := brainCfg().Root; v != "" {
 		return v
 	}
 	if wd, err := os.Getwd(); err == nil {
@@ -62,17 +61,15 @@ func dbPath() string {
 }
 
 func openBrain() error {
-	return openWithSandbox(eps())
+	return openWithSandbox(brainCfg().Eps)
 }
 
 func openWithSandbox(epsv string) error {
 	cfg := lbug.DefaultSystemConfig()
 	cfg.MaxNumThreads = 8
 	pool := int64(1 << 30) // 1GB
-	if v := os.Getenv("KB_BUFFER_POOL"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			pool = n
-		}
+	if v := brainCfg().BufferPool; v > 0 {
+		pool = v
 	}
 	cfg.BufferPoolSize = uint64(pool)
 

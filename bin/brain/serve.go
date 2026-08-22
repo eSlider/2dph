@@ -14,21 +14,22 @@
 package main
 
 import (
+	"context"
 	"log"
-	"os"
 
 	"github.com/eSlider/2dph/internal/brain"
+	"github.com/eSlider/2dph/internal/config"
 	"github.com/eSlider/2dph/pkg/httpapi"
 )
 
 func main() {
-	if os.Getenv("KB_ROOT") == "" {
-		if wd, err := os.Getwd(); err == nil {
-			os.Setenv("KB_ROOT", wd)
-		}
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		log.Fatal(err)
 	}
+	brain.Configure(cfg)
 	if err := brain.Ready(); err != nil {
 		log.Fatal(err)
 	}
-	httpapi.Run(brain.HTTP{})
+	httpapi.Run(brain.HTTP{}, cfg)
 }

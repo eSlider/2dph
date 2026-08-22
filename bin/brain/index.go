@@ -14,15 +14,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
+	"github.com/eSlider/2dph/internal/config"
 	cliparse "github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -49,6 +52,13 @@ func gitRepoRoot() string {
 }
 
 func run(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: config: %v\n", err)
+		return 1
+	}
+	brain.Configure(cfg)
+
 	// historic wrapper prepended --with-mail; keep default off unless passed
 	v := indexFlags{}
 	p := cliparse.New("brain-index")
@@ -84,8 +94,8 @@ func run(args []string) int {
 	if dbpath == "" {
 		dbpath = filepath.Join(root, "var", "kb.lbug")
 	}
-	port := os.Getenv("KB_PORT")
-	if port == "" {
+	port := strconv.Itoa(cfg.Port)
+	if cfg.Port <= 0 {
 		port = "8630"
 	}
 
@@ -175,7 +185,7 @@ func run(args []string) int {
 		}
 		if gitRoot := gitRepoRoot(); gitRoot != "" &&
 			dbpath == filepath.Join(gitRoot, "var", "kb.lbug") &&
-			os.Getenv("KB_INDEX_ALLOW_LIVE") != "1" &&
+			!cfg.IndexAllowLive &&
 			brain.BrainAPIAlive("127.0.0.1:" + port) {
 			reasons = append(reasons, fmt.Sprintf("a brain API is answering on 127.0.0.1:%s (compose brain bind-mounts this db)", port))
 		}
