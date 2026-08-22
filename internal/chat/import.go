@@ -23,7 +23,12 @@ func RunImport(args []string) int {
 	mdRoot := filepath.Join(root, "md")
 	platforms := []string{"telegram", "whatsapp"}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		platforms = args[:1]
+		p := args[0]
+		if !validPlatform(p) {
+			fmt.Fprintf(os.Stderr, "chats import: unknown platform %q (want telegram|whatsapp)\n", p)
+			return 2
+		}
+		platforms = []string{p}
 	}
 
 	var matches []string
@@ -45,6 +50,11 @@ func RunImport(args []string) int {
 	failed := 0
 	for _, jsonlPath := range matches {
 		platform := platformOf(jsonlPath, root)
+		if platform == "" {
+			fmt.Fprintf(os.Stderr, "chats import: unhandled platform path %s\n", jsonlPath)
+			failed++
+			continue
+		}
 		chatID := filepath.Base(filepath.Dir(jsonlPath))
 
 		messages, chatName, err := readJSONL(jsonlPath)
@@ -206,16 +216,25 @@ func sanitizeDir(name string) string {
 	return strings.TrimSpace(r.Replace(name))
 }
 
+// validPlatforms lists the platforms chat import understands. Anything else
+// is rejected rather than silently ingested under a wrong label.
+var validPlatforms = map[string]bool{"telegram": true, "whatsapp": true}
+
+func validPlatform(p string) bool {
+	return validPlatforms[p]
+}
+
 // platformOf derives the platform label from the path layout
-// <root>/<platform>/<chat>/messages.jsonl.
+// <root>/<platform>/<chat>/messages.jsonl. Returns "" for an unknown or
+// unrelatable path so the caller can reject it instead of mislabelling it.
 func platformOf(path, root string) string {
 	rel, err := filepath.Rel(root, path)
 	if err != nil || len(rel) == 0 {
-		return "telegram"
+		return ""
 	}
 	parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
-	if parts[0] == "" {
-		return "telegram"
+	if !validPlatform(parts[0]) {
+		return ""
 	}
 	return parts[0]
 }

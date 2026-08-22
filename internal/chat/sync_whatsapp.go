@@ -22,10 +22,9 @@ type waMessage struct {
 		RemoteJID string `json:"RemoteJID"`
 		FromMe    bool   `json:"FromMe"`
 	} `json:"key"`
-	Message            map[string]any `json:"message"`
-	MessageTimestamp   any            `json:"messageTimestamp"`
-	PushName           string         `json:"pushName"`
-	OriginalSelfAuthor string         `json:"originalSelfAuthorUserJIDString"`
+	Message          map[string]any `json:"message"`
+	MessageTimestamp any            `json:"messageTimestamp"`
+	PushName         string         `json:"pushName"`
 }
 
 type waConversation struct {
@@ -194,13 +193,16 @@ func RunSyncWhatsApp(args []string) int {
 			return 1
 		}
 		enc := json.NewEncoder(f)
-		names := make([]string, 0, len(msgs))
-		for id := range msgs {
-			names = append(names, id)
+		ordered := make([]Message, 0, len(msgs))
+		for _, m := range msgs {
+			ordered = append(ordered, m)
 		}
-		sort.Strings(names)
-		for _, id := range names {
-			_ = enc.Encode(msgs[id])
+		// Message-IDs are opaque and not monotonic; emit in wall-clock order.
+		sort.Slice(ordered, func(i, j int) bool {
+			return ordered[i].Timestamp < ordered[j].Timestamp
+		})
+		for _, m := range ordered {
+			_ = enc.Encode(m)
 		}
 		f.Close()
 		written += len(msgs)
