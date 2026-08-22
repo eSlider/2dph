@@ -97,8 +97,7 @@ func TestMCPToolsArePicoClawSubset(t *testing.T) {
 	}
 	seen := map[string]bool{}
 	for _, tool := range MCPTools() {
-		fn, _ := tool["function"].(map[string]any)
-		name, _ := fn["name"].(string)
+		name := tool.Function.Name
 		if !mcp[name] {
 			t.Fatalf("%s is not an MCP op", name)
 		}
@@ -127,8 +126,8 @@ func TestChatToolsHitsOpenAIPath(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"name":"search","arguments":"{\"q\":\"LadybugDB\"}"}}]}}]}`))
 	}))
 	defer srv.Close()
-	c := Client{BaseURL: srv.URL + "/v1", Model: "stub", HTTP: srv.Client(), Device: "cpu"}
-	r := RunPrompt(c, BakePrompts[0])
+	c := New(&Config{BaseURL: srv.URL + "/v1", Model: "stub", Device: "cpu", HTTP: srv.Client()})
+	r := c.RunPrompt(t.Context(), BakePrompts[0])
 	if !gotTools {
 		t.Fatal("tools not sent")
 	}
@@ -147,11 +146,15 @@ func TestRunSamplesPSAfterPrompts(t *testing.T) {
 		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"function":{"name":"search","arguments":"{}"}}]}}]}`))
 	}))
 	defer srv.Close()
-	c := Client{BaseURL: srv.URL + "/v1", Model: "stub", HTTP: srv.Client(), Device: "cpu"}
-	if mems := c.FetchPS(); len(mems) != 1 || mems[0].VRAMMB != 0 {
+	c := New(&Config{BaseURL: srv.URL + "/v1", Model: "stub", Device: "cpu", HTTP: srv.Client()})
+	mems, err := c.FetchPS(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mems) != 1 || mems[0].VRAMMB != 0 {
 		t.Fatalf("%+v", mems)
 	}
-	if mems := c.FetchPS(); mems[0].SizeMB < 6000 {
+	if mems[0].SizeMB < 6000 {
 		t.Fatalf("rss=%d", mems[0].SizeMB)
 	}
 }
