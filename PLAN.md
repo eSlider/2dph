@@ -227,7 +227,6 @@ UTF-8 sanitization before FTS.
 Decisions (2026-08-18): exclude arc-1 junk (external/, docs/chats/, bin/chats.bin,
 qa/load_test_*.py); Python fully removed (2026-08-19); M365 WIP same PR;
 go-ollama+go-xls now, rest verify.
-
 ## 2026-08-22 — Typed config (gitea #90, epic #88)
 
 Goal: replace ad-hoc `os.Getenv` in the service layer with one typed config
@@ -245,3 +244,22 @@ loaded by a stack, keeping legacy env names working. Dep
 Non-goals kept: graph/search semantics unchanged. Pending: OnlyOffice CLI
 config wiring from `bin/mail/*` (out of #90 scope) — `internal/mailsync.SetOOCLI`
 is ready for it.
+## 2026-08-22 — reasoner client → api-client canon (gitea #93, epic #88)
+
+Goal: apply `skills/api-client/SKILL.md` (go-ollama canon) to
+`internal/reasoner/client.go`, first candidate. Removes the 16× `map[string]any`
+(typed `Tool`/`ToolSchema`).
+
+| Step | Status |
+|------|--------|
+| test: offline httptest typed client — chat round-trip, tool-call, error/status, ctx cancel, NDJSON doStream | done — `-race` green |
+| feat: `Client{hc,cfg}` + `New(cfg)`, `doJSON`/`doStream` core, typed `ChatRequest`/`ChatResponse`, ctx-first | done |
+| config: `reasoner.Config` + `LoadEnv()` accessor; bench.go reads `REASONER_BASE_URL` from it | done |
+| bench.go: typed client, `ctx`; bake-off behaviour preserved | done |
+| `map[string]any` in `internal/reasoner/client.go` → 0 | done |
+| PLAN.md #93 status | done |
+
+Notes: rebased onto `release/v1` `36f5ec4` (after #90 landed). `internal/config`
+carries no reasoner fields, so a minimal `reasoner.LoadEnv()` accessor (env →
+`Config`) is kept; wiring `REASONER_BASE_URL` into `internal/config.Config` is
+deferred. Bench shebang is `gofmt`-protected (not reformatted).
