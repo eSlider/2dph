@@ -57,14 +57,12 @@ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkp
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/elazarl/goproxy v1.7.2 h1:Y2o6urb7Eule09PjlhQRGNsqRfPmYI3KKQLFpCAV3+o=
 github.com/elazarl/goproxy v1.7.2/go.mod h1:82vkLNir0ALaW14Rc399OTTjyNREgmdL2cVoIbS6XaE=
-github.com/emersion/go-vcard v0.0.0-20260618161152-d854b7e0e2d3 h1:B9YK+Tck5mTccyDhtxBzWyqGYcFxLyB6+noMNW4/VgI=
-github.com/emersion/go-vcard v0.0.0-20260618161152-d854b7e0e2d3/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
 github.com/emersion/go-vcard v0.1.0 h1:1GN6X5Rc91nvefm0ODRCEmTLVsnXK1f7++Uj0FKo+n0=
 github.com/emersion/go-vcard v0.1.0/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
-github.com/eslider/go-onlyoffice v0.13.0 h1:VLRIz1I0KiiwSR6B+O5gpJDgXb67KXjJRUpoqw9Os2g=
-github.com/eslider/go-onlyoffice v0.13.0/go.mod h1:TdEl0Cd74CWSk4B1K4+okR+feGNYoCsTSt4Cecz8jGI=
+github.com/eslider/go-config v0.4.0 h1:CeyQ0QhJGYLWqri/pcuJXmLYnivF5501xGqZ1sZZ8/4=
+github.com/eslider/go-config v0.4.0/go.mod h1:8QWKcyvDdY43l0/Ra0uRfPSo9z4XtNUN/cwwJcdKOTM=
 github.com/eslider/go-onlyoffice v0.14.0 h1:2hXWyC67aBpqPglmEOFPg86Auo/cijE/zxY8Z3vqOBw=
 github.com/eslider/go-onlyoffice v0.14.0/go.mod h1:TdEl0Cd74CWSk4B1K4+okR+feGNYoCsTSt4Cecz8jGI=
 github.com/fatih/color v1.19.0 h1:Zp3PiM21/9Ld6FzSKyL5c/BULoe/ONr9KlbYVOfG8+w=
@@ -110,6 +108,8 @@ github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 h1:BQSFePA1RWJOl
 github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99/go.mod h1:1lJo3i6rXxKeerYnT8Nvf0QmHCRC1n8sfWVwXF2Frvo=
 github.com/jhillyerd/enmime/v2 v2.4.1 h1:VkBX8GJJ/wbQofWsKP3egRqgXcwmxlY94YUmXTj08kE=
 github.com/jhillyerd/enmime/v2 v2.4.1/go.mod h1:TLpvqImPiumRecsJK5TYseRw2bPg3g0EtWc+SfU7cMs=
+github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
+github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/kevinburke/ssh_config v1.2.0 h1:x584FjTGwHzMwvHx18PXxbBVzfnxogHaAReU4gf13a4=
 github.com/kevinburke/ssh_config v1.2.0/go.mod h1:CT57kijsi8u/K/BOFA39wgDQJ9CxiF4nAY/ojJ6r6mM=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
