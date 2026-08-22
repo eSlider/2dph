@@ -227,7 +227,6 @@ UTF-8 sanitization before FTS.
 Decisions (2026-08-18): exclude arc-1 junk (external/, docs/chats/, bin/chats.bin,
 qa/load_test_*.py); Python fully removed (2026-08-19); M365 WIP same PR;
 go-ollama+go-xls now, rest verify.
-
 ## 2026-08-22 — Typed config (gitea #90, epic #88)
 
 Goal: replace ad-hoc `os.Getenv` in the service layer with one typed config
@@ -245,3 +244,19 @@ loaded by a stack, keeping legacy env names working. Dep
 Non-goals kept: graph/search semantics unchanged. Pending: OnlyOffice CLI
 config wiring from `bin/mail/*` (out of #90 scope) — `internal/mailsync.SetOOCLI`
 is ready for it.
+## 2026-08-22 — MIME parser swap in mailconv (gitea #95, epic #88)
+
+Goal: replace `jhillyerd/enmime/v2` with `emersion/go-message` in
+`internal/mailconv` (parser-equivalent swap, no behaviour change to graph/search).
+
+| Step | Status |
+|------|--------|
+| fixtures: plain / alternative / mixed / nested(alternative+mixed) / charset(iso-8859-1 QP) `.eml` in `internal/mailconv/testdata/` | done |
+| `parseEML` via `message.Read` + `entity.Walk()` recursion; text/plain→TextBody, text/html→HTMLBody, attachment leaves by filename/disposition | done |
+| charset via `go-message/charset` (x/text ianaindex/htmlindex) — blank import | done |
+| public API stable: `FromEML`/`FromRaw`/`ConvertAttachment`/`Message`/`Attachment` unchanged; `writeMessageJSON`/`writeEMLAttachments` internal | done |
+| `go mod tidy` → enmime absent from go.mod | done |
+| `go build ./internal/... ./pkg/...` + `go test -race ./internal/mailconv/... ./pkg/...` green | done |
+| -benchmem before(env v2.4.1)/after(emersion v0.18.2): ~6–9× faster ns/op, B/op ≈ half, allocs ≈ 40–55% lower | done — bench in `eml_test.go` |
+
+Branch `feat/mime-emersion#95`: c8f7120 (test) → 7015ffc (feat) → 9b4425d (chore/deps).
