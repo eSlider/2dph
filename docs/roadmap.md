@@ -31,7 +31,7 @@ A/B only. Compose `api` covers serve/search/index/add/mail-sync. Issues
 [#17](https://git.produktor.io/eSlider/2dph/issues/17) `--hop N` walks
 FROM_FILE / HAS_VERSION / AUTHORED.
 [#18](https://git.produktor.io/eSlider/2dph/issues/18) `--with-facts` /
-`--with-chats` on rebuild (WhatsApp out of v1).
+`--with-chats` on rebuild (WhatsApp in v1 via #87).
 [#19](https://git.produktor.io/eSlider/2dph/issues/19) CI recall SoT =
 `bin/brain/eval.go` via Zig.
 Epic [#16](https://git.produktor.io/eSlider/2dph/issues/16) closed.
