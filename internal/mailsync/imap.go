@@ -7,15 +7,17 @@ package mailsync
 //
 // Env (via --env file or process env):
 //
-//	IMAP_HOST       e.g. web56.alfahosting-server.de
+//	IMAP_HOST       e.g. mail.example.com
 //	IMAP_PORT       default 993
 //	IMAP_USER       mailbox user
 //	IMAP_PASSWORD   mailbox password
 //	IMAP_FOLDERS    comma list (empty = auto-list all selectable folders)
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -24,7 +26,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
-	"github.com/jhillyerd/enmime/v2"
+	"github.com/emersion/go-message/mail"
 )
 
 // dialTimeout bounds TCP+TLS setup so a dead host can't stall a cycle.
@@ -187,32 +189,65 @@ func (s *imapSource) GetRaw(ctx context.Context, id string) ([]byte, error) {
 	return b, nil
 }
 
-// Get builds a normalized Message by parsing the raw RFC 822 (used when the
-// caller runs without --raw; the raw .eml path is what we normally drive).
+// Get builds a normalized Message by parsing the raw RFC 822 with
+// emersion/go-message (the code-standard MIME handler; enmime is legacy
+// parity only, see mime-emersion #95). Used when the caller runs without
+// --raw; the raw .eml path is what we normally drive.
 func (s *imapSource) Get(ctx context.Context, id string) (*Message, error) {
 	raw, err := s.GetRaw(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	env, err := enmime.ReadEnvelope(strings.NewReader(string(raw)))
+	return parseIMAPMessage(s.dir, id, raw)
+}
+
+// parseIMAPMessage parses a raw RFC 822 with emersion/go-message (the
+// code-standard MIME handler; enmime is legacy parity only, see mime-emersion
+// #95). Extracted from Get so the parse is testable offline against fixtures.
+func parseIMAPMessage(folder, id string, raw []byte) (*Message, error) {
+	r, err := mail.CreateReader(bytes.NewReader(raw))
 	if err != nil {
-		return nil, fmt.Errorf("imap %s uid %s: parse: %w", s.mailbox, id, err)
+		return nil, fmt.Errorf("imap %s uid %s: parse: %w", folder, id, err)
 	}
-	date, _ := env.Date()
-	return &Message{
+	date, _ := r.Header.Date()
+	m := &Message{
 		Source:        "imap",
 		ID:            id,
-		Folder:        s.dir,
-		Subject:       env.GetHeader("Subject"),
-		From:          env.GetHeader("From"),
-		To:            env.GetHeader("To"),
-		CC:            env.GetHeader("Cc"),
-		BCC:           env.GetHeader("Bcc"),
+		Folder:        folder,
+		Subject:       r.Header.Get("Subject"),
+		From:          r.Header.Get("From"),
+		To:            r.Header.Get("To"),
+		CC:            r.Header.Get("Cc"),
+		BCC:           r.Header.Get("Bcc"),
 		ReceivedAt:    date,
-		TextBody:      env.Text,
-		HTMLBody:      env.HTML,
-		MimeMessageID: env.GetHeader("Message-ID"),
-	}, nil
+		MimeMessageID: r.Header.Get("Message-ID"),
+	}
+	for {
+		part, err := r.NextPart()
+		if err != nil {
+			break // io.EOF (or an unknown-charset part) ends iteration
+		}
+		media := strings.ToLower(strings.TrimSpace(strings.SplitN(
+			part.Header.Get("Content-Type"), ";", 2)[0]))
+		if media != "text/plain" && media != "text/html" {
+			continue
+		}
+		body, err := io.ReadAll(io.LimitReader(part.Body, 4<<20))
+		if err != nil {
+			continue
+		}
+		switch media {
+		case "text/plain":
+			if m.TextBody == "" {
+				m.TextBody = string(body)
+			}
+		case "text/html":
+			if m.HTMLBody == "" {
+				m.HTMLBody = string(body)
+			}
+		}
+	}
+	return m, nil
 }
 
 // DownloadAttachment is not used: raw mode carries attachments inline in the
@@ -361,7 +396,7 @@ func idleOne(cfg IMAPConfig, mailbox string, maxWait time.Duration) error {
 func IMAPEnv(env map[string]string) (*IMAPConfig, error) {
 	host := pick(env["IMAP_HOST"], env["MAIL_IMAP_HOST"])
 	user := pick(env["IMAP_USER"], env["MAIL_IMAP_USER"])
-	pass := pick(env["IMAP_PASSWORD"], env["MATCHA_IMAP_PASSWORD"])
+	pass := pick(env["IMAP_PASSWORD"], env["MAIL_IMAP_PASSWORD"])
 	if host == "" || user == "" || pass == "" {
 		return nil, fmt.Errorf("imap source needs IMAP_HOST/USER/PASSWORD in env (got host=%q user=%q pass=%v)", host, user, pass != "")
 	}
