@@ -22,12 +22,18 @@ type CLIConfig struct {
 	Env     string // .env path; default <cwd>/.env
 	Sources string
 	Help    bool
+	// watch-loop extras (harmless for plain sync)
+	Once  bool   // one cycle then exit
+	Brain string // brain base URL for ingest push; default http://127.0.0.1:8630
+	OCR   bool   // OCR attachments during conversion
+	Local bool   // skip IMAP sync; only convert + push the local tree
 }
 
 type flagVals struct {
-	env, out, srcs, query string
-	workers, limit, offset int
-	force, dryRun, raw    bool
+	env, out, srcs, query, brain string
+	workers, limit, offset       int
+	force, dryRun, raw           bool
+	once, ocr, local             bool
 }
 
 func Parser() *flaggy.Parser {
@@ -56,7 +62,11 @@ func bind(v *flagVals) *flaggy.Parser {
 	p.Bool(&v.dryRun, "", "dry-run", "list counts without writing")
 	p.Bool(&v.raw, "", "raw", "fetch raw RFC 822 (.eml) for Gmail instead of message.json")
 	p.String(&v.query, "", "query", "Gmail search query")
-	p.String(&v.srcs, "", "source", "comma list: onlyoffice,gmail,m365")
+	p.String(&v.srcs, "", "source", "comma list: onlyoffice,gmail,m365,imap")
+	p.Bool(&v.once, "", "once", "watch: single cycle then exit")
+	p.String(&v.brain, "", "brain", "watch: brain base URL (default http://127.0.0.1:8630)")
+	p.Bool(&v.ocr, "", "ocr", "watch: OCR attachments during conversion")
+	p.Bool(&v.local, "", "local", "skip IMAP sync; convert + push local tree only")
 	return p
 }
 
@@ -95,7 +105,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		Query:   v.query,
 		Policy:  RetryPolicy{},
 	}
-	out := CLIConfig{Sync: cfg, Env: v.env, Sources: v.srcs}
+	out := CLIConfig{Sync: cfg, Env: v.env, Sources: v.srcs, Once: v.once, Brain: v.brain, OCR: v.ocr, Local: v.local}
 	for _, s := range strings.Split(v.srcs, ",") {
 		switch strings.TrimSpace(s) {
 		case "onlyoffice":
@@ -136,6 +146,12 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 				}
 			}
 			cfg.M365 = &M365Credentials{Tenant: tenant, ClientID: cid, ClientSecret: sec, Users: userList, ExcludeFolders: excl}
+		case "imap":
+			icfg, err := IMAPEnv(envVars)
+			if err != nil {
+				return CLIConfig{}, 2, fmt.Errorf("imap source: %w (in %s)", err, v.env)
+			}
+			cfg.IMAP = icfg
 		default:
 			return CLIConfig{}, 2, fmt.Errorf("unknown source %q", s)
 		}
@@ -152,7 +168,7 @@ func Main(args []string) int {
 		return code
 	}
 	if cfg.Help {
-		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--raw] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365,imap] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--raw] [--dry-run]")
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
@@ -175,20 +191,19 @@ func Main(args []string) int {
 	return 0
 }
 
-// readEnv parses KEY=VALUE lines (ignoring comments) with KEY=PATH override.
+// readEnv parses KEY=VALUE lines (ignoring comments); process env always
+// wins. The file may be absent entirely — process env still applies.
 func readEnv(path string) map[string]string {
 	out := map[string]string{}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return out
-	}
-	for _, line := range strings.Split(string(b), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
-			continue
+	if b, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+				continue
+			}
+			k, v, _ := strings.Cut(line, "=")
+			out[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), "\"'")
 		}
-		k, v, _ := strings.Cut(line, "=")
-		out[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), "\"'")
 	}
 	for _, kv := range os.Environ() {
 		k, v, ok := strings.Cut(kv, "=")
@@ -196,7 +211,8 @@ func readEnv(path string) map[string]string {
 			continue
 		}
 		if strings.HasPrefix(k, "ONLYOFFICE_") || strings.HasPrefix(k, "OO_") ||
-			strings.HasPrefix(k, "M365_") || strings.HasPrefix(k, "MS_") {
+			strings.HasPrefix(k, "M365_") || strings.HasPrefix(k, "MS_") ||
+			strings.HasPrefix(k, "IMAP_") {
 			out[k] = v
 		}
 	}

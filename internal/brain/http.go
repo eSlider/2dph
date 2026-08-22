@@ -7,9 +7,38 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
 )
+
+// ingestMu serializes /ingest writes: the serve process holds kb.lbug open
+// for its lifetime, and Ladybug dies silently if the same file is opened a
+// second time inside one process. The read handle is released for the write
+// window and reopened afterwards (see Ingest).
+var ingestMu sync.Mutex
+
+// ingestModel caches the embedding model for the life of the process.
+// LoadModel() per request leaked ~0.5-1GB each call: StaticModel.Close frees
+// only the tokenizer, never the matrix. Same long-lived pattern as the
+// embed daemon.
+var (
+	ingestModelMu sync.Mutex
+	ingestModel   *StaticModel
+)
+
+func getIngestModel() (*StaticModel, error) {
+	ingestModelMu.Lock()
+	defer ingestModelMu.Unlock()
+	if ingestModel == nil {
+		m, err := LoadModel()
+		if err != nil {
+			return nil, err
+		}
+		ingestModel = m
+	}
+	return ingestModel, nil
+}
 
 // Ready opens the Ladybug file for the life of the serve process.
 func Ready() error {
@@ -160,11 +189,10 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	model, err := LoadModel()
+	model, err := getIngestModel()
 	if err != nil {
 		return nil, fmt.Errorf("model: %w", err)
 	}
-	defer model.Close()
 	for i := range leafs {
 		if len(leafs[i].Embedding) > 0 {
 			continue
@@ -175,9 +203,13 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 		}
 		leafs[i].Embedding = vec
 	}
+	ingestMu.Lock()
+	defer ingestMu.Unlock()
 	dbpath := dbPath()
+	closeBrain() // release the read handle: same-file double-open kills lbug
 	db, conn, err := OpenWritable(dbpath)
 	if err != nil {
+		_ = refreshBrain() // restore serving before reporting the error
 		return nil, err
 	}
 	closed := false
