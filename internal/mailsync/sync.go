@@ -141,7 +141,7 @@ type Source interface {
 // stays retryable without gaps.
 
 // RawMailer is an optional Source capability: GetRaw returns the raw RFC 822
-// email for an id, written as <folder>/<id>/<id>.eml for the enmime importer.
+// email for an id, written as <folder>/<id>/<id>.eml for the mailconv importer.
 // When SyncConfig.Raw is set, only sources implementing RawMailer are synced
 // (e.g. Gmail, which can return format=raw).
 type RawMailer interface {
