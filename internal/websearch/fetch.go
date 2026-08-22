@@ -1,15 +1,16 @@
 package websearch
 
 import (
+	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/eSlider/2dph/pkg/utils"
 )
 
 type Config struct {
@@ -62,28 +63,13 @@ func Fetch(client *http.Client, conf Config, query string, params map[string]str
 		}
 	}
 	u := strings.TrimRight(conf.URL, "/") + "/search?" + q.Encode()
-	req, err := http.NewRequest(http.MethodGet, u, nil)
-	if err != nil {
-		return Payload{}, err
-	}
+	opts := []func(*http.Request){}
 	if conf.User != "" || conf.Pass != "" {
 		token := base64.StdEncoding.EncodeToString([]byte(conf.User + ":" + conf.Pass))
-		req.Header.Set("Authorization", "Basic "+token)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return Payload{}, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		return Payload{}, err
-	}
-	if resp.StatusCode >= 400 {
-		return Payload{}, fmt.Errorf("HTTP %d", resp.StatusCode)
+		opts = append(opts, func(req *http.Request) { req.Header.Set("Authorization", "Basic "+token) })
 	}
 	var p Payload
-	if err := json.Unmarshal(body, &p); err != nil {
+	if err := utils.GetJSON(context.Background(), client, u, &p, opts...); err != nil {
 		return Payload{}, err
 	}
 	return p, nil

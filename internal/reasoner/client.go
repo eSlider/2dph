@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/eSlider/2dph/pkg/utils"
 )
 
 // DefaultBaseURL is the OpenAI-compatible base URL used when none is configured.
@@ -198,35 +200,8 @@ func (c *Client) psURL() string   { return Origin(c.cfg.BaseURL) + "/api/ps" }
 
 // doJSON performs a JSON request and decodes the response into dest.
 func (c *Client) doJSON(ctx context.Context, method, url string, body, dest any) error {
-	var reqBody io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("reasoner: marshal request: %w", err)
-		}
-		reqBody = bytes.NewReader(data)
-	}
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
-	if err != nil {
-		return fmt.Errorf("reasoner: build request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	res, err := c.hc.Do(req)
-	if err != nil {
-		return fmt.Errorf("reasoner: send request: %w", err)
-	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("reasoner: %s %s: http %d: %s", method, url, res.StatusCode, snippet(string(raw), 300))
-	}
-	if dest != nil {
-		if err := json.Unmarshal(raw, dest); err != nil {
-			return fmt.Errorf("reasoner: decode response: %w", err)
-		}
+	if err := utils.DoJSON(ctx, c.hc, method, url, body, dest); err != nil {
+		return fmt.Errorf("reasoner: %s %s: %w", method, url, err)
 	}
 	return nil
 }
@@ -250,7 +225,7 @@ func (c *Client) doStream(ctx context.Context, method, url string, body any, onI
 	defer res.Body.Close()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		raw, _ := io.ReadAll(res.Body)
-		return fmt.Errorf("reasoner: %s %s: http %d: %s", method, url, res.StatusCode, snippet(string(raw), 300))
+		return fmt.Errorf("reasoner: %s %s: http %d: %s", method, url, res.StatusCode, utils.Snippet(string(raw), 300))
 	}
 	scanner := bufio.NewScanner(res.Body)
 	for scanner.Scan() {
@@ -497,11 +472,4 @@ func (c *Client) Run(ctx context.Context) Report {
 		}
 	}
 	return rep
-}
-
-func snippet(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }

@@ -315,3 +315,22 @@ Notes: `internal/chat/paths.go` KB_ROOT + `pkg/repo/exec.go` KB_ROOT left as
 ad-hoc env reads — chat sources are secret-heavy (no config accessor yet) and
 `pkg/` must not import `internal` (overlaps #92 `pkg/utils`). Bench/web shebangs
 are `gofmt`-protected (not reformatted).
+
+## 2026-08-22 — pkg/utils + static-typing hotspots (gitea #92, epic #88)
+
+Goal: promote duplicated helpers into public `pkg/utils` with static typing and
+kill the `map[string]any` / `interface{}` HTTP and root-resolution hotspots.
+`pkg/utils` stays internal-free (D29, primitives only).
+
+| Step | Status |
+|------|--------|
+| `pkg/utils/root.go` `Root()` — KB_ROOT or walk-up `.git`/`var`, single source of truth; `pkg/repo.Root()` and `internal/chat.Root()` delegate | done |
+| `pkg/utils/json.go` `DoJSON`/`GetJSON` — typed request + 2xx check + decode, `opts` for auth; wired into `internal/reasoner.Client.doJSON`, `internal/websearch.Fetch`, `internal/chat.cdpTabs` | done |
+| `pkg/utils/str.go` `Snippet`/`Or` — `reasoner.snippet`, `chat.orDefault` removed | done |
+| TDD fixtures: `pkg/utils/{root,json,str}_test.go` offline (httptest, t.TempDir) | done — `go test -race ./pkg/... ./internal/...` green, `go vet` clean, CGO ladybug build green |
+
+Notes: `pkg/httpapi` write-side (`writeJSON`/`writeRaw`) is a different direction
+(server response, not client decode) and was left as-is. Remaining
+`map[string]any`/`interface{}` decode sites in `internal/brain`, `internal/chat`
+(MCP/JSONL) and `internal/config` are domain-shaped and out of scope for this
+pass.
