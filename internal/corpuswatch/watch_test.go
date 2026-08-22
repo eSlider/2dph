@@ -33,11 +33,9 @@ func TestStampEmptyForMissingDir(t *testing.T) {
 	}
 }
 
-func TestFromEnvDefaults(t *testing.T) {
-	t.Setenv("KB_WATCH_INTERVAL", "")
-	t.Setenv("KB_WATCH_DIRS", "")
-	opts := fromEnv(nil)
-	if len(opts.Dirs) == 0 || opts.Dirs[0] != "/corpus" {
+func TestNormalizeDefaults(t *testing.T) {
+	opts := normalize(Options{}, nil)
+	if len(opts.Dirs) != 1 || opts.Dirs[0] != "/corpus" {
 		t.Fatalf("default dirs = %v, want [/corpus]", opts.Dirs)
 	}
 	if opts.Interval != 30*time.Second {
@@ -48,5 +46,12 @@ func TestFromEnvDefaults(t *testing.T) {
 	}
 	if !strings.Contains(opts.IndexCmd, "--with-mail") {
 		t.Fatalf("default index cmd must include --with-mail, got %q", opts.IndexCmd)
+	}
+}
+
+func TestNormalizeArgsOverrideDirs(t *testing.T) {
+	opts := normalize(Options{Dirs: []string{"/x"}}, []string{"/a", "/b"})
+	if len(opts.Dirs) != 2 || opts.Dirs[0] != "/a" {
+		t.Fatalf("args should override dirs, got %v", opts.Dirs)
 	}
 }

@@ -215,7 +215,7 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 // from /search, /get and /stats until the process restarts).
 func refreshBrain() error {
 	closeBrain()
-	return openWithSandbox(eps())
+	return openWithSandbox(brainCfg().Eps)
 }
 
 func parseIngestLeafs(raw []byte) ([]LeafInput, error) {

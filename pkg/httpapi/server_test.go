@@ -12,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/eSlider/2dph/internal/config"
 )
 
 // fakeSearcher is an injectable Searcher for tests (no python involved).
@@ -304,8 +306,7 @@ func TestHTTPPackageDoesNotExecPython(t *testing.T) {
 }
 
 func TestDefaultSearchCmdIsBrainNotPython(t *testing.T) {
-	t.Setenv("KB_SEARCH_CMD", "")
-	cmd := defaultSearchCmd("/repo")
+	cmd := defaultSearchCmd("/repo", &config.Config{})
 	if strings.Contains(strings.ToLower(cmd), "python") {
 		t.Fatalf("search path still python: %s", cmd)
 	}

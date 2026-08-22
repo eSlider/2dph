@@ -6,13 +6,22 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/eSlider/2dph/internal/config"
 )
 
+// resetConfig restores the typed config to a clean Defaults() (no model/root/
+// HFHome overrides) so each test controls it via Configure.
+func resetConfig(t *testing.T) {
+	t.Helper()
+	cfg := config.Defaults()
+	Configure(&cfg)
+}
+
 func TestModelDirDefaultHFHomeLayout(t *testing.T) {
+	resetConfig(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("KBSEARCH_MODEL", "")
-	t.Setenv("KB_ROOT", "")
 	snap := filepath.Join(home, ".cache", "huggingface", "hub",
 		"models--minishlab--potion-multilingual-128M", "snapshots", "abc123")
 	if err := os.MkdirAll(snap, 0o755); err != nil {
@@ -33,10 +42,11 @@ func TestModelDirDefaultHFHomeLayout(t *testing.T) {
 }
 
 func TestModelDirExplicitHFHomeLayout(t *testing.T) {
+	resetConfig(t)
 	base := t.TempDir()
-	t.Setenv("HF_HOME", base)
-	t.Setenv("KBSEARCH_MODEL", "")
-	t.Setenv("KB_ROOT", "")
+	cfg := config.Defaults()
+	cfg.HFHome = base
+	Configure(&cfg)
 	snap := filepath.Join(base, "hub", "models--minishlab--potion-multilingual-128M",
 		"snapshots", "abc456")
 	if err := os.MkdirAll(snap, 0o755); err != nil {
@@ -57,14 +67,16 @@ func TestModelDirExplicitHFHomeLayout(t *testing.T) {
 }
 
 func TestModelDirEnvOverride(t *testing.T) {
-	t.Setenv("KBSEARCH_MODEL", "/opt/models/potion")
-	t.Setenv("HF_HOME", t.TempDir())
-	t.Setenv("KB_ROOT", "")
+	resetConfig(t)
+	cfg := config.Defaults()
+	cfg.Model = "/opt/models/potion"
+	cfg.HFHome = t.TempDir()
+	Configure(&cfg)
 	dir, err := modelDir()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if dir != "/opt/models/potion" {
-		t.Fatalf("KBSEARCH_MODEL must win, got %q", dir)
+		t.Fatalf("model override must win, got %q", dir)
 	}
 }

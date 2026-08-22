@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/config"
 )
 
 // TestConcurrentSearchesDontExhaustBufferPool is a regression test for the
@@ -19,7 +20,9 @@ import (
 // model on the CI runner) and drives the leak through the non-embedding
 // endpoints (Stats/Audit/Get) plus a raw FTS scan that pins index pages.
 func TestConcurrentSearchesDontExhaustBufferPool(t *testing.T) {
-	t.Setenv("KB_BUFFER_POOL", "134217728")
+	cfg := config.Defaults()
+	cfg.BufferPool = 134217728
+	Configure(&cfg)
 	dir := t.TempDir()
 	d, c, err := OpenWritable(dir + "/kb.lbug")
 	if err != nil {

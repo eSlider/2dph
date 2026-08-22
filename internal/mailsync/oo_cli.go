@@ -16,6 +16,13 @@ type OOCLIClient struct {
 	folder string
 }
 
+// ooCliOverride is the typed-config OnlyOffice CLI path (internal/config
+// OOCLI). Empty means "discover" (PATH / $HOME/go/bin/oo).
+var ooCliOverride string
+
+// SetOOCLI wires the typed-config OnlyOffice CLI path into mailsync.
+func SetOOCLI(path string) { ooCliOverride = path }
+
 func newOOAPI(cfg OOConfig, folderID int) (ooMailAPI, error) {
 	if bin := findOOCLI(); bin != "" {
 		folder := "inbox"
@@ -28,7 +35,7 @@ func newOOAPI(cfg OOConfig, folderID int) (ooMailAPI, error) {
 }
 
 func findOOCLI() string {
-	if v := strings.TrimSpace(os.Getenv("OO_CLI")); v != "" {
+	if v := strings.TrimSpace(ooCliOverride); v != "" {
 		if _, err := os.Stat(v); err == nil {
 			return v
 		}

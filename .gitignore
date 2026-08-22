@@ -8,6 +8,8 @@ __pycache__/
 .DS_Store
 *.env
 .env
+# testdata fixtures may ship .env (committed, not secrets)
+!internal/config/testdata/**/.env
 .secrets/
 lib-ladybug/
 go.work.local
@@ -31,3 +33,6 @@ mnt/
 
 # knowledge-mesh corpus dump (data, not source)
 /corpus/
+
+# machine-local config overrides (never committed; CI guard on absolute paths)
+etc/brain/config.local.yml

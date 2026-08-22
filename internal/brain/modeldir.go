@@ -56,8 +56,8 @@ func findHFSnapshot(base string) string {
 }
 
 func modelDir() (string, error) {
-	// 1. Explicit env
-	if v := os.Getenv("KBSEARCH_MODEL"); v != "" {
+	// 1. Explicit model path
+	if v := brainCfg().Model; v != "" {
 		return v, nil
 	}
 	// 2. Next to the binary (dev or installed)
@@ -71,7 +71,7 @@ func modelDir() (string, error) {
 		}
 	}
 	// 3. Repo root models/ or lib/
-	if v := os.Getenv("KB_ROOT"); v != "" {
+	if v := brainCfg().Root; v != "" {
 		for _, sub := range []string{"models/potion-multilingual-128m", "lib/potion-multilingual-128m"} {
 			cand := filepath.Join(v, sub)
 			if st, err := os.Stat(cand); err == nil && st.IsDir() {
@@ -89,7 +89,7 @@ func modelDir() (string, error) {
 	}
 	// 4. HF cache (new layout: models--*/snapshots/*); default HF_HOME is
 	//    ~/.cache/huggingface (matching huggingface_hub), not only explicit env.
-	hfcache := os.Getenv("HF_HOME")
+	hfcache := brainCfg().HFHome
 	if hfcache == "" {
 		if hd, err := os.UserHomeDir(); err == nil {
 			hfcache = filepath.Join(hd, ".cache", "huggingface")

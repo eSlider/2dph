@@ -14,57 +14,53 @@ import (
 	"time"
 )
 
-// Options controls the polling loop. Zero value uses defaults.
+// Options controls the polling loop. Zero value uses defaults. Values come
+// from the typed config (internal/config), not environment reads.
 type Options struct {
 	Dirs     []string
 	Interval time.Duration
-	// IndexCmd is the index command template. %s is replaced by the repo
-	// root (from KB_ROOT). Defaults to `<root>/bin/brain/index.go --with-mail`.
+	// Root is the repo root used to resolve the IndexCmd template (<root>).
+	Root string
+	// IndexCmd is the index command template; <root> is replaced by Root.
+	// Defaults to `<root>/bin/brain/index.go --with-mail`.
 	IndexCmd string
 }
 
-// Run blocks forever polling Dirs (defaults: KB_WATCH_DIRS or /corpus) every
-// Interval (default 30s) and re-indexing when files change. KB_ROOT names the
-// repo root used to locate bin/brain/index.go.
-func Run(args []string) {
-	opts := fromEnv(args)
-	root, _ := os.Getwd()
-	if r := os.Getenv("KB_ROOT"); r != "" {
-		root = r
+// normalize applies defaults: args override Dirs, empty Dirs defaults to
+// /corpus, a zero Interval to 30s, empty Root to the working dir, and an empty
+// IndexCmd to the standard brain/index command.
+func normalize(opts Options, args []string) Options {
+	if opts.Interval <= 0 {
+		opts.Interval = 30 * time.Second
 	}
-	log.Printf("watch: dirs=%v interval=%s root=%s", opts.Dirs, opts.Interval, root)
+	if len(args) > 0 {
+		opts.Dirs = args
+	}
+	if len(opts.Dirs) == 0 {
+		opts.Dirs = []string{"/corpus"}
+	}
+	if opts.Root == "" {
+		opts.Root, _ = os.Getwd()
+	}
+	if opts.IndexCmd == "" {
+		opts.IndexCmd = "<root>/bin/brain/index.go --with-mail"
+	}
+	return opts
+}
+
+// Run blocks forever polling Dirs every Interval and re-indexing when files
+// change.
+func Run(args []string, opts Options) {
+	opts = normalize(opts, args)
+	log.Printf("watch: dirs=%v interval=%s root=%s", opts.Dirs, opts.Interval, opts.Root)
 	var last string
 	for {
 		if flag := Stamp(opts.Dirs); flag != "" && flag != last {
 			last = flag
-			reindex(opts.IndexCmd, root)
+			reindex(opts.IndexCmd, opts.Root)
 		}
 		time.Sleep(opts.Interval)
 	}
-}
-
-func fromEnv(args []string) Options {
-	opts := Options{Interval: 30 * time.Second}
-	if raw := os.Getenv("KB_WATCH_INTERVAL"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			opts.Interval = time.Duration(n) * time.Second
-		}
-	}
-	defDirs := "/corpus"
-	if raw := os.Getenv("KB_WATCH_DIRS"); raw != "" {
-		defDirs = raw
-	}
-	if len(args) > 0 {
-		opts.Dirs = args
-	} else {
-		for _, d := range strings.Split(defDirs, " ") {
-			if d != "" {
-				opts.Dirs = append(opts.Dirs, d)
-			}
-		}
-	}
-	opts.IndexCmd = "<root>/bin/brain/index.go --with-mail"
-	return opts
 }
 
 // Stamp returns a rolling fingerprint (newest mtime under dirs) that changes

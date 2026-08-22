@@ -381,16 +381,14 @@ var daemonClient = &http.Client{
 }
 
 func embedQuery(text string) ([]float64, error) {
-	port := defaultPort
-	if envPort := os.Getenv("KBSEARCH_PORT"); envPort != "" {
-		if p, err := strconv.Atoi(envPort); err == nil {
-			port = p
-		}
+	port := brainCfg().SearchDaemonPort
+	if port <= 0 {
+		port = defaultPort
 	}
 	if emb, err := tryDaemon(text, port); err == nil {
 		return emb, nil
 	}
-	if os.Getenv("KBSEARCH_NO_DAEMON") == "" {
+	if !brainCfg().SearchNoDaemon {
 		if err := ensureDaemon(port); err == nil {
 			if emb, err := tryDaemon(text, port); err == nil {
 				return emb, nil

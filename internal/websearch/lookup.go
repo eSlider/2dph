@@ -25,6 +25,28 @@ type LookupOpt struct {
 	Sleep     func(context.Context, time.Duration) error
 }
 
+// defaultCache and defaultEnv carry the typed-config SearXNG paths (set via
+// SetDefaults). Lookup falls back to them when LookupOpt leaves them empty.
+var (
+	defaultCache string
+	defaultEnv   string
+)
+
+// SetDefaults wires the cache and credentials-env paths from the typed config
+// (internal/config Search.Cache / Search.Env) so Lookup keeps working without
+// reading the environment directly.
+func SetDefaults(cachePath, envPath string) {
+	defaultCache = cachePath
+	defaultEnv = envPath
+}
+
+func homeDir() string {
+	if h, err := os.UserHomeDir(); err == nil {
+		return h
+	}
+	return ""
+}
+
 func Lookup(ctx context.Context, query string, opt LookupOpt) Output {
 	if ctx == nil {
 		ctx = context.Background()
@@ -59,10 +81,10 @@ func Lookup(ctx context.Context, query string, opt LookupOpt) Output {
 
 	cachePath := opt.CachePath
 	if cachePath == "" {
-		cachePath = os.Getenv("BRAIN_SEARCH_CACHE")
+		cachePath = defaultCache
 	}
 	if cachePath == "" {
-		cachePath = os.Getenv("HOME") + "/.cache/brain/web-search.sqlite"
+		cachePath = homeDir() + "/.cache/brain/web-search.sqlite"
 	}
 	cache, err := OpenCache(cachePath)
 	if err != nil {
@@ -80,10 +102,10 @@ func Lookup(ctx context.Context, query string, opt LookupOpt) Output {
 
 	envPath := opt.EnvPath
 	if envPath == "" {
-		envPath = os.Getenv("BRAIN_SEARCH_ENV")
+		envPath = defaultEnv
 	}
 	if envPath == "" {
-		envPath = os.Getenv("HOME") + "/.config/brain/search.env"
+		envPath = homeDir() + "/.config/brain/search.env"
 	}
 	conf, err := LoadConfig(envPath)
 	if err != nil {

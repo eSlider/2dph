@@ -56,6 +56,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D23 | CLI | **flaggy** (`github.com/integrii/flaggy`, 0 deps). Flags at any position. Wrapper `pkg/cli`. Bash complete: `source <(./bin/shell/complete.go bash)`. No cobra, no stdlib `flag` in Go tools. Search does not intercept the word `completion`. [#34](https://git.produktor.io/eSlider/2dph/issues/34). |
 | D24 | fact intervals | Leaf `valid_from` / `valid_to` (YYYY-MM-DD, inclusive; empty = open/legacy). Search `--as-of` / MCP `as_of` keeps facts active that day. Not D16 `temporal_freshness` (source stale vs HEAD). Empty interval = always visible. [#36](https://git.produktor.io/eSlider/2dph/issues/36). |
 | D25 | deploy data path | Brain serves from host `var/`, not named volumes. Compose binds `./var:/data/var` (kb.lbug at `/data/var/kb.lbug`), HF model from `var/hf`, Ladybug FTS/VECTOR extensions mounted read-only into `$HOME/.lbdb/extension`. `brain` uses `network_mode: host` so `127.0.0.1:8630` works with any image (KB_HOST-independent). Named volumes `kb-model`/`kb-var` dropped — live data is host `var/` (gitignored). |
+| D26 | typed config | `internal/config` (dep `github.com/eslider/go-config`). Load stack `etc/brain/config.yml → config.local.yml → .env → process env`, deep merge (maps recurse, scalars last-write-wins, keys lower+alnum). Services read the typed `Config`; legacy `KB_*` / `BRAIN_SEARCH_*` env names mapped transitionally. [#90](https://git.produktor.io/eSlider/2dph/issues/90). |
 
 ## Architecture
 
@@ -226,3 +227,21 @@ UTF-8 sanitization before FTS.
 Decisions (2026-08-18): exclude arc-1 junk (external/, docs/chats/, bin/chats.bin,
 qa/load_test_*.py); Python fully removed (2026-08-19); M365 WIP same PR;
 go-ollama+go-xls now, rest verify.
+
+## 2026-08-22 — Typed config (gitea #90, epic #88)
+
+Goal: replace ad-hoc `os.Getenv` in the service layer with one typed config
+loaded by a stack, keeping legacy env names working. Dep
+`github.com/eslider/go-config@v0.4.0`; new `internal/config` (`config.go`,
+`load.go`, `yaml.go`, `env.go`) — TDD offline fixtures, no network/db.
+
+| Step | Status |
+|------|--------|
+| internal/config load stack + merge + lower+alnum + legacy mapping (TDD) | done — tests green |
+| wire pkg/httpapi, internal/brain, bin/brain/{serve,index,watch}, internal/mailsync, internal/websearch | done — no ad-hoc env reads in those packages |
+| committed `etc/brain/config.yml` template + gitignore `config.local.yml` | done |
+| legacy env map | KB_ROOT→Root, KB_PORT→Port, KB_HOST→Host, KB_WORKERS→Workers, KB_PPROF→Pprof, KB_SEARCH_CMD→SearchCmd, KBSEARCH_PORT→SearchDaemonPort, KBSEARCH_NO_DAEMON→SearchNoDaemon, KBSEARCH_MODEL→Model, HF_HOME→HFHome, KB_BUFFER_POOL→BufferPool, KBTEST_EPS→Eps, KB_INDEX_ALLOW_LIVE→IndexAllowLive, KB_WATCH_INTERVAL→WatchInterval, KB_WATCH_DIRS→WatchDirs, OO_CLI→OOCLI, BRAIN_SEARCH_{URL,USER,PASS,CACHE,ENV}→Search.* |
+
+Non-goals kept: graph/search semantics unchanged. Pending: OnlyOffice CLI
+config wiring from `bin/mail/*` (out of #90 scope) — `internal/mailsync.SetOOCLI`
+is ready for it.
