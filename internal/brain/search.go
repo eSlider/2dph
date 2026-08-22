@@ -120,6 +120,8 @@ func searchHits(query, root, repo string, limit int, asOf string, sortDate, sort
 }
 
 func attachHops(hits []Hit, n int) error {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
 	if conn == nil {
 		return fmt.Errorf("brain not open")
 	}
@@ -167,6 +169,8 @@ func b2i(err error) int {
 }
 
 func queryFTS(text string, limit int) ([]Hit, error) {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
 	stmt, err := conn.Prepare(rank.FTSStmt)
 	if err != nil {
 		return nil, err
@@ -181,6 +185,8 @@ func queryFTS(text string, limit int) ([]Hit, error) {
 }
 
 func queryVector(emb []float64, limit int) ([]Hit, error) {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
 	embList := make([]any, len(emb))
 	for i, v := range emb {
 		embList[i] = v
