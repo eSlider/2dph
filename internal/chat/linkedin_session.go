@@ -5,6 +5,7 @@ package chat
 // (and chats/sync) consume. Go port of the former python helper.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
@@ -16,6 +17,8 @@ import (
 	"time"
 
 	"golang.org/x/net/websocket"
+
+	"github.com/eSlider/2dph/pkg/utils"
 )
 
 // RefreshLinkedInSessionOpts selects the CDP endpoint, the portable profile
@@ -137,7 +140,7 @@ func RefreshLinkedInSession(opts RefreshLinkedInSessionOpts) error {
 			"name":     c.Name,
 			"value":    strings.Trim(c.Value, `"`),
 			"domain":   domain,
-			"path":     orDefault(c.Path, "/"),
+			"path":     utils.Or(c.Path, "/"),
 			"expires":  expires,
 			"httpOnly": c.HTTPOnly,
 			"secure":   c.Secure,
@@ -156,13 +159,11 @@ func RefreshLinkedInSession(opts RefreshLinkedInSessionOpts) error {
 
 func cdpTabs(cdp string) ([]cdpTab, error) {
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(strings.TrimRight(cdp, "/") + "/json")
-	if err != nil {
+	var tabs []cdpTab
+	if err := utils.GetJSON(context.Background(), client, strings.TrimRight(cdp, "/")+"/json", &tabs); err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	var tabs []cdpTab
-	return tabs, json.NewDecoder(resp.Body).Decode(&tabs)
+	return tabs, nil
 }
 
 func cdpAllCookies(wsURL string) ([]cdpCookie, error) {
@@ -217,11 +218,4 @@ func writeJSONFile(path string, v any) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-func orDefault(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
 }

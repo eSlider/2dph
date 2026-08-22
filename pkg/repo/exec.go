@@ -6,32 +6,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/eSlider/2dph/pkg/utils"
 )
 
 // Root is the 2dph checkout (KB_ROOT, or walk up for .git / var).
-func Root() string {
-	if v := os.Getenv("KB_ROOT"); v != "" {
-		return v
-	}
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	for i := 0; i < 10; i++ {
-		if _, err := os.Stat(filepath.Join(wd, ".git")); err == nil {
-			return wd
-		}
-		if _, err := os.Stat(filepath.Join(wd, "var")); err == nil {
-			return wd
-		}
-		parent := filepath.Dir(wd)
-		if parent == wd {
-			break
-		}
-		wd = parent
-	}
-	return "."
-}
+func Root() string { return utils.Root() }
 
 // ExecFile runs repo-relative path (python/bash shebang scripts) with stdio.
 func ExecFile(rel string, args []string) int {
