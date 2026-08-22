@@ -2,9 +2,43 @@ package config
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+// isolateEnv unsets process-env variables that the load stack's env codec
+// (WithCurrentEnvironment, merged highest-priority) would otherwise let
+// override the testdata fixtures. Without this, ambient CI runner env vars
+// (e.g. SEARCH_PASS=) make the .env-layer assertions non-hermetic.
+func isolateEnv(t *testing.T) {
+	t.Helper()
+	vars := []string{
+		// fixture keys
+		"SEARCH_PASS", "WATCHINTERVAL",
+		// legacy names mapped by legacyEnv()
+		"KB_ROOT", "KB_PORT", "KB_HOST", "KB_WORKERS", "KB_PPROF",
+		"KB_SEARCH_CMD", "KBSEARCH_PORT", "KBSEARCH_NO_DAEMON",
+		"KBSEARCH_MODEL", "HF_HOME", "KB_BUFFER_POOL", "KBTEST_EPS",
+		"KB_INDEX_ALLOW_LIVE", "KB_WATCH_INTERVAL", "KB_WATCH_DIRS",
+		"OO_CLI", "BRAIN_SEARCH_URL", "BRAIN_SEARCH_USER",
+		"BRAIN_SEARCH_PASS", "BRAIN_SEARCH_CACHE", "BRAIN_SEARCH_ENV",
+	}
+	prev := map[string]string{}
+	for _, k := range vars {
+		prev[k], _ = os.LookupEnv(k)
+		os.Unsetenv(k)
+	}
+	t.Cleanup(func() {
+		for k, v := range prev {
+			if v != "" {
+				os.Setenv(k, v)
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	})
+}
 
 func loadTest(t *testing.T, dir string) *Config {
 	t.Helper()
@@ -19,6 +53,7 @@ func loadTest(t *testing.T, dir string) *Config {
 // (config.yml → config.local.yml → .env) with deep merge: maps recurse
 // (search.* combines across layers) and scalar leaves are last-write-wins.
 func TestLoadStack_DeepMergeAndPriority(t *testing.T) {
+	isolateEnv(t)
 	cfg := loadTest(t, filepath.Join("testdata", "basic"))
 
 	if cfg.Root != "/srv/2dph" {
@@ -67,6 +102,7 @@ func TestLoad_ProcessEnvOverridesLayer(t *testing.T) {
 // non-alnum separators normalize to the typed field (Buffer-Pool → bufferpool,
 // Search-Cmd → searchcmd, Root → root).
 func TestLoad_KeyNormalizationLowerAlnum(t *testing.T) {
+	isolateEnv(t)
 	cfg := loadTest(t, filepath.Join("testdata", "normalize"))
 
 	if cfg.BufferPool != 2048 {
@@ -169,6 +205,7 @@ func TestLegacyEnvMapping(t *testing.T) {
 }
 
 func TestLoad_MissingLayersYieldDefaults(t *testing.T) {
+	isolateEnv(t)
 	cfg := loadTest(t, t.TempDir()) // no config files at all
 	if cfg.Port != 8630 {
 		t.Fatalf("port = %d, want default 8630", cfg.Port)
@@ -201,6 +238,7 @@ func TestMergeMaps_RecurseAndLastWriteWins(t *testing.T) {
 }
 
 func TestDefaults(t *testing.T) {
+	isolateEnv(t)
 	d := Defaults()
 	if d.Port != 8630 || d.Workers != 4 || d.Host != "127.0.0.1" ||
 		d.BufferPool != 1<<30 || d.SearchDaemonPort != 17830 || d.WatchInterval != 30 {
