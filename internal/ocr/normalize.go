@@ -1,6 +1,8 @@
 package ocr
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,8 +24,6 @@ import (
 // If ghostscript is unavailable, NormalizePDF returns the original path so the
 // pipeline degrades to the existing pdftotext/tesseract behaviour on the
 // original.
-//
-// TODO(#102): red — stub returns the input unchanged until gs is wired in.
 func NormalizePDF(path string) (string, error) {
 	if _, err := exec.LookPath("gs"); err != nil {
 		return path, nil
@@ -36,7 +36,7 @@ func NormalizePDF(path string) (string, error) {
 		return "", err
 	}
 	base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-	out := filepath.Join(dir, "gs-"+base+"-0.pdf")
+	out := filepath.Join(dir, "gs-"+base+"-"+randHex()+".pdf")
 	cmd := exec.Command("gs",
 		"-sDEVICE=pdfwrite",
 		"-dCompatibilityLevel=1.4",
@@ -48,7 +48,7 @@ func NormalizePDF(path string) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("gs normalize %s: %w", path, err)
 	}
-	return path, nil
+	return out, nil
 }
 
 // workDir returns the var/tmp root for gs working artifacts. 2DPH_VAR_TMP
@@ -62,4 +62,12 @@ func workDir() (string, error) {
 		return "", err
 	}
 	return filepath.Join(wd, "var", "tmp"), nil
+}
+
+func randHex() string {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "0"
+	}
+	return hex.EncodeToString(b)
 }

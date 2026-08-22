@@ -16,6 +16,9 @@ No laptop-absolute paths. Config lives in env files under `$HOME/.config/brain/`
 - Go (see `go.mod`)
 - Optional: Docker, Zig CGO via `bin/cgo/zig` (not gcc)
 - Optional: poppler (`pdftotext`/`pdftoppm`) + tesseract `eng+deu` for mail OCR
+- Optional: ghostscript `gs` — normalizes export-locked / oversized PDFs before
+  extraction (strips export-protection, shrinks; original preserved, artifact
+  in `var/tmp`). Clean PDFs skip it, so the pdftotext fast path stays fast.
 
 ```bash
 eval "$(bin/cgo/zig env)"   # optional; bin/brain/{search,get,stats,eval,serve}.go auto-wrap zig

@@ -10,7 +10,8 @@ OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
 [#29](https://git.produktor.io/eSlider/2dph/issues/29) OQ1 in,
 [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 in,
 [#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 in,
-[#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 in.
+[#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 in,
+[#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in.
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
@@ -134,7 +135,13 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 - OQ2: OCR — **in**. `pdftotext -layout` first; scans `pdftoppm` + tesseract
   `eng+deu` (`bin/mail/ocr.go`, `internal/ocr`). No gocv, no gosseract CGO
   (D21 Zig owns Ladybug CGO). Optional `OCR_ENGINE=paddle` / compose profile
-  `ocr-paddle`. Docling left the default path. [#6](https://git.produktor.io/eSlider/2dph/issues/6).
+  `ocr-paddle`. Docling left the default path. When `pdftotext` yields no text
+  layer (scanned / export-locked / oversized), **Ghostscript normalizes the PDF
+  first** (`internal/ocr.NormalizePDF`, gs `pdfwrite` → `var/tmp`, original
+  preserved, artifact ≤ original): strips export-protection + shrinks so the
+  pdftotext fast path / tesseract fallback see a clean PDF. Clean PDFs skip gs
+  (happy path stays fast). [#6](https://git.produktor.io/eSlider/2dph/issues/6),
+  [#102](https://git.produktor.io/eSlider/2dph/issues/102).
 - OQ3: **in** — duckdb-go (`pkg/duckdb`, `bin/jsonl/stats.go`) for
   quantiles / JSONL count. Not a second graph. [#30](https://git.produktor.io/eSlider/2dph/issues/30).
 - OQ4: YAML-first storage for leafs — deferred: JSON is ~10x faster to
@@ -149,7 +156,9 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
    `partId`. M365 uses client-credentials + delta link (commit after success).
 2. `bin/mail/import.go --from-raw` — message.json → message.md; PDFs via
    `pdftotext -layout` (~15ms); textless/scanned PDFs `pdftoppm` + tesseract
-   `eng+deu`. ICS sidecars
+   `eng+deu`. PDFs without a readable text layer are first normalized with
+   Ghostscript (`internal/ocr.NormalizePDF`, gs `pdfwrite`; original preserved,
+   gs artifact in `var/tmp`, removed after extraction). ICS sidecars
    Latin-1→UTF-8 normalized.
 3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
