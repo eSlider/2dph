@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bin/docker-entrypoint - run 2dph tools inside the container.
+# scripts/docker-entrypoint - run 2dph tools inside the container.
 #
 # API image (Zig CGO binaries, Go write path):
 #   serve | search | watch | index | add | mail-sync [N]
@@ -34,7 +34,7 @@ if [ -x /usr/local/bin/brain-serve ]; then
 			[ "$interval" -gt 0 ] 2>/dev/null || interval=300
 			: "${MAIL_SYNC_ENV:=/secret/mail.env}"
 			: "${MAIL_SYNC_SRC:=onlyoffice,gmail}"
-			: "${MAIL_SYNC_OUT:=/data/var/mail}"
+			: "${MAIL_SYNC_OUT:=/data/var/corpus/mail}"
 			: "${MAIL_SYNC_INDEX:=0}"
 			while true; do
 				out="$("/usr/local/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)" || true

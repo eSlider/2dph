@@ -16,5 +16,5 @@ import (
 )
 
 func main() {
-	os.Exit(repo.ExecFile("bin/db/psql-yq", os.Args[1:]))
+	os.Exit(repo.ExecFile("scripts/db/psql-yq", os.Args[1:]))
 }

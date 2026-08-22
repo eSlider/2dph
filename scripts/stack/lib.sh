@@ -1,4 +1,4 @@
-# bin/stack/lib.sh — compose helpers for start / start-assistant / stop / status.
+# scripts/stack/lib.sh — compose helpers for start / start-assistant / stop / status.
 # Sourced, not executed. No secrets. No host-absolute paths.
 
 BRAIN_URL="${BRAIN_URL:-http://127.0.0.1:8630}"
@@ -19,7 +19,7 @@ stack_usage() {
 }
 
 stack_die() {
-	echo "bin/stack: $*" >&2
+	echo "scripts/stack: $*" >&2
 	return 1
 }
 
@@ -190,7 +190,7 @@ stack_attach_agent() {
 	fi
 	if [[ (! -t 0 || ! -t 1) && $# -eq 0 ]]; then
 		echo "picoclaw: no TTY. Attach with:" >&2
-		echo "  $ROOT/bin/stack/start-assistant" >&2
+		echo "  $ROOT/scripts/stack/start-assistant" >&2
 		echo "  docker compose --profile picoclaw exec -it picoclaw picoclaw agent" >&2
 		return 0
 	fi
@@ -205,7 +205,7 @@ stack_start_assistant() {
 	while (($#)); do
 		case "$1" in
 		-h | --help)
-			stack_usage "$ROOT/bin/stack/start-assistant"
+			stack_usage "$ROOT/scripts/stack/start-assistant"
 			return 0
 			;;
 		--no-attach)
@@ -229,8 +229,8 @@ stack_start_assistant() {
 	stack_status
 	if ((attach == 0)); then
 		echo "picoclaw: gateway $PICOCLAW_URL (agent not attached)" >&2
-		echo "ask the brain: $ROOT/bin/stack/start-assistant" >&2
-		echo "one-shot: $ROOT/bin/stack/start-assistant -- -m \"search the 2dph brain for LadybugDB\"" >&2
+		echo "ask the brain: $ROOT/scripts/stack/start-assistant" >&2
+		echo "one-shot: $ROOT/scripts/stack/start-assistant -- -m \"search the 2dph brain for LadybugDB\"" >&2
 		return 0
 	fi
 	stack_attach_agent "${agent_args[@]}"
@@ -239,7 +239,7 @@ stack_start_assistant() {
 stack_stop() {
 	case "${1:-}" in
 	-h | --help)
-		stack_usage "$ROOT/bin/stack/stop"
+		stack_usage "$ROOT/scripts/stack/stop"
 		return 0
 		;;
 	esac

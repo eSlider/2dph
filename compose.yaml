@@ -1,6 +1,6 @@
 # 2dph — docker composition
 #
-#   bin/stack/start / start-assistant / status / stop
+#   scripts/stack/start / start-assistant / status / stop
 #   docker compose up -d brain                  # API (Zig CGO serve)
 #   docker compose --profile index run --rm index   # Go rebuild (zig cgo)
 #   docker compose --profile picoclaw up -d     # brain-mcp + CPU reasoner + PicoClaw gateway
@@ -101,7 +101,7 @@ services:
   # M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in ~/.config/brain/mail.env
   # (or m365.env + MAIL_SYNC_ENV). Gmail OAuth: mount ~/.gmail-mcp.
   #   docker compose up -d mail-sync
-  #   bin/stack/start-mail-sync
+  #   scripts/stack/start-mail-sync
   mail-sync:
     image: ghcr.io/eslider/2dph:api
     build:

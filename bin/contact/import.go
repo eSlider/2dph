@@ -2,11 +2,11 @@
 
 // usr/bin/env go run -tags=contacts_import "$0" "$@"; exit
 //
-// bin/contacts/import.go - address books (VCF/MAB/CSV) → brain markdown +
+// bin/contact/import.go - address books (VCF/MAB/CSV) → brain markdown +
 // CRM reconcile by E.164/email (#85).
 //
-//	./bin/contacts/import.go                                  # md + report
-//	./bin/contacts/import.go --root "/mnt/8TB/contacts" --write --limit 5
+//	./bin/contact/import.go                                  # md + report
+//	./bin/contact/import.go --root "$CONTACTS_ROOT" --write --limit 5
 //
 // Phones are normalized via internal/contact.NormalizePhone (nyaruka/
 // phonenumbers): "+CC…", "00CC…", "0<trunk>", and bare "CC<national>" resolved
@@ -52,7 +52,11 @@ func run(args []string) int {
 		return cli.Fail(err)
 	}
 	if root == "" {
-		root = "/mnt/8TB/contacts"
+		root = os.Getenv("CONTACTS_ROOT")
+	}
+	if root == "" {
+		fmt.Fprintln(os.Stderr, "contacts-import: --root or CONTACTS_ROOT is required")
+		return 2
 	}
 	if outDir == "" {
 		outDir = filepath.Join(repo.Root(), "var", "contacts-md")

@@ -17,7 +17,7 @@ type syncLinkedInFlags struct {
 
 func SyncParser() *flaggy.Parser {
 	p := cliparse.New("chats-sync")
-	p.Description = "download chats to var/chats"
+	p.Description = "download chats to var/corpus/chats"
 	tg := flaggy.NewSubcommand("telegram")
 	li := flaggy.NewSubcommand("linkedin")
 	var limit int

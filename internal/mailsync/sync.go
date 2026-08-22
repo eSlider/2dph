@@ -107,7 +107,7 @@ type SyncConfig struct {
 	OO      *OOConfig         // OnlyOffice source (optional)
 	Gmail   *GmailCredentials // Gmail source (optional)
 	M365    *M365Credentials  // Microsoft 365 Graph source (optional)
-	Out     string            // var/mail root; default <repo>/var/mail
+	Out     string            // var/corpus/mail root; default <repo>/var/corpus/mail
 	Workers int               // concurrency; default 4
 	Limit   int               // max messages per source (0 = all)
 	Offset  int               // skip first N messages per source
@@ -229,7 +229,7 @@ func (s *gmailSource) DownloadAttachment(ctx context.Context, msg *Message, att 
 // Run executes the sync across the configured sources with a worker pool.
 func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	if cfg.Out == "" {
-		cfg.Out = "var/mail"
+		cfg.Out = "var/corpus/mail"
 	}
 	if cfg.Workers <= 0 {
 		cfg.Workers = 4

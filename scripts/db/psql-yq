@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# db/psql-yq - read any Postgres as YAML, cheaply and read-only.
+# scripts/db/psql-yq - read any Postgres as YAML, cheaply and read-only.
 #
-#   db/psql-yq --profile onlyoffice -t document_asset -l 20   # table sample
-#   db/psql-yq --profile onlyoffice -s document_asset         # column list
-#   db/psql-yq --profile onlyoffice -c 'SELECT ...'           # query -> YAML
-#   db/psql-yq --container my-pg --db app -c '...'   # ad-hoc container
-#   db/psql-yq --dsn 'postgres://u@h:5432/db' -c '...'
-#   db/psql-yq -r 'SELECT ...'                       # raw rows, no YAML
+#   scripts/db/psql-yq --profile onlyoffice -t document_asset -l 20   # table sample
+#   scripts/db/psql-yq --profile onlyoffice -s document_asset         # column list
+#   scripts/db/psql-yq --profile onlyoffice -c 'SELECT ...'           # query -> YAML
+#   scripts/db/psql-yq --container my-pg --db app -c '...'   # ad-hoc container
+#   scripts/db/psql-yq --dsn 'postgres://u@h:5432/db' -c '...'
+#   scripts/db/psql-yq -r 'SELECT ...'                       # raw rows, no YAML
 #
 # Profiles live in ~/.config/brain/db-profiles.yml so that credentials and
 # hostnames stay out of every project repo. A profile is:
@@ -16,12 +16,12 @@
 #     port: 5433
 #     user: onlyoffice
 #     db: onlyoffice
-#     password_env_file: /home/ano/.config/ops/onlyoffice.env
+#     password_env_file: $HOME/.config/brain/onlyoffice.env
 #
 # The onlyoffice Postgres listens inside the QEMU VM (host port 32, SSH only).
 # Credentials come from /etc/onlyoffice/documentserver/local.json inside the
-# VM (dbUser/dbPass), read via db/ssh-tunnel, never committed.
-# db/ssh-tunnel opens 127.0.0.1:5433 -> vm:5432 before querying.
+# VM (dbUser/dbPass), read via scripts/db/ssh-tunnel, never committed.
+# scripts/db/ssh-tunnel opens 127.0.0.1:5433 -> vm:5432 before querying.
 #
 # Read-only guard: any DML or DDL keyword is rejected, whatever the profile.
 set -euo pipefail
@@ -61,7 +61,7 @@ done
 assert_readonly() {
   local s="${1,,}"
   if [[ "$s" =~ (^|[^a-z])(insert|update|delete|drop|truncate|alter|create|grant|revoke|vacuum|copy)[[:space:]] ]]; then
-    echo "db/psql-yq: read-only, query rejected" >&2
+    echo "scripts/db/psql-yq: read-only, query rejected" >&2
     exit 3
   fi
 }

@@ -43,7 +43,7 @@ COPY --from=api-build /out/brain-add /usr/local/bin/brain-add
 COPY --from=api-build /out/mail-import /usr/local/bin/mail-import
 COPY --from=api-build /out/mail-sync /usr/local/bin/mail-sync
 COPY --from=api-build /src/lib-ladybug/liblbug.so.0.19.1 /usr/local/lib/liblbug.so.0.19.1
-COPY bin/docker-entrypoint /usr/local/bin/docker-entrypoint
+COPY scripts/docker-entrypoint /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint \
     && ln -s liblbug.so.0.19.1 /usr/local/lib/liblbug.so.0 \
     && ln -s liblbug.so.0 /usr/local/lib/liblbug.so \

@@ -66,12 +66,12 @@ delete `var/kb.lbug` then `--rebuild`.
 ## HTTP / MCP
 
 ```bash
-bin/stack/start                 # brain :8630, wait until MCP search/get/audit
-bin/stack/status                # YAML: brain / reasoner / picoclaw / mail_sync
-bin/stack/start-mail-sync       # compose ETL: OO+Gmail sync→import (300s; no auto-rebuild)
-bin/stack/start-assistant       # + qwen3.5:9b + PicoClaw agent (ask the brain)
-bin/stack/start-assistant --no-attach
-bin/stack/stop                  # compose stop; volumes kept
+scripts/stack/start                 # brain :8630, wait until MCP search/get/audit
+scripts/stack/status                # YAML: brain / reasoner / picoclaw / mail_sync
+scripts/stack/start-mail-sync       # compose ETL: OO+Gmail sync→import (300s; no auto-rebuild)
+scripts/stack/start-assistant       # + qwen3.5:9b + PicoClaw agent (ask the brain)
+scripts/stack/start-assistant --no-attach
+scripts/stack/stop                  # compose stop; volumes kept
 ```
 
 Same Compose services by hand:

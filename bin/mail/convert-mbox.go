@@ -4,7 +4,7 @@
 //
 // bin/mail/convert-mbox.go - split mbox mailboxes into one .eml per message.
 //
-//	./bin/mail/convert-mbox.go --in DIR --out var/mail/archive --dry-run
+//	./bin/mail/convert-mbox.go --in DIR --out var/corpus/mail/archive --dry-run
 //
 // Walks DIR for mbox files (skipping Thunderbird metadata like *.msf/.dat/.js),
 // splits each on mbox "From " separators, and writes each message to
@@ -52,7 +52,7 @@ func main() {
 	var in, out, source string
 	var dry bool
 	flag.StringVar(&in, "in", "", "input root to scan for mbox files")
-	flag.StringVar(&out, "out", "var/mail/archive", "output root")
+	flag.StringVar(&out, "out", "var/corpus/mail/archive", "output root")
 	flag.StringVar(&source, "source", "", "force source label (else top-level dir name)")
 	flag.BoolVar(&dry, "dry-run", false, "count only, no writes")
 	flag.Parse()

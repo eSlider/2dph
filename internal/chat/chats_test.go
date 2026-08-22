@@ -16,7 +16,7 @@ import (
 // TestChatsImport validates JSONL → MD conversion with a synthetic fixture.
 func TestChatsImport(t *testing.T) {
 	dir := t.TempDir()
-	root := filepath.Join(dir, "var", "chats")
+	root := filepath.Join(dir, "var", "corpus", "chats")
 	chatDir := filepath.Join(root, "telegram", "test_user_123")
 	if err := os.MkdirAll(chatDir, 0755); err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestChatsImport(t *testing.T) {
 // TestChatsFacts validates fact extraction from JSONL fixture.
 func TestChatsFacts(t *testing.T) {
 	dir := t.TempDir()
-	root := filepath.Join(dir, "var", "chats")
+	root := filepath.Join(dir, "var", "corpus", "chats")
 	chatDir := filepath.Join(root, "telegram", "test_user_facts")
 	if err := os.MkdirAll(chatDir, 0755); err != nil {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestChatsImportEmpty(t *testing.T) {
 // the markdown structure is parseable and contains YAML frontmatter.
 func TestChatsRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	root := filepath.Join(dir, "var", "chats")
+	root := filepath.Join(dir, "var", "corpus", "chats")
 	chatDir := filepath.Join(root, "telegram", "rt_user")
 	if err := os.MkdirAll(chatDir, 0755); err != nil {
 		t.Fatal(err)

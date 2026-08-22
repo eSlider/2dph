@@ -77,10 +77,10 @@ detective method: **a fact needs ≥2 independent sources or it is
     web/search.go           SearXNG client (throttled ≠ absence)
     git/import.go           go-git history (no git binary; conversion only)
     markdown/import.go      H2 leaf split (Go)
-    postgres/query.go       read-only YAML (wraps bin/db/psql-yq)
+    postgres/query.go       read-only YAML (wraps scripts/db/psql-yq)
     reasoner/bench.go        CPU tool-call bench (D18; OpenAI tools)
     qa/stats.go             DuckDB quantiles / JSONL (D22; not the test taxonomy)
-    ci/semver.go            next semver from conventional commits (Release job)
+    semver/next.go          next semver from conventional commits (Release job)
     cli/complete.go         flaggy bash/zsh/fish complete (D23)
     cgo/zig zcc zc++        CGO toolchain (zig cc, not gcc)
     stack/start start-assistant start-mail-sync stop status
@@ -153,7 +153,7 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
    indexing stay separate for crash safety.
-4. Compose `mail-sync` / `bin/stack/start-mail-sync` — ETL loop (default
+4. Compose `mail-sync` / `scripts/stack/start-mail-sync` — ETL loop (default
    `onlyoffice,gmail`, 300s): sync → import on `new>0`; full rebuild only if
    `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
    they do not replace the corpus path.
@@ -194,7 +194,7 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 |-------|-------|-----|
 | 1 | [#14](https://git.produktor.io/eSlider/2dph/issues/14) | **in** — `bin/brain/add.go` / `POST /ingest` write facts+info without deleting `kb.lbug`. Bulk corpus still `--rebuild`. Leftover Python (mail/facts) is not the living-graph blocker. |
 | 2 | [#17](https://git.produktor.io/eSlider/2dph/issues/17) | **in** — `--hop N` walks `FROM_FILE` → `HAS_VERSION` → `AUTHORED` (max 3). |
-| 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | **in** — `--with-facts` / `--facts-json` land `root=facts`; `--with-chats` indexes `var/chats/md`. WhatsApp sync is out of v1. |
+| 3 | [#18](https://git.produktor.io/eSlider/2dph/issues/18) | **in** — `--with-facts` / `--facts-json` land `root=facts`; `--with-chats` indexes `var/corpus/chats/md`. WhatsApp sync is out of v1. |
 | 4 | [#15](https://git.produktor.io/eSlider/2dph/issues/15) | **in** — lever/loop documented (`search` → `get` → `audit`). |
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. |
 

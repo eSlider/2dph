@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bin/stack/start - bring up brain HTTP/MCP and wait until search/get/audit respond.
+# scripts/stack/start - bring up brain HTTP/MCP and wait until search/get/audit respond.
 #
-#   bin/stack/start
-#   bin/stack/status
+#   scripts/stack/start
+#   scripts/stack/status
 #
 # Reuses a healthy process on :8630 (host serve or compose). Does not start
 # PicoClaw. Does not rebuild Ladybug.

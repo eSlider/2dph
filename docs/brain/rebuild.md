@@ -7,7 +7,7 @@ live progress/ETA monitor.
 
 Build the native binaries (also runs the cgo brain tests):
 
-    bin/stack/serve-brain --build        # or ./bin/cgo/zig go build ...
+    scripts/stack/serve-brain --build        # or ./bin/cgo/zig go build ...
 
 Fresh rebuild of info + mail + facts with control flags:
 
@@ -46,7 +46,7 @@ the bottleneck (~100/s, ~40 min for 242k leafs).
 
 Before a fresh rebuild, remove the old db (daemons must be down first):
 
-    bin/stack/serve-brain --stop          # or pkill bin-build/brain-*
+    scripts/stack/serve-brain --stop          # or pkill bin-build/brain-*
     rm -f var/kb.lbug var/kb.lbug.wal
 
 ## Buffer pool
@@ -64,7 +64,7 @@ collects embed errors per-result.
 
 ## After the index-build phase
 
-    bin/stack/serve-brain                 # builds + starts brain-serve + brain-search
+    scripts/stack/serve-brain                 # builds + starts brain-serve + brain-search
 
 Verify:
 

@@ -1,7 +1,7 @@
 //usr/bin/env go run -tags=chats_sync "$0" "$@"; exit
 //go:build chats_sync
 //
-// bin/chat/sync.go - download chat messages to var/chats/<platform>/.
+// bin/chat/sync.go - download chat messages to var/corpus/chats/<platform>/.
 //
 //	./bin/chat/sync.go telegram [--limit N] [--phone PHONE]
 //	./bin/chat/sync.go linkedin [--limit N] [--refresh]

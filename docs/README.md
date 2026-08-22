@@ -23,7 +23,7 @@ issue comments, not here.
 | reference | [PLAN.md](../PLAN.md) — decisions D1–D25 |
 | howto (brain ops) | [brain/rebuild](brain/rebuild.md) — parallel write, resume |
 | howto (facts) | [facts/audit-recipes](facts/audit-recipes.md) — audit recipes |
-| howto (agent) | [picoclaw](picoclaw.md) — MCP gateway (`bin/stack/start-assistant`) |
+| howto (agent) | [picoclaw](picoclaw.md) — MCP gateway (`scripts/stack/start-assistant`) |
 | howto (reasoner) | [reasoner](reasoner.md) — CPU bench (D18) |
 | testing | [test/README.md](../test/README.md) — system / stress / integration tiers |
 | config | `etc/{searxng,picoclaw}` — operator config (FHS) |

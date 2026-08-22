@@ -155,7 +155,7 @@ func leafsFromMarkdownFiles(files []string, repo, how string) ([]CorpusLeaf, err
 	return out, nil
 }
 
-// LoadMailLeafs indexes var/mail/**/message.md (+ attachment .md).
+// LoadMailLeafs indexes var/corpus/mail/**/message.md (+ attachment .md).
 func LoadMailLeafs(root, since string, limit int) ([]CorpusLeaf, error) {
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
 		return nil, nil

@@ -69,7 +69,7 @@ func run(args []string) int {
 		skip string
 	}{
 		{"mail", []string{"bin/mail/sync.go"}, ""},
-		{"mail-import", []string{"bin/mail/import.go", "--from-raw", "var/mail"}, ""},
+		{"mail-import", []string{"bin/mail/import.go", "--from-raw", "var/corpus/mail"}, ""},
 		{"chats", []string{"bin/chat/sync.go"}, skipUnless(withChats, "--with-chats")},
 		{"contact-brain", contactStep("bin/brain/import-contact.go", contacts), skipUnless(contacts != "", "--contacts")},
 		{"git-brain", gitStep(gitRoot), skipUnless(gitRoot != "", "--git-root")},

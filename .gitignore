@@ -21,7 +21,7 @@ mnt/
 # go build ./bin/mail/sync.go drops a binary named `sync` in cwd
 /sync
 
-# native brain binaries built by bin/stack/serve-brain
+# native brain binaries built by scripts/stack/serve-brain
 /bin-build/
 
 # local compiled binaries dropped in repo root (go run -o . / go build)

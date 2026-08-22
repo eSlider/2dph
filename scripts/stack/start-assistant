@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# bin/stack/start-assistant - start + CPU reasoner + PicoClaw, then attach agent.
+# scripts/stack/start-assistant - start + CPU reasoner + PicoClaw, then attach agent.
 #
-#   bin/stack/start-assistant
-#   bin/stack/start-assistant --no-attach
-#   bin/stack/start-assistant -- -m "search the 2dph brain for LadybugDB"
+#   scripts/stack/start-assistant
+#   scripts/stack/start-assistant --no-attach
+#   scripts/stack/start-assistant -- -m "search the 2dph brain for LadybugDB"
 #
 # Pulls qwen3.5:9b if missing. Gateway :18790. Agent uses MCP search → get → audit.
 # --no-attach leaves the gateway up without exec.

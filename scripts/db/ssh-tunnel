@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# db/ssh-tunnel - open 127.0.0.1:5433 -> onlyoffice VM Postgres (host port 32).
+# scripts/db/ssh-tunnel - open 127.0.0.1:5433 -> onlyoffice VM Postgres (host port 32).
 #
-#   db/ssh-tunnel            # background tunnel, ready for db/psql-yq
-#   db/ssh-tunnel --check    # exit 0 if a tunnel is already up
-#   db/ssh-tunnel --stop     # kill any tunnel owned by this tool
+#   scripts/db/ssh-tunnel            # background tunnel, ready for scripts/db/psql-yq
+#   scripts/db/ssh-tunnel --check    # exit 0 if a tunnel is already up
+#   scripts/db/ssh-tunnel --stop     # kill any tunnel owned by this tool
 #
 # OnlyOffice runs as a QEMU VM (docker network office_default), SSH on host
 # port 32. Its Postgres listens on 127.0.0.1:5432 inside the VM and is not
-# exposed. This forwards localhost:5433 to it so db/psql-yq can query with
+# exposed. This forwards localhost:5433 to it so scripts/db/psql-yq can query with
 # the onlyoffice profile. Credentials are never part of the tunnel.
 set -euo pipefail
 
@@ -33,7 +33,7 @@ case "${1:-}" in
     exit 0
     ;;
   "")
-    [ -f "$HOME/.ssh/config" ] || { echo "db/ssh-tunnel: ~/.ssh/config missing" >&2; exit 1; }
+    [ -f "$HOME/.ssh/config" ] || { echo "scripts/db/ssh-tunnel: ~/.ssh/config missing" >&2; exit 1; }
     if "$0" --check; then
       echo "tunnel already up on ${SRC}"
       exit 0

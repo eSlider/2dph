@@ -46,9 +46,9 @@ func bind(v *flagVals) *flaggy.Parser {
 		v.srcs = "onlyoffice"
 	}
 	p := cliparse.New("mail-sync")
-	p.Description = "download mail to var/mail"
+	p.Description = "download mail to var/corpus/mail"
 	p.String(&v.env, "", "env", ".env file")
-	p.String(&v.out, "", "out", "var/mail root")
+	p.String(&v.out, "", "out", "var/corpus/mail root")
 	p.Int(&v.workers, "", "workers", "concurrent downloads")
 	p.Int(&v.limit, "", "limit", "max messages per source (0 = all)")
 	p.Int(&v.offset, "", "offset", "skip first N messages per source")
@@ -81,7 +81,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		v.env = filepath.Join(wd, ".env")
 	}
 	if v.out == "" {
-		v.out = filepath.Join(wd, "var", "mail")
+		v.out = filepath.Join(wd, "var", "corpus", "mail")
 	}
 	envVars := readEnv(v.env)
 	cfg := SyncConfig{

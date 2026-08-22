@@ -1,6 +1,6 @@
 //usr/bin/env bash -c 'exec go run "$0" "$@"' "$0" "$@"; exit
 //
-// bin/fulfill-assoc.go — deterministic: read the corpus mesh, confirm each org
+// bin/facts/fulfill-assoc.go — deterministic: read the corpus mesh, confirm each org
 // against the 2dph brain, diff against the oo CRM, and emit (or apply) the
 // oo CLI commands to fulfill the person/company/opportunity associations.
 //
@@ -9,9 +9,9 @@
 //	  export ONLYOFFICE_URL=$ONLYOFFICE_HOST ONLYOFFICE_USER=$ONLYOFFICE_NAME \
 //	         ONLYOFFICE_PASS=$ONLYOFFICE_PASSWORD
 //
-//	./bin/fulfill-assoc.go --mesh /path/knowledge-mesh-seed.yaml            # print plan
-//	./bin/fulfill-assoc.go --mesh ... --brain http://127.0.0.1:8630/mcp      # brain MCP url
-//	./bin/fulfill-assoc.go --mesh ... --apply                                # execute oo commands
+//	./bin/facts/fulfill-assoc.go --mesh /path/knowledge-mesh-seed.yaml       # print plan
+//	./bin/facts/fulfill-assoc.go --mesh ... --brain http://127.0.0.1:8630/mcp # brain MCP url
+//	./bin/facts/fulfill-assoc.go --mesh ... --apply                           # execute oo commands
 //
 // Deterministic: same mesh + brain + CRM state => same commands (idempotent;
 // anything already present is skipped).
@@ -67,7 +67,11 @@ func main() {
 		}
 	}
 	if mesh == "" {
-		mesh = "/mnt/8TB/projects/eslider/cv/projects/knowledge-mesh-seed.yaml"
+		mesh = os.Getenv("KNOWLEDGE_MESH_SEED")
+	}
+	if mesh == "" {
+		fmt.Fprintln(os.Stderr, "fulfill-assoc: --mesh or KNOWLEDGE_MESH_SEED is required")
+		os.Exit(2)
 	}
 	if _, err := os.Stat(mesh); err != nil {
 		fmt.Fprintln(os.Stderr, "mesh:", err)

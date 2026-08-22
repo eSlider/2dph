@@ -33,7 +33,7 @@ func Root() string {
 	return "."
 }
 
-// Dir is var/chats under the project root.
+// Dir is var/corpus/chats under the project root.
 func Dir() string {
-	return Root() + "/var/chats"
+	return Root() + "/var/corpus/chats"
 }

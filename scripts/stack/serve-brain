@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# bin/stack/serve-brain - start 2dph brain the memory-safe way (2 processes).
+# scripts/stack/serve-brain - start 2dph brain the memory-safe way (2 processes).
 #
-#   bin/stack/serve-brain          # build if needed, then daemon + API
-#   bin/stack/serve-brain --build  # force rebuild binaries first
+#   scripts/stack/serve-brain          # build if needed, then daemon + API
+#   scripts/stack/serve-brain --build  # force rebuild binaries first
 #
 # WHY 2 PROCESSES (memory fix 2026-08-19):
 # Running brain/serve.go alone made every search load the 512MB embedding

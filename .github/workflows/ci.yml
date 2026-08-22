@@ -15,6 +15,32 @@ permissions:
   contents: read
 
 jobs:
+  guard:
+    name: Guard (paths, pycache)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: No hardcoded user/mount paths in tracked non-md files
+        run: |
+          # split literals so this line cannot match its own pattern
+          re="/m""nt/|/h""ome/[a-z]+/|/U""sers/"
+          if git grep -nE "$re" -- ':!*.md'; then
+            echo "::error::hardcoded absolute path(s) above; use env vars (\$HOME, \$PROJECTS_ROOT)" >&2
+            exit 1
+          fi
+
+      - name: No __pycache__ under bin/
+        run: |
+          if find bin -type d -name __pycache__ | grep -q .; then
+            echo "::error::__pycache__ directories found under bin/:" >&2
+            find bin -type d -name __pycache__
+            exit 1
+          fi
+
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -31,9 +57,9 @@ jobs:
 
       - name: Shell syntax check
         run: |
-          bash -n bin/db/psql-yq
-          bash -n bin/db/ssh-tunnel
-          bash -n bin/docker-entrypoint
+          bash -n scripts/db/psql-yq
+          bash -n scripts/db/ssh-tunnel
+          bash -n scripts/docker-entrypoint
           bash -n bin/cgo/zig
           sh -n bin/cgo/zcc
           sh -n bin/cgo/zc++
@@ -122,7 +148,7 @@ jobs:
       - name: Compute next semver from conventional commits
         id: semver
         run: |
-          bin/ci/semver.go > /tmp/next
+          bin/semver/next.go > /tmp/next
           echo "next=$(cat /tmp/next)" >> "$GITHUB_OUTPUT"
 
       - name: Create tag + GitHub Release

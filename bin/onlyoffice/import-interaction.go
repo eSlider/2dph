@@ -7,7 +7,7 @@
 // in at least one opportunity, attach a deterministic history note.
 //
 //	ONLYOFFICE_URL/USER/PASS ./bin/onlyoffice/import-interaction.go                # report only
-//	./bin/onlyoffice/import-interaction.go --sources var/mail --write --limit 50
+//	./bin/onlyoffice/import-interaction.go --sources var/corpus/mail --write --limit 50
 //
 // OO history attaches to opportunities/cases only (no person history in this
 // API version) — messages whose person has no opportunity are counted as
@@ -49,14 +49,14 @@ func run(args []string) int {
 	)
 	p := cli.New("onlyoffice-import-interaction")
 	p.Description = "restore email interactions as history notes on the person's opportunity"
-	p.String(&sources, "", "sources", "var/mail root to scan (default var/mail)")
+	p.String(&sources, "", "sources", "var/corpus/mail root to scan (default var/corpus/mail)")
 	p.Bool(&write, "", "write", "attach history notes (default: report only)")
 	p.Int(&limit, "", "limit", "max notes to write this run (0 = all)")
 	if err := cli.Parse(p, args); err != nil {
 		return cli.Fail(err)
 	}
 	if sources == "" {
-		sources = "var/mail"
+		sources = "var/corpus/mail"
 	}
 	msgs, skipped, err := mailconv.LoadMessages(sources)
 	if err != nil {

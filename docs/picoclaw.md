@@ -7,11 +7,11 @@ in the reasoner volume, not in the 2dph image.
 No secrets in git: Ollama needs no key; MCP is local HTTP.
 
 ```bash
-bin/stack/start-assistant
-bin/stack/start-assistant --no-attach
-bin/stack/start-assistant -- -m "search the 2dph brain for LadybugDB"
-bin/stack/status
-bin/stack/stop
+scripts/stack/start-assistant
+scripts/stack/start-assistant --no-attach
+scripts/stack/start-assistant -- -m "search the 2dph brain for LadybugDB"
+scripts/stack/status
+scripts/stack/stop
 ```
 
 `start-assistant` reuses a healthy brain on `:8630`, starts the CPU reasoner,

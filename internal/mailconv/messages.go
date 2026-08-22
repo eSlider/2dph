@@ -1,6 +1,6 @@
 package mailconv
 
-// Raw message.json access for reconcilers: walk the var/mail tree, decode
+// Raw message.json access for reconcilers: walk the var/corpus/mail tree, decode
 // headers, and classify senders (machine vs human).
 
 import (

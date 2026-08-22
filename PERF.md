@@ -1,7 +1,7 @@
 # PERF — 2dph brain memory
 
 Root cause + recipe for the 5.2GB RSS leak (2026-08-19). Source of truth:
-`bin/stack/serve-brain` and `bin/docker-entrypoint` (same pattern, two places).
+`scripts/stack/serve-brain` and `scripts/docker-entrypoint` (same pattern, two places).
 
 ## Symptom
 
@@ -27,9 +27,9 @@ Measured: daemon 1.1GB + API 100MB, zero zombies.
 ## Recipe
 
 - Docker: the entrypoint already does this
-  (`bin/docker-entrypoint` `serve` branch starts `brain-search serve`
+  (`scripts/docker-entrypoint` `serve` branch starts `brain-search serve`
   before `brain-serve`).
-- Bare host: `bin/stack/serve-brain` — builds static binaries
+- Bare host: `scripts/stack/serve-brain` — builds static binaries
   (`bin-build/brain-{serve,search,index}`) with Zig CGO, then starts both
   processes with reuse logic (curl health, keep running daemon/API).
 

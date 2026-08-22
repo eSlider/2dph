@@ -5,7 +5,7 @@
 //
 //	./bin/chat/facts.go
 //
-// Writes var/chats/facts/. Does not index the brain.
+// Writes var/corpus/chats/facts/. Does not index the brain.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 

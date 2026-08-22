@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# bin/stack/stop - stop compose brain / brain-mcp / reasoner / picoclaw / mail-sync.
+# scripts/stack/stop - stop compose brain / brain-mcp / reasoner / picoclaw / mail-sync.
 #
-#   bin/stack/stop
+#   scripts/stack/stop
 #
 # Volumes kept (kb, reasoner weights, picoclaw-home). Does not kill a host
 # bin/brain/serve.go that is not a compose service.

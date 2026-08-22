@@ -6,7 +6,7 @@
 // them into the OnlyOffice CRM: match by email, create missing persons.
 //
 //	ONLYOFFICE_URL/USER/PASS ./bin/onlyoffice/reconcile-contact.go                 # report only
-//	./bin/onlyoffice/reconcile-contact.go --sources var/mail --write --limit 200
+//	./bin/onlyoffice/reconcile-contact.go --sources var/corpus/mail --write --limit 200
 //
 // Machine senders (noreply/newsletter/bounces, mass platforms) never become
 // contacts. Read-only by default; idempotent by email match.
@@ -35,14 +35,14 @@ func run(args []string) int {
 	)
 	p := cli.New("onlyoffice-reconcile-contact")
 	p.Description = "reconcile human mail senders into OO CRM persons (match by email)"
-	p.String(&sources, "", "sources", "var/mail root to scan (default var/mail)")
+	p.String(&sources, "", "sources", "var/corpus/mail root to scan (default var/corpus/mail)")
 	p.Bool(&write, "", "write", "create missing persons (default: report only)")
 	p.Int(&limit, "", "limit", "max new persons to create this run (0 = all)")
 	if err := cli.Parse(p, args); err != nil {
 		return cli.Fail(err)
 	}
 	if sources == "" {
-		sources = "var/mail"
+		sources = "var/corpus/mail"
 	}
 	msgs, skipped, err := mailconv.LoadMessages(sources)
 	if err != nil {

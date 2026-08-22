@@ -1,9 +1,9 @@
 //usr/bin/env go run "$0" "$@"; exit
 //
-// bin/ci/semver.go - next semver from conventional commits since the last tag.
+// bin/semver/next.go - next semver from conventional commits since the last tag.
 //
-//	bin/ci/semver.go                      # last tag..HEAD
-//	bin/ci/semver v0.1.0 v0.1.0..HEAD  # explicit tag + range
+//	bin/semver/next.go                      # last tag..HEAD
+//	bin/semver/next.go v0.1.0 v0.1.0..HEAD  # explicit tag + range
 //	prints: v0.1.1 | v0.2.0 | v1.0.0 | none
 //
 // Bump rules (conventional commits):
