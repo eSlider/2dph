@@ -8,6 +8,8 @@ __pycache__/
 .DS_Store
 *.env
 .env
+# testdata fixtures may ship .env (committed, not secrets)
+!internal/config/testdata/**/.env
 .secrets/
 lib-ladybug/
 go.work.local
