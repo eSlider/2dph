@@ -1,6 +1,7 @@
 package mailconv
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -132,5 +133,45 @@ func TestFromEMLDryRunAndSkip(t *testing.T) {
 	_, skip, _, err := FromEML(root, false, false, false)
 	if err != nil || skip != 1 {
 		t.Fatalf("skip=%d err=%v, want 1", skip, err)
+	}
+}
+
+// TestFromEMLFolderNestedLayout proves that for the mailsync v1 layout
+// <root>/<folder>/<id>/<id>.eml the extracted folder is the parent of the
+// <id> dir (the mail folder), not the immediate <id> directory (#111).
+func TestFromEMLFolderNestedLayout(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "Sent Items", "abc123")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	eml := filepath.Join(dir, "abc123.eml")
+	if err := os.WriteFile(eml, []byte(emlFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ok, _, fail, err := FromEML(root, false, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok != 1 || fail != 0 {
+		t.Fatalf("ok=%d fail=%d, want 1/0", ok, fail)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "message.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var msg Message
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		t.Fatalf("unmarshal message.json: %v", err)
+	}
+	if msg.Folder != "Sent Items" {
+		t.Fatalf("folder = %q, want %q (layout %q)", msg.Folder, "Sent Items", eml)
+	}
+	md, err := os.ReadFile(filepath.Join(dir, "message.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(md), "folder: \"Sent Items\"") {
+		t.Errorf("message.md missing folder: %q; got:\n%s", "Sent Items", string(md))
 	}
 }

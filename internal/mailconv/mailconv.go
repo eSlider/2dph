@@ -185,7 +185,7 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		if !force {
 			if st, err := os.Stat(mdPath); err == nil && st.Size() > 0 {
 				skip++
-				writeMessageJSON(msgDir, p, id) // keep reconcilers' view fresh (#79)
+				writeMessageJSON(root, msgDir, p, id) // keep reconcilers' view fresh (#79)
 				return nil
 			}
 		}
@@ -197,8 +197,8 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		}
 		msg := res.msg
 		msg.ID = id
-		msg.Folder = filepath.Base(msgDir)
-		writeMessageJSON(msgDir, p, id)
+		msg.Folder = emlFolder(root, p)
+		writeMessageJSON(root, msgDir, p, id)
 		body := BodyMarkdown(msg)
 		if dryRun {
 			ok++
@@ -222,6 +222,18 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 	return ok, skip, fail, err
 }
 
+// emlFolder returns the mail folder for an .eml at path p under root.
+// For the mailsync v1 layout <root>/<folder>/<id>/<id>.eml the folder is the
+// parent of the <id> dir (the grandparent of the .eml). A flat layout
+// (<root>/*.eml) keeps the immediate dir as before (#111).
+func emlFolder(root, p string) string {
+	msgDir := filepath.Dir(p)
+	if msgDir == root {
+		return filepath.Base(msgDir)
+	}
+	return filepath.Base(filepath.Dir(msgDir))
+}
+
 // parseEMLFile opens a .eml and parses it with parseEML.
 func parseEMLFile(path string) (parsedEML, error) {
 	f, err := os.Open(path)
@@ -235,14 +247,14 @@ func parseEMLFile(path string) (parsedEML, error) {
 // writeMessageJSON persists the decoded message as message.json next to the
 // source .eml so JSON-based consumers (reconcilers, stack sync) see raw-mail
 // sources without reparsing every .eml on each run.
-func writeMessageJSON(msgDir, srcPath, id string) {
+func writeMessageJSON(root, msgDir, srcPath, id string) {
 	res, err := parseEMLFile(srcPath)
 	if err != nil {
 		return
 	}
 	msg := res.msg
 	msg.ID = id
-	msg.Folder = filepath.Base(msgDir)
+	msg.Folder = emlFolder(root, srcPath)
 	out, err := json.Marshal(msg)
 	if err != nil {
 		return
