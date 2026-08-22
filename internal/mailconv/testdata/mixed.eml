@@ -1,0 +1,22 @@
+From: a@example.com
+To: b@example.com
+Subject: with attachment
+Date: Mon, 18 Aug 2026 09:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MX"
+
+--MX
+Content-Type: text/plain; charset=utf-8
+
+body text
+--MX
+Content-Type: text/plain; name="terms.txt"
+Content-Disposition: attachment; filename="terms.txt"
+
+the terms
+--MX
+Content-Type: application/octet-stream; name="blob.bin"
+Content-Disposition: attachment; filename="blob.bin"
+
+binary-data
+--MX--
