@@ -8,6 +8,8 @@ require (
 	github.com/chewxy/math32 v1.11.2
 	github.com/daulet/tokenizers v1.27.0
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
+	github.com/emersion/go-message v0.18.2
 	github.com/eslider/go-onlyoffice v0.13.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/integrii/flaggy v1.8.0
@@ -22,6 +24,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/google/go-querystring v1.2.0 // indirect

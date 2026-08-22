@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 )
@@ -16,6 +17,13 @@ var (
 	db   *lbug.Database
 	conn *lbug.Connection
 )
+
+// brainMu guards the package-global db/conn pair. Serve endpoints that run
+// on the long-lived read handle (Search/Get/Stats/Audit and the search /
+// read helpers) hold it as RLock for the whole read; the Ingest write window
+// closes and reopens the pair under Lock, so a handler can never touch a
+// connection that a concurrent ingest just closed (C use-after-close).
+var brainMu sync.RWMutex
 
 // RepoRoot returns KB_ROOT or walks up from the executable / cwd.
 func RepoRoot() string {
@@ -62,10 +70,21 @@ func dbPath() string {
 }
 
 func openBrain() error {
-	return openWithSandbox(eps())
+	brainMu.Lock()
+	defer brainMu.Unlock()
+	return openWithSandboxLocked(eps())
 }
 
+// openWithSandbox opens the long-lived serve read connection (Write path
+// excluded). Callers outside the write window take brainMu.Lock.
 func openWithSandbox(epsv string) error {
+	brainMu.Lock()
+	defer brainMu.Unlock()
+	return openWithSandboxLocked(epsv)
+}
+
+// openWithSandboxLocked assumes brainMu is held write-locked.
+func openWithSandboxLocked(epsv string) error {
 	cfg := lbug.DefaultSystemConfig()
 	cfg.MaxNumThreads = 8
 	pool := int64(1 << 30) // 1GB
@@ -84,19 +103,19 @@ func openWithSandbox(epsv string) error {
 
 	conn, err = lbug.OpenConnection(db)
 	if err != nil {
-		closeBrain()
+		closeBrainLocked()
 		return fmt.Errorf("OpenConnection: %w", err)
 	}
 	// Session settings need a live connection; running this before
 	// OpenConnection dereferenced a nil *Connection.
 	if epsv != "" {
 		if strings.ContainsAny(epsv, "'\\") {
-			closeBrain()
+			closeBrainLocked()
 			return fmt.Errorf("SET STREAM_SANDBOX: invalid value")
 		}
 		if res, err := conn.Query("SET STREAM_SANDBOX = '" + epsv + "'"); err != nil {
 			qClose(res)
-			closeBrain()
+			closeBrainLocked()
 			return fmt.Errorf("SET STREAM_SANDBOX: %w", err)
 		} else {
 			qClose(res)
@@ -104,14 +123,14 @@ func openWithSandbox(epsv string) error {
 	}
 	if res, err := conn.Query("LOAD EXTENSION FTS"); err != nil {
 		qClose(res)
-		closeBrain()
+		closeBrainLocked()
 		return fmt.Errorf("LOAD EXTENSION FTS: %w", err)
 	} else {
 		qClose(res)
 	}
 	if res, err := conn.Query("LOAD EXTENSION VECTOR"); err != nil {
 		qClose(res)
-		closeBrain()
+		closeBrainLocked()
 		return fmt.Errorf("LOAD EXTENSION VECTOR: %w", err)
 	} else {
 		qClose(res)
@@ -137,7 +156,15 @@ func migrateIntervalColumns() {
 	}
 }
 
+// closeBrain releases the serve read handle. Callers hold brainMu.Lock.
 func closeBrain() {
+	brainMu.Lock()
+	defer brainMu.Unlock()
+	closeBrainLocked()
+}
+
+// closeBrainLocked assumes brainMu is held write-locked.
+func closeBrainLocked() {
 	if conn != nil {
 		conn.Close()
 		conn = nil

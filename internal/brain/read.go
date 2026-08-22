@@ -174,6 +174,8 @@ func MainEval(args []string) int {
 }
 
 func lookupLeaf(id string) (map[string]string, string, error) {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
 	if conn == nil {
 		return nil, "", fmt.Errorf("brain not open")
 	}
@@ -213,6 +215,8 @@ func lookupLeaf(id string) (map[string]string, string, error) {
 }
 
 func leafStats() (map[string]any, error) {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
 	if conn == nil {
 		return nil, fmt.Errorf("brain not open")
 	}

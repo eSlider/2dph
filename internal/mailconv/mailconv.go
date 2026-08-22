@@ -182,6 +182,13 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		}
 		msgDir := filepath.Dir(p)
 		id := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+		// Layout <root>/<folder>/<id>/<id>.eml: the folder is the grandparent
+		// of the .eml (mbox2eml + sync --raw both nest one dir per message).
+		// Flat layout (<root>/*.eml) keeps the immediate dir as before.
+		folder := filepath.Base(msgDir)
+		if msgDir != root {
+			folder = filepath.Base(filepath.Dir(msgDir))
+		}
 		mdPath := filepath.Join(msgDir, "message.md")
 		if !force {
 			if st, err := os.Stat(mdPath); err == nil && st.Size() > 0 {
@@ -204,7 +211,7 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		}
 		date, _ := env.Date()
 		msg := Message{
-			Source: "raw-email", ID: id, Folder: filepath.Base(msgDir),
+			Source: "raw-email", ID: id, Folder: folder,
 			Subject:  env.GetHeader("Subject"),
 			From:     env.GetHeader("From"),
 			To:       env.GetHeader("To"),
