@@ -40,8 +40,12 @@ replies (`skills/picoclaw/SKILL.md`). `throttled` ≠ absence.
    write only under `var/` (gitignored).
 3. **PII**: client data never read or quoted; test data synthetic
    (Alice/Bob/example.com).
-4. **TDD**: failing test before tool code; tests run offline vs fixtures;
-   network/db calls wrapped.
+4. **TDD — нет теста → не работает → задача открыта.** Failing test before
+   tool code; tests run offline vs fixtures; network/db calls wrapped.
+   A task is NOT done until a test proves it (and is green). For mail
+   send/receive specifically: an end-to-end test (send → receipt) is MANDATORY
+   before closing a mail task; until it exists and passes, the issue stays
+   open.
 5. **Docs reflect behaviour**: any change updates `docs/` + `PLAN.md` status.
 6. **No hardcoded absolute paths or host URLs anywhere** (code, comments,
    tests, scripts). External values load from config; missing key after the
