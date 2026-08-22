@@ -12,6 +12,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -30,9 +31,9 @@ func run(args []string) int {
 	if err != nil {
 		return cliparse.Fail(err)
 	}
-	base, model, jsonOut, device := c.Base, c.Model, c.JSONOut, c.Device
-	client := reasoner.Client{BaseURL: base, Model: model, Device: device}
-	rep := reasoner.Run(client)
+	jsonOut := c.JSONOut
+	client := reasoner.New(&reasoner.Config{BaseURL: c.Base, Model: c.Model, Device: c.Device})
+	rep := client.Run(context.Background())
 	lat := make([]float64, 0, len(rep.Prompts))
 	for _, p := range rep.Prompts {
 		lat = append(lat, float64(p.LatencyMS))

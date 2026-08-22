@@ -1,7 +1,9 @@
 package reasoner
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +11,9 @@ import (
 	"strings"
 	"time"
 )
+
+// DefaultBaseURL is the OpenAI-compatible base URL used when none is configured.
+const DefaultBaseURL = "http://127.0.0.1:11435/v1"
 
 // HF IDs named in docs. No Qwen3.6-9B exists.
 const (
@@ -19,11 +24,13 @@ const (
 	OllamaQuality = "MichelRosselli/bonsai-27b:Q1_0"
 )
 
+// ToolCall is the bake-off outcome: one requested tool invocation.
 type ToolCall struct {
 	Name      string
 	Arguments string
 }
 
+// Result is the outcome of one bake-off prompt.
 type Result struct {
 	Model      string `json:"model"`
 	OK         bool   `json:"ok"`
@@ -60,48 +67,97 @@ var BakePrompts = []Prompt{
 	},
 }
 
-func MCPTools() []map[string]any {
-	return []map[string]any{
-		openaiTool("search", "deduction search (facts → info → web)", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"q": map[string]any{"type": "string", "description": "search query"},
-				"n": map[string]any{"type": "integer"},
+const bakeSystemPrompt = "You are PicoClaw talking to 2dph MCP. Always call a tool before a factual claim. search then get then audit."
+
+// Tool is an OpenAI-style function tool schema sent in the chat request.
+type Tool struct {
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+}
+
+type ToolFunction struct {
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Parameters  ToolSchema `json:"parameters"`
+}
+
+// ToolSchema is a minimal JSON-schema object for tool parameters.
+type ToolSchema struct {
+	Type        string                `json:"type"`
+	Description string                `json:"description,omitempty"`
+	Properties  map[string]ToolSchema `json:"properties,omitempty"`
+	Required    []string              `json:"required,omitempty"`
+}
+
+// MCPTools returns the OpenAI function tools for the bake-off MCP ops.
+func MCPTools() []Tool {
+	return []Tool{
+		openaiTool("search", "deduction search (facts → info → web)", ToolSchema{
+			Type: "object",
+			Properties: map[string]ToolSchema{
+				"q": {Type: "string", Description: "search query"},
+				"n": {Type: "integer"},
 			},
-			"required": []string{"q"},
+			Required: []string{"q"},
 		}),
-		openaiTool("get", "read one leaf by id", map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"id":   map[string]any{"type": "string"},
-				"body": map[string]any{"type": "boolean"},
+		openaiTool("get", "read one leaf by id", ToolSchema{
+			Type: "object",
+			Properties: map[string]ToolSchema{
+				"id":   {Type: "string"},
+				"body": {Type: "boolean"},
 			},
-			"required": []string{"id"},
+			Required: []string{"id"},
 		}),
-		openaiTool("audit", "facts confidence histogram", map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-		}),
+		openaiTool("audit", "facts confidence histogram", ToolSchema{Type: "object"}),
 	}
 }
 
-func openaiTool(name, desc string, schema map[string]any) map[string]any {
-	return map[string]any{
-		"type": "function",
-		"function": map[string]any{
-			"name":        name,
-			"description": desc,
-			"parameters":  schema,
+func openaiTool(name, desc string, schema ToolSchema) Tool {
+	return Tool{
+		Type: "function",
+		Function: ToolFunction{
+			Name:        name,
+			Description: desc,
+			Parameters:  schema,
 		},
 	}
 }
 
-type Client struct {
+// Config holds reasoner client settings. Zero values fall back to defaults
+// inside New; BaseURL defaults to DefaultBaseURL and Timeout to 10m.
+type Config struct {
 	BaseURL    string
 	Model      string
-	HTTP       *http.Client
 	Device     string
-	ToolChoice string
+	ToolChoice string // "", "required", "auto", "none"; "" behaves as "required"
+	Timeout    time.Duration
+	HTTP       *http.Client
+}
+
+// Client is a concurrency-safe OpenAI-compatible reasoner client.
+type Client struct {
+	hc  *http.Client
+	cfg Config
+}
+
+// New builds a reasoner client. A nil cfg is valid; BaseURL/Timeout default in.
+// The optional cfg.HTTP transport is reused when provided.
+func New(cfg *Config) *Client {
+	var c Config
+	if cfg != nil {
+		c = *cfg
+	}
+	if strings.TrimSpace(c.BaseURL) == "" {
+		c.BaseURL = DefaultBaseURL
+	}
+	if c.Timeout == 0 {
+		c.Timeout = 10 * time.Minute
+	}
+	hc := c.HTTP
+	if hc == nil {
+		hc = &http.Client{Timeout: c.Timeout}
+	}
+	return &Client{hc: hc, cfg: c}
 }
 
 type Report struct {
@@ -132,80 +188,167 @@ func HFFor(model string) string {
 	}
 }
 
-func (c *Client) httpc() *http.Client {
-	if c.HTTP == nil {
-		c.HTTP = &http.Client{Timeout: 10 * time.Minute}
-	}
-	return c.HTTP
-}
-
 func Origin(base string) string {
 	s := strings.TrimRight(base, "/")
 	return strings.TrimSuffix(s, "/v1")
 }
 
-func (c Client) ChatTools(user string) (ToolCall, string, error) {
-	choice := c.ToolChoice
-	if choice == "" {
-		choice = "required"
+func (c *Client) chatURL() string { return strings.TrimRight(c.cfg.BaseURL, "/") + "/chat/completions" }
+func (c *Client) psURL() string   { return Origin(c.cfg.BaseURL) + "/api/ps" }
+
+// doJSON performs a JSON request and decodes the response into dest.
+func (c *Client) doJSON(ctx context.Context, method, url string, body, dest any) error {
+	var reqBody io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("reasoner: marshal request: %w", err)
+		}
+		reqBody = bytes.NewReader(data)
 	}
-	body, _ := json.Marshal(map[string]any{
-		"model": c.Model,
-		"messages": []map[string]string{
-			{"role": "system", "content": "You are PicoClaw talking to 2dph MCP. Always call a tool before a factual claim. search then get then audit."},
-			{"role": "user", "content": user},
-		},
-		"tools":       MCPTools(),
-		"tool_choice": choice,
-	})
-	base := strings.TrimRight(c.BaseURL, "/")
-	if !strings.HasSuffix(base, "/v1") {
-		base += "/v1"
-	}
-	url := base + "/chat/completions"
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
-		return ToolCall{}, "", err
+		return fmt.Errorf("reasoner: build request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := c.httpc().Do(req)
+	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := c.hc.Do(req)
 	if err != nil {
-		return ToolCall{}, "", err
+		return fmt.Errorf("reasoner: send request: %w", err)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
-	if res.StatusCode >= 300 {
-		return ToolCall{}, string(raw), fmt.Errorf("http %d", res.StatusCode)
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return fmt.Errorf("reasoner: %s %s: http %d: %s", method, url, res.StatusCode, snippet(string(raw), 300))
 	}
-	return ParseToolResponse(raw)
-}
-
-func ParseToolResponse(raw []byte) (ToolCall, string, error) {
-	var wrap struct {
-		Choices []struct {
-			Message struct {
-				Content   string `json:"content"`
-				ToolCalls []struct {
-					Function struct {
-						Name      string          `json:"name"`
-						Arguments json.RawMessage `json:"arguments"`
-					} `json:"function"`
-				} `json:"tool_calls"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &wrap); err != nil {
-		return ToolCall{}, "", err
-	}
-	content := ""
-	if len(wrap.Choices) > 0 {
-		content = wrap.Choices[0].Message.Content
-		if n := len(wrap.Choices[0].Message.ToolCalls); n > 0 {
-			fn := wrap.Choices[0].Message.ToolCalls[0].Function
-			return ToolCall{Name: fn.Name, Arguments: rawArgs(fn.Arguments)}, content, nil
+	if dest != nil {
+		if err := json.Unmarshal(raw, dest); err != nil {
+			return fmt.Errorf("reasoner: decode response: %w", err)
 		}
 	}
-	return ToolCall{}, content, fmt.Errorf("no tool_calls")
+	return nil
+}
+
+// doStream reads newline-delimited JSON, calling onItem for each non-empty line.
+func (c *Client) doStream(ctx context.Context, method, url string, body any, onItem func(json.RawMessage) error) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("reasoner: marshal request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("reasoner: build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	res, err := c.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("reasoner: send request: %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		raw, _ := io.ReadAll(res.Body)
+		return fmt.Errorf("reasoner: %s %s: http %d: %s", method, url, res.StatusCode, snippet(string(raw), 300))
+	}
+	scanner := bufio.NewScanner(res.Body)
+	for scanner.Scan() {
+		line := bytes.TrimSpace(scanner.Bytes())
+		if len(line) == 0 {
+			continue
+		}
+		if err := onItem(append([]byte(nil), line...)); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reasoner: read stream: %w", err)
+	}
+	return nil
+}
+
+// --- chat completions -------------------------------------------------------
+
+type ChatRequest struct {
+	Model      string        `json:"model"`
+	Messages   []ChatMessage `json:"messages"`
+	Tools      []Tool        `json:"tools,omitempty"`
+	ToolChoice *string       `json:"tool_choice,omitempty"`
+	Stream     bool          `json:"stream,omitempty"`
+}
+
+type ChatMessage struct {
+	Role      string         `json:"role"`
+	Content   string         `json:"content,omitempty"`
+	ToolCalls []ChatToolCall `json:"tool_calls,omitempty"`
+}
+
+type ChatToolCall struct {
+	ID       string           `json:"id,omitempty"`
+	Type     string           `json:"type,omitempty"`
+	Function ChatToolCallFunc `json:"function"`
+}
+
+type ChatToolCallFunc struct {
+	Name      string          `json:"name"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+}
+
+type ChatResponse struct {
+	Model   string       `json:"model"`
+	Choices []ChatChoice `json:"choices"`
+}
+
+type ChatChoice struct {
+	Index   int         `json:"index"`
+	Message ChatMessage `json:"message"`
+}
+
+// Chat posts a chat completion request. Streaming (req.Stream) collects
+// NDJSON chunks into a single response; otherwise the JSON body is decoded.
+func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
+	if req.Model == "" {
+		req.Model = c.cfg.Model
+	}
+	var resp ChatResponse
+	if req.Stream {
+		err := c.doStream(ctx, http.MethodPost, c.chatURL(), req, func(raw json.RawMessage) error {
+			var chunk ChatResponse
+			if err := json.Unmarshal(raw, &chunk); err != nil {
+				return fmt.Errorf("reasoner: decode chat chunk: %w", err)
+			}
+			resp.Choices = append(resp.Choices, chunk.Choices...)
+			return nil
+		})
+		return &resp, err
+	}
+	if err := c.doJSON(ctx, http.MethodPost, c.chatURL(), req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// extractTool pulls the first tool call and message content off a response.
+func extractTool(resp *ChatResponse) (ToolCall, string, error) {
+	if resp == nil || len(resp.Choices) == 0 {
+		return ToolCall{}, "", fmt.Errorf("reasoner: empty response")
+	}
+	msg := resp.Choices[0].Message
+	if n := len(msg.ToolCalls); n > 0 {
+		fn := msg.ToolCalls[0].Function
+		return ToolCall{Name: fn.Name, Arguments: rawArgs(fn.Arguments)}, msg.Content, nil
+	}
+	return ToolCall{}, msg.Content, fmt.Errorf("reasoner: no tool_calls")
+}
+
+// ParseToolResponse extracts a tool call from a raw chat-completions body.
+func ParseToolResponse(raw []byte) (ToolCall, string, error) {
+	var resp ChatResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return ToolCall{}, "", err
+	}
+	return extractTool(&resp)
 }
 
 func rawArgs(raw json.RawMessage) string {
@@ -226,16 +369,38 @@ func XMLLeak(content string) bool {
 		strings.Contains(s, "<parameter")
 }
 
-func RunPrompt(c Client, p Prompt) Result {
+func (c *Client) bakeRequest(user string) ChatRequest {
+	choice := c.cfg.ToolChoice
+	if choice == "" {
+		choice = "required"
+	}
+	return ChatRequest{
+		Model: c.cfg.Model,
+		Messages: []ChatMessage{
+			{Role: "system", Content: bakeSystemPrompt},
+			{Role: "user", Content: user},
+		},
+		Tools:      MCPTools(),
+		ToolChoice: &choice,
+	}
+}
+
+// RunPrompt runs one bake-off prompt against the client.
+func (c *Client) RunPrompt(ctx context.Context, p Prompt) Result {
 	start := time.Now()
-	tc, content, err := c.ChatTools(p.User)
+	resp, err := c.Chat(ctx, c.bakeRequest(p.User))
 	out := Result{
-		Model:      c.Model,
+		Model:      c.cfg.Model,
 		WantedTool: p.Want,
 		LatencyMS:  time.Since(start).Milliseconds(),
-		Device:     c.Device,
-		XMLLeak:    XMLLeak(content),
+		Device:     c.cfg.Device,
 	}
+	if err != nil {
+		out.Err = err.Error()
+		return out
+	}
+	tc, content, err := extractTool(resp)
+	out.XMLLeak = XMLLeak(content)
 	if err != nil {
 		out.Err = err.Error()
 		if content != "" && out.XMLLeak {
@@ -251,23 +416,33 @@ func RunPrompt(c Client, p Prompt) Result {
 	return out
 }
 
+// --- /api/ps ----------------------------------------------------------------
+
 type ProcMem struct {
 	Name   string
 	SizeMB int
 	VRAMMB int
 }
 
+type psEnvelope struct {
+	Models []psModel `json:"models"`
+}
+
+type psModel struct {
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	SizeVRAM int64  `json:"size_vram"`
+}
+
 func ParsePS(raw []byte) []ProcMem {
-	var wrap struct {
-		Models []struct {
-			Name     string `json:"name"`
-			Size     int64  `json:"size"`
-			SizeVRAM int64  `json:"size_vram"`
-		} `json:"models"`
-	}
+	var wrap psEnvelope
 	if err := json.Unmarshal(raw, &wrap); err != nil {
 		return nil
 	}
+	return psFromEnvelope(wrap)
+}
+
+func psFromEnvelope(wrap psEnvelope) []ProcMem {
 	out := make([]ProcMem, 0, len(wrap.Models))
 	for _, m := range wrap.Models {
 		out = append(out, ProcMem{
@@ -279,31 +454,29 @@ func ParsePS(raw []byte) []ProcMem {
 	return out
 }
 
-func (c Client) FetchPS() []ProcMem {
-	url := Origin(c.BaseURL) + "/api/ps"
-	res, err := c.httpc().Get(url)
-	if err != nil {
-		return nil
+// FetchPS returns the models currently loaded in memory.
+func (c *Client) FetchPS(ctx context.Context) ([]ProcMem, error) {
+	var wrap psEnvelope
+	if err := c.doJSON(ctx, http.MethodGet, c.psURL(), nil, &wrap); err != nil {
+		return nil, err
 	}
-	defer res.Body.Close()
-	raw, _ := io.ReadAll(res.Body)
-	if res.StatusCode >= 300 {
-		return nil
-	}
-	return ParsePS(raw)
+	return psFromEnvelope(wrap), nil
 }
 
-func Run(c Client) Report {
-	if c.Device == "" {
-		c.Device = "cpu"
+// Run executes the CPU tool-call bake-off.
+func (c *Client) Run(ctx context.Context) Report {
+	cfg := c.cfg
+	device := cfg.Device
+	if device == "" {
+		device = "cpu"
 	}
 	rep := Report{
-		Model:  c.Model,
-		HF:     HFFor(c.Model),
-		Device: c.Device,
+		Model:  cfg.Model,
+		HF:     HFFor(cfg.Model),
+		Device: device,
 	}
 	for _, p := range BakePrompts {
-		r := RunPrompt(c, p)
+		r := c.RunPrompt(ctx, p)
 		rep.Prompts = append(rep.Prompts, r)
 		rep.ToolCallN++
 		if r.OK {
@@ -313,10 +486,10 @@ func Run(c Client) Report {
 			rep.XMLLeak++
 		}
 	}
-	if mems := c.FetchPS(); len(mems) > 0 {
+	if mems, err := c.FetchPS(ctx); err == nil && len(mems) > 0 {
 		rep.RSSMB = mems[0].SizeMB
 		rep.VRAMMB = mems[0].VRAMMB
-		if c.Device == "cpu" && mems[0].VRAMMB > 0 {
+		if device == "cpu" && mems[0].VRAMMB > 0 {
 			rep.Device = "gpu"
 		}
 		for i := range rep.Prompts {
@@ -324,4 +497,11 @@ func Run(c Client) Report {
 		}
 	}
 	return rep
+}
+
+func snippet(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
