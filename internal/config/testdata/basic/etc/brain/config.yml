@@ -5,3 +5,5 @@ workers: 4
 buffer_pool: 1073741824
 search:
   url: https://search.example.com
+reasoner:
+  baseurl: http://cfg.test:11435/v1

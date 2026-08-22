@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/eSlider/2dph/internal/config"
 )
 
 func newTestClient(t *testing.T, handler http.Handler) *Client {
@@ -151,13 +153,46 @@ func TestFetchPSTyped(t *testing.T) {
 	}
 }
 
-func TestLoadEnvReadsReasonerConfig(t *testing.T) {
-	t.Setenv("REASONER_BASE_URL", "http://cfg.test:9999/v1")
-	t.Setenv("REASONER_MODEL", "cfg-model")
-	t.Setenv("REASONER_DEVICE", "gpu")
-	cfg := LoadEnv()
+func TestFromTypedReasonerConfig(t *testing.T) {
+	cfg := FromTyped(config.Config{
+		Reasoner: config.ReasonerConfig{
+			BaseURL: "http://cfg.test:9999/v1",
+			Model:   "cfg-model",
+			Device:  "gpu",
+		},
+	})
 	if cfg.BaseURL != "http://cfg.test:9999/v1" || cfg.Model != "cfg-model" || cfg.Device != "gpu" {
 		t.Fatalf("cfg=%+v", cfg)
+	}
+}
+
+func TestFromTypedReasonerDefaults(t *testing.T) {
+	cfg := FromTyped(config.Config{}) // empty typed config → client defaults
+	if cfg.BaseURL != DefaultBaseURL || cfg.Model != OllamaRAM || cfg.Device != "cpu" {
+		t.Fatalf("cfg=%+v", cfg)
+	}
+}
+
+func TestConfigureSetsActiveConfig(t *testing.T) {
+	prev := active
+	defer func() { active = prev }()
+
+	Configure(&config.Config{
+		Reasoner: config.ReasonerConfig{
+			BaseURL: "http://configured.test:11435/v1",
+			Model:   "configured-model",
+			Device:  "gpu",
+		},
+	})
+	got := LoadEnv()
+	if got.BaseURL != "http://configured.test:11435/v1" || got.Model != "configured-model" || got.Device != "gpu" {
+		t.Fatalf("got=%+v", got)
+	}
+
+	Configure(nil) // nil must not clobber the active config
+	got = LoadEnv()
+	if got.Model != "configured-model" {
+		t.Fatalf("nil Configure clobbered active config: %+v", got)
 	}
 }
 

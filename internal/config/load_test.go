@@ -23,6 +23,7 @@ func isolateEnv(t *testing.T) {
 		"KB_INDEX_ALLOW_LIVE", "KB_WATCH_INTERVAL", "KB_WATCH_DIRS",
 		"OO_CLI", "BRAIN_SEARCH_URL", "BRAIN_SEARCH_USER",
 		"BRAIN_SEARCH_PASS", "BRAIN_SEARCH_CACHE", "BRAIN_SEARCH_ENV",
+		"REASONER_BASE_URL", "REASONER_MODEL", "REASONER_DEVICE",
 	}
 	prev := map[string]string{}
 	for _, k := range vars {
@@ -80,6 +81,17 @@ func TestLoadStack_DeepMergeAndPriority(t *testing.T) {
 	}
 	if cfg.BufferPool != 1<<30 {
 		t.Fatalf("buffer_pool = %d, want default 1<<30", cfg.BufferPool)
+	}
+	// Reasoner sub-tree recurses across layers: baseurl from config.yml,
+	// model from config.local.yml, device keeps the default.
+	if cfg.Reasoner.BaseURL != "http://cfg.test:11435/v1" {
+		t.Fatalf("reasoner.baseurl = %q, want base value", cfg.Reasoner.BaseURL)
+	}
+	if cfg.Reasoner.Model != "local-model" {
+		t.Fatalf("reasoner.model = %q, want local-model (config.local.yml)", cfg.Reasoner.Model)
+	}
+	if cfg.Reasoner.Device != "cpu" {
+		t.Fatalf("reasoner.device = %q, want default cpu", cfg.Reasoner.Device)
 	}
 }
 
@@ -139,6 +151,9 @@ func TestLegacyEnvMapping(t *testing.T) {
 	t.Setenv("BRAIN_SEARCH_PASS", "s3cret")
 	t.Setenv("BRAIN_SEARCH_CACHE", "/opt/cache.db")
 	t.Setenv("BRAIN_SEARCH_ENV", "/opt/search.env")
+	t.Setenv("REASONER_BASE_URL", "http://r.test:11435/v1")
+	t.Setenv("REASONER_MODEL", "r-model")
+	t.Setenv("REASONER_DEVICE", "gpu")
 
 	cfg := loadTest(t, t.TempDir()) // no files: defaults + legacy env
 
@@ -200,7 +215,16 @@ func TestLegacyEnvMapping(t *testing.T) {
 		t.Errorf("search.cache = %q", cfg.Search.Cache)
 	}
 	if cfg.Search.Env != "/opt/search.env" {
-		t.Errorf("search.env = %q", cfg.Search.Env)
+		t.Errorf("search.env = %q, want /opt/search.env", cfg.Search.Env)
+	}
+	if cfg.Reasoner.BaseURL != "http://r.test:11435/v1" {
+		t.Errorf("reasoner.baseurl = %q, want legacy env override", cfg.Reasoner.BaseURL)
+	}
+	if cfg.Reasoner.Model != "r-model" {
+		t.Errorf("reasoner.model = %q, want legacy env override", cfg.Reasoner.Model)
+	}
+	if cfg.Reasoner.Device != "gpu" {
+		t.Errorf("reasoner.device = %q, want legacy env override", cfg.Reasoner.Device)
 	}
 }
 
@@ -243,5 +267,9 @@ func TestDefaults(t *testing.T) {
 	if d.Port != 8630 || d.Workers != 4 || d.Host != "127.0.0.1" ||
 		d.BufferPool != 1<<30 || d.SearchDaemonPort != 17830 || d.WatchInterval != 30 {
 		t.Fatalf("unexpected defaults: %+v", d)
+	}
+	if d.Reasoner.BaseURL != "http://127.0.0.1:11435/v1" ||
+		d.Reasoner.Model != "qwen3.5:9b" || d.Reasoner.Device != "cpu" {
+		t.Fatalf("unexpected reasoner defaults: %+v", d.Reasoner)
 	}
 }

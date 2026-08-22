@@ -17,9 +17,10 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/eSlider/2dph/internal/config"
+	"github.com/eSlider/2dph/internal/reasoner"
 	cliparse "github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/pkg/duckdb"
-	"github.com/eSlider/2dph/internal/reasoner"
 )
 
 func main() {
@@ -27,6 +28,13 @@ func main() {
 }
 
 func run(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "reasoner/bench: config: %v\n", err)
+		return 1
+	}
+	reasoner.Configure(cfg)
+
 	c, err := reasoner.ParseArgs(args)
 	if err != nil {
 		return cliparse.Fail(err)
