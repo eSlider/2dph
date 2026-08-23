@@ -289,7 +289,25 @@ extraction and the Dockerfile `pkg/` copy.
 | `go test ./internal/mailconv/... ./internal/mailsync/... ./internal/ocr/...` + `./internal/...` green; `gofmt -l` clean; `go vet` clean | done |
 
 Branch `fix/mailsync-v1#111` → PR into `release/v1`.
-## 2026-08-22 — reasoner client → api-client canon (gitea #93, epic #88)
+## 2026-08-23 — PR + merge feat/imap-mailsync-v1 → release/v1 (gitea #112, epic #88)
+
+Goal: land the v1 generic IMAP source (from #106) that was never merged:
+`internal/mailsync/{imap,watch}.go` + offline tests + CLI/flags wiring +
+`bin/mail/watch` entrypoint + `deploy/mail-watcher.Dockerfile`.
+
+| Step | Status |
+|------|--------|
+| delta audit vs release/v1 (756f514): missing = imap source files, watch loop, CLI flags (`--once/--brain/--ocr/--local`), `IMAP_*` env parsing, `SyncConfig.IMAP`, `bin/mail/watch`, `deploy/mail-watcher.Dockerfile`, `go-imap/v2`+`go-sasl` deps | done |
+| overlap check: brain write-path fixes (`internal/brain/*`, `mailconv.FromEML`) already on release/v1 via #109/#110/#111 — NOT re-ported; old `gmail.go`/`m365.go`/`onlyoffice.go` untouched and compiling | done |
+| port: `internal/mailsync/imap.go` + `imap_test.go` + `watch.go`, cli.go/sync.go wiring, `bin/mail/watch/main.go`, Dockerfile, `go.mod`/`go.sum` | done |
+| source selection: `--source imap` → `IMAPEnv(envVars)` → `SyncConfig.IMAP` → `newIMAPSources`; `cfg.Raw=true` (always `.eml`); readEnv honours `IMAP_*` | done |
+| tests (offline, synthetic Alice/Bob): `SanitizeFolder`, `IMAPEnv`, `parseIMAPMessage` (emersion parser), `hasNoSelect`; no network | done |
+| `go test ./internal/...` + `./internal/mailsync/...` green; `go vet` clean; `gofmt -l` clean (shebang-protected files excluded) | done |
+| branch `merge/imap-mailsync-v1#112` off `origin/release/v1` → PR into `release/v1`, CI green | done (open, not merged) |
+
+Branch `merge/imap-mailsync-v1#112` → PR into `release/v1`.
+
+## 2026-08-23 — reasoner client → api-client canon (gitea #93, epic #88)
 
 Goal: apply `skills/api-client/SKILL.md` (go-ollama canon) to
 `internal/reasoner/client.go`, first candidate. Removes the 16× `map[string]any`

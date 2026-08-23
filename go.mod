@@ -8,6 +8,7 @@ require (
 	github.com/chewxy/math32 v1.11.2
 	github.com/daulet/tokenizers v1.27.0
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/eslider/go-config v0.4.0
 	github.com/eslider/go-onlyoffice v0.14.0
@@ -26,6 +27,7 @@ replace (
 )
 
 require (
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
