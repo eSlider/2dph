@@ -438,3 +438,25 @@ change. Result per component (all verified with `go test -race`):
 Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/...`
 clean; touched files gofmt-clean; cgo Zig build of `bin/brain/search.go`
 (`-tags system_ladybug`) green. Branch `audit/concurrency#94` off `release/v1`.
+
+## 2026-08-23 — URL-адресация контента, селекторы, гранулярный сплит (gitea #100)
+
+Goal: stable content addressing for the ETL graph. Every extracted node gets a
+canonical URL `scheme://platform/thread/msg/path-segments[#anchor]`, node ID =
+`sha256(url)[:16]`, separate content ID = `sha256(body)`; parts reference each
+other only via URLs. Content splits granularly BEFORE insertion into typed
+Items (paragraph/heading/table/row/cell/image/link/page); a DOM/jQuery-like
+selector mini-language addresses any leaf. Scope: addressing + selector +
+split helpers with proof-of-use tests. Graph wiring (#99/#101, Ladybug) and
+format coverage beyond html/md are out of scope here.
+
+| Step | Status |
+|------|--------|
+| `internal/address`: `Segment` (parse/render `type[index]`), `New`/`Parse` canonical URL (validated scheme/platform/thread/msg/segments/anchor), `NodeID(url)=sha256(url)[:16]` (32 hex), `ContentID(body)=sha256` (64 hex) | done |
+| `internal/selector`: mini-language `p[3] > table[0] > tr[1] td[2]` (`>` direct child, space descendant, optional index = any) — `Parse` (strict grammar errors) + `Apply(root)` over a typed Item tree | done |
+| `internal/items`: `Kind` named int enum (page→`body`/heading/p/table/tr/td/img/a), typed `Item{Kind,Seg,Path,URL,Body,Src,Alt,Href,Children}`; `SplitHTML` (via `golang.org/x/net/html`) and `SplitMarkdown` (pipe-tables + standalone link/image) assign per-type indices and canonical URLs; content split happens BEFORE insertion | done |
+| TDD: `internal/address` round-trips + validation + id derivation; `internal/selector` parse/apply + edge cases (bad grammar, missing index, no-match); `internal/items` html/md fixtures (testdata/); `internal/items/e2e_test.go` — split→select→verify URL+node/content id, parsed back to same leaf | done |
+
+Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/...`
+clean; new packages gofmt-clean. Branch `feat/content-url-addressing#100` off
+`release/v1`. No end-to-end graph write (that's #99/#101 + Ladybug).
