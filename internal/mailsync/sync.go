@@ -116,6 +116,9 @@ type SyncConfig struct {
 	Raw     bool              // fetch raw RFC 822 (.eml) for RawMailer sources
 	Query   string            // Gmail search query; default in:inbox
 	Policy  RetryPolicy
+	// sources is a test-only seam injecting pre-built Sources before the
+	// configured ones. Empty in production; Run never fills it.
+	sources []Source
 }
 
 // SyncStats is returned by Run.
@@ -266,6 +269,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 			sources = append(sources, &m365Source{c: c, mailbox: mb, localpart: strings.ToLower(local), stateDir: stateDir, exclude: cfg.M365.excludeSet()})
 		}
 	}
+	sources = append(cfg.sources, sources...)
 	if len(sources) == 0 {
 		return nil, errors.New("sync: no source configured (need OO, Gmail, M365, or a combination)")
 	}
