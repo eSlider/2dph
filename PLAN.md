@@ -334,7 +334,6 @@ Notes: `pkg/httpapi` write-side (`writeJSON`/`writeRaw`) is a different directio
 `map[string]any`/`interface{}` decode sites in `internal/brain`, `internal/chat`
 (MCP/JSONL) and `internal/config` are domain-shaped and out of scope for this
 pass.
-
 ## 2026-08-22 — Ladybug write-path hardening + soak (gitea #109, epic #88)
 
 Goal: kill the silent in-process Ladybug death on `POST /ingest` (~10% of
@@ -363,3 +362,20 @@ green; `go vet` clean; zig build of `bin/brain/search.go` OK. Same-file
 double-open stays forbidden inside one process; bulk rebuild keeps its own
 process (`bin/brain/index.go`). Out of scope: corpus CLI path (single-goroutine
 index process), model singleton cache (#110).
+
+## 2026-08-22 — singleton-cache ingest model (gitea #110)
+
+Goal: kill the ~0.9 GiB/`/ingest` leak. `HTTP.Ingest` called `LoadModel()` per
+request and `defer model.Close()`; `StaticModel.Close()` frees only the
+tokenizer, not the safetensors matrix (measured 3 ingests: RSS 3.5→6.1 GiB;
+~900-email backfill = OOM).
+
+| Step | Status |
+|------|--------|
+| `internal/brain/ingestmodel.go`: `embedder` interface (no Close — structural guarantee), `ingestModelCache` (mutex, failed loads not cached → retry next request), `getIngestModel()` process-wide singleton, `embedLeafs()` extracted from Ingest | done |
+| `internal/brain/http.go` Ingest: `LoadModel()+defer Close()` → `getIngestModel()` + `embedLeafs`; shared model never closed per request | done |
+| TDD: `internal/brain/ingestmodel_test.go` — single load across consecutive requests, 16-goroutine concurrent load-once, zero Close of shared model, retry-after-loader-error, pre-embedded skip | done — `zig go test -race -tags system_ladybug ./internal/brain/` green, `go vet` clean both tag modes, CGO search build green |
+
+Notes: other `LoadModel()` callers (`bin/brain/add.go`, `index.go`,
+`bin/facts/*`) are one-shot CLI processes — unchanged. Diff kept strictly to
+model caching; connection lifecycle in the same function is #109 territory.
