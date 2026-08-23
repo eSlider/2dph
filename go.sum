@@ -1,5 +1,9 @@
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
+git.produktor.io/eSlider/go-config v0.4.0 h1:W29oxra7ON8rT11zAWJjEqYi4DHaf9LZX+8BU3smvlk=
+git.produktor.io/eSlider/go-config v0.4.0/go.mod h1:8QWKcyvDdY43l0/Ra0uRfPSo9z4XtNUN/cwwJcdKOTM=
+git.produktor.io/eSlider/go-onlyoffice v0.14.0 h1:pwKxpBrlXDI2aQGCPM9s1dORsXaFMcf+MJFEo68iWXI=
+git.produktor.io/eSlider/go-onlyoffice v0.14.0/go.mod h1:TdEl0Cd74CWSk4B1K4+okR+feGNYoCsTSt4Cecz8jGI=
 github.com/LadybugDB/go-ladybug v0.17.0 h1:RXDbkBjrbRmLdEbhGl4CLOIEzSt09gbP0n9UbKDEfwI=
 github.com/LadybugDB/go-ladybug v0.17.0/go.mod h1:GeIXmE8XyF5TFS94NAuTag7vgCC+no/HTBMRA6Rd5Cs=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
@@ -55,10 +59,6 @@ github.com/emersion/go-vcard v0.1.0 h1:1GN6X5Rc91nvefm0ODRCEmTLVsnXK1f7++Uj0FKo+
 github.com/emersion/go-vcard v0.1.0/go.mod h1:HMJKR5wlh/ziNp+sHEDV2ltblO4JD2+IdDOWtGcQBTM=
 github.com/emirpasic/gods v1.18.1 h1:FXtiHYKDGKCW2KzwZKx0iC0PQmdlorYgdFG9jPXJ1Bc=
 github.com/emirpasic/gods v1.18.1/go.mod h1:8tpGGwCnJ5H4r6BWwaV6OrWmMoPhUl5jm/FMNAnJvWQ=
-github.com/eslider/go-config v0.4.0 h1:CeyQ0QhJGYLWqri/pcuJXmLYnivF5501xGqZ1sZZ8/4=
-github.com/eslider/go-config v0.4.0/go.mod h1:8QWKcyvDdY43l0/Ra0uRfPSo9z4XtNUN/cwwJcdKOTM=
-github.com/eslider/go-onlyoffice v0.14.0 h1:2hXWyC67aBpqPglmEOFPg86Auo/cijE/zxY8Z3vqOBw=
-github.com/eslider/go-onlyoffice v0.14.0/go.mod h1:TdEl0Cd74CWSk4B1K4+okR+feGNYoCsTSt4Cecz8jGI=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
 github.com/gliderlabs/ssh v0.3.8/go.mod h1:xYoytBv1sV0aL3CavoDuJIQNURXkkfPA/wxQ1pL1fAU=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=

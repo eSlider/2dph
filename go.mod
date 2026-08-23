@@ -20,6 +20,11 @@ require (
 	modernc.org/sqlite v1.56.0
 )
 
+replace (
+	github.com/eslider/go-config => git.produktor.io/eSlider/go-config v0.4.0
+	github.com/eslider/go-onlyoffice => git.produktor.io/eSlider/go-onlyoffice v0.14.0
+)
+
 require (
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
