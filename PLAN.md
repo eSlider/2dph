@@ -61,7 +61,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D27 | config system | All external sources (paths, URLs, endpoints) via `github.com/eslider/go-config` (`internal/config`): stack `etc/brain/config.yml` → `config.local.yml` → `.env` → process env; one load per process into a strict typed struct; deep merge (maps recurse, scalars last-write-wins, keys lower+alnum); no ad-hoc `os.Getenv`; legacy `KB_*` / `BRAIN_SEARCH_*` env names honored transitionally. [#90](https://git.produktor.io/eSlider/2dph/issues/90), [#91](https://git.produktor.io/eSlider/2dph/issues/91) |
 | D28 | no hardcoded paths/URLs | Nothing like `/mnt/…`, `/home/<user>/…`, or pinned host URLs in code/comments/tests; missing config key = explicit error pointing at `etc/brain/config.yml`. CI-enforced. [#89](https://git.produktor.io/eSlider/2dph/issues/89) |
 | D29 | typed code | Static typing first: no `map[string]any` at boundaries; loose→strict via go-viper/mapstructure/v2; primitives only in `pkg/utils/*.go`. Hotspots listed in [#92](https://git.produktor.io/eSlider/2dph/issues/92). |
-| D30 | owned repos | All `github.com/eSlider/go-*` are owned: Gitea `git.produktor.io/eSlider/*` = working home (issues/releases only there), GitHub = push-mirror; module paths stay `github.com/eSlider/go-*`. Shared template: subpackage-per-domain. [#101](https://git.produktor.io/eSlider/2dph/issues/101) |
+| D30 | owned repos | All `github.com/eSlider/go-*` are owned: Gitea `git.produktor.io/eSlider/*` = working home (issues/releases only there), GitHub = push-mirror; module paths stay `github.com/eSlider/go-*`. Shared template: subpackage-per-domain. Gitea fetch via `replace` in `go.mod`: `go-config@v0.4.0`, `go-onlyoffice@v0.14.0` → `git.produktor.io/eSlider/*` (go.sum carries Gitea hashes only; zero `github.com/eSlider/go-*` downloads). [#101](https://git.produktor.io/eSlider/2dph/issues/101) |
 | D31 | concurrency | Public APIs synchronous; ctx-first IO; bounded pools; wg-accounted goroutines; sender closes channels; errgroup for fan-out/fan-in; backpressure over unbounded queues; graceful shutdown; `go test -race` in CI. [#94](https://git.produktor.io/eSlider/2dph/issues/94) |
 | D32 | zero-alloc hot paths | Pre-allocation, buffer reuse (`buf[:0]`), `sync.Pool` with reset, `strings.Builder` over `+`, sets as `map[K]struct{}`, structs over maps; proven by `-benchmem`. Applies to hot paths only — no premature optimization. |
 | D33 | sync-ETL reimplementation | Pipeline `Source.Fetch(ctx,cursor)→[]Blob→Registry.Decode→Transform→Load`; one Handler per format (eml=emersion/go-message `Walk()`, zip=`archive/zip`, html=`x/net/html` optional, pdf=Ghostscript normalize→pdftotext/tesseract); lazy children, walker safety limits; single implementation per transformer; canonical `Conversation` model on disk (`var/corpus`) → brain graph (`SENT/TO/CC/BCC/REPLY_TO/PART_OF`); URL addressing `scheme://platform/path[#anchor]` with `sha256(URL)[:16]` node IDs. Epic [#88](https://git.produktor.io/eSlider/2dph/issues/88): [#95](https://git.produktor.io/eSlider/2dph/issues/95)–[#102](https://git.produktor.io/eSlider/2dph/issues/102). |
@@ -394,6 +394,24 @@ double-open stays forbidden inside one process; bulk rebuild keeps its own
 process (`bin/brain/index.go`). Out of scope: corpus CLI path (single-goroutine
 index process), model singleton cache (#110).
 
+## 2026-08-23 — ETL-реестр обработчиков + безопасный walker (gitea #96, epic #88)
+
+Goal: base layer for sync-ETL. A concurrency-safe registry of per-format ETL
+handlers plus a hardened file walker (path traversal / symlink-escape /
+depth-limit / binary-huge-file skip). Runner (#98) and source-adapters (#97)
+build on these.
+
+| Step | Status |
+|------|--------|
+| `internal/etl/registry.go`: `Registry` (RWMutex) mapping handler key → `Handler{Name() string; Handle(ctx, path) error}`; `Register` rejects duplicate/empty keys, `Lookup`/`Names`(sorted)/`Len` — concurrent-safe | done |
+| `internal/etl/walker.go`: `WalkFiles(root, WalkOptions{MaxDepth, MaxBytes, SkipBinary, Exts})` → deterministic sorted `[]File{Path,Rel,Size}`; rejects `..` traversal, never follows symlinked dirs, rejects symlink escapes outside root, honors depth limit, skips huge/binary files | done |
+| `internal/markdown.WalkMarkdown` refactored to the hardened walker (Exts filter) | done |
+| TDD: `internal/etl/etl_test.go` — register/lookup/dup/sorted/concurrent(-race), deterministic order, traversal rejected, symlink-to-outside rejected, depth limit, large-file skip, binary skip, ext filter, missing-root error | done — `go test -race ./internal/...` green, `go vet` clean, gofmt clean |
+
+Notes: scope kept to registry + walker only; pipeline rewiring is #97/#98.
+`internal/mailconv` and `bin/*` walkers stay legacy until a source adapter owns
+them (single-implementation rule D33) — cutover tracked in #98.
+
 ## 2026-08-22 — singleton-cache ingest model (gitea #110)
 
 Goal: kill the ~0.9 GiB/`/ingest` leak. `HTTP.Ingest` called `LoadModel()` per
@@ -410,3 +428,92 @@ tokenizer, not the safetensors matrix (measured 3 ingests: RSS 3.5→6.1 GiB;
 Notes: other `LoadModel()` callers (`bin/brain/add.go`, `index.go`,
 `bin/facts/*`) are one-shot CLI processes — unchanged. Diff kept strictly to
 model caching; connection lifecycle in the same function is #109 territory.
+
+## 2026-08-23 — concurrency audit: mailsync, corpuswatch, index, bench (gitea #94)
+
+Audit of the concurrency paths outside `internal/brain` db/conn lifecycle
+(#109/#110 `brainMu`), driving the `internal/mailsync` worker pools, the
+`corpuswatch` poll loop, the `bin/brain/index.go` bulk rebuild and the
+`bin/reasoner/bench.go` bake-off. Goal: data races, unbounded concurrency,
+unsynchronized shared state, goroutine leaks — hardening only, no semantic
+change. Result per component (all verified with `go test -race`):
+
+| Component | Verdict | Hazard(s) found | Fix |
+|-----------|---------|-----------------|-----|
+| `internal/mailsync` `Run` worker pool + gmail/m365/onlyoffice sources | clean | none — counters already atomic, failures slice already under mutex, m365 token already channel-mutexed, bounded workers, no leak | none (test seam + race test only) |
+| `internal/corpuswatch` poll loop | clean | none — single-goroutine loop, `Stamp` is pure filesystem walk, no shared state | none (race test for `Stamp` concurrency) |
+| `bin/brain/index.go` → `WriteCorpus` → `parallelEmbed` + `ProgressReporter` | **hazard fixed** | `ProgressReporter.total` was a plain `int` written from embedding worker goroutines (`Report`) and read under the mutex in `render` → data race | `total` → `atomic.Int64` (`internal/brain/corpus_pool.go`) |
+| `bin/reasoner/bench.go` → `internal/reasoner` `Client.Run` | clean | none — client holds only `*http.Client` + immutable `Config`, `Run` keeps accounting in call-local state | none (race test for concurrent bench runs) |
+
+| Step | Status |
+|------|--------|
+| `internal/brain/corpus_pool.go`: `ProgressReporter.total int` → `atomic.Int64` (race on concurrent `Report`) | done |
+| TDD: `internal/brain/progress_race_test.go` — 16-goroutine concurrent `Report` + `Finish` under `-race`; total converges | done |
+| TDD: `internal/mailsync/sync_race_test.go` — 8-worker `Run` over a fake `Source` under `-race` (test-only `sources` seam, no prod behavior change) | done |
+| TDD: `internal/corpuswatch/stamp_race_test.go` — 16-goroutine concurrent `Stamp` under `-race` | done |
+| TDD: `internal/reasoner/client_race_test.go` — 12 concurrent `Client.Run` + 16×10 shared-client `RunPrompt` under `-race` vs httptest | done |
+
+Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/...`
+clean; touched files gofmt-clean; cgo Zig build of `bin/brain/search.go`
+(`-tags system_ladybug`) green. Branch `audit/concurrency#94` off `release/v1`.
+
+## 2026-08-23 — URL-адресация контента, селекторы, гранулярный сплит (gitea #100)
+
+Goal: stable content addressing for the ETL graph. Every extracted node gets a
+canonical URL `scheme://platform/thread/msg/path-segments[#anchor]`, node ID =
+`sha256(url)[:16]`, separate content ID = `sha256(body)`; parts reference each
+other only via URLs. Content splits granularly BEFORE insertion into typed
+Items (paragraph/heading/table/row/cell/image/link/page); a DOM/jQuery-like
+selector mini-language addresses any leaf. Scope: addressing + selector +
+split helpers with proof-of-use tests. Graph wiring (#99/#101, Ladybug) and
+format coverage beyond html/md are out of scope here.
+
+| Step | Status |
+|------|--------|
+| `internal/address`: `Segment` (parse/render `type[index]`), `New`/`Parse` canonical URL (validated scheme/platform/thread/msg/segments/anchor), `NodeID(url)=sha256(url)[:16]` (32 hex), `ContentID(body)=sha256` (64 hex) | done |
+| `internal/selector`: mini-language `p[3] > table[0] > tr[1] td[2]` (`>` direct child, space descendant, optional index = any) — `Parse` (strict grammar errors) + `Apply(root)` over a typed Item tree | done |
+| `internal/items`: `Kind` named int enum (page→`body`/heading/p/table/tr/td/img/a), typed `Item{Kind,Seg,Path,URL,Body,Src,Alt,Href,Children}`; `SplitHTML` (via `golang.org/x/net/html`) and `SplitMarkdown` (pipe-tables + standalone link/image) assign per-type indices and canonical URLs; content split happens BEFORE insertion | done |
+| TDD: `internal/address` round-trips + validation + id derivation; `internal/selector` parse/apply + edge cases (bad grammar, missing index, no-match); `internal/items` html/md fixtures (testdata/); `internal/items/e2e_test.go` — split→select→verify URL+node/content id, parsed back to same leaf | done |
+
+Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/...`
+clean; new packages gofmt-clean. Branch `feat/content-url-addressing#100` off
+`release/v1`. No end-to-end graph write (that's #99/#101 + Ladybug).
+
+## 2026-08-23 — secret-scan в CI всех репо (gitea #142)
+
+Goal: не допустить новых утечек секретов на этапе PR/push (после #140 — 8 HIGH-файлов в matrix).
+
+| Step | Status |
+|------|--------|
+| Выбор инструмента: **gitleaks** (официальный образ `zricethezav/gitleaks`) — diff/commit-скан, fail-on-leak, generic+private-key правила | done |
+| CI job `secret-scan` (pull_request + push, сканирует только diff новых коммитов) в 2dph (ci.yml), go-onlyoffice (test.yml), go-config (secret-scan.yml), matrix (.gitea/workflows/secret-scan.yml) | done — PR 2dph#143, go-onlyoffice#5, go-config#1, matrix#6 |
+| git pre-push + pre-commit хуки `scripts/githooks/` (+ install.sh), блокируют push/commit при находке | done |
+| Скилы git-workflow + devops: правило «скан перед любым push»; синхронизированы в ai-fabric (release/v2) | done |
+| Верификация: скан ловит реальные утечки matrix #140 (14 findings, exit 1); pre-push блокирует push с секретом | done |
+
+## 2026-08-23 — Conversation-канон: модель + диск + манифест + граф (gitea #99, epic #88)
+
+Goal: единая каноническая модель для почты и чатов — `Message{ID,ThreadID,Platform,
+From,ReplyTo,To,CC,BCC,SentAt,Body,Attachments(lazy)}`; хранение на диске под
+`var/corpus/{mail,chats}` как JSON + манифест sha256 (идемпотентный upsert); граф
+`(:Person)-[:SENT]->(:Message)-[:TO|CC|BCC]->(:Person)`, `[:REPLY_TO]`, `[:PART_OF]`
+параграфы. Первый mergeable инкремент: ядро схемы + диск + манифест + round-trip
+и golden-тест (один `.eml` и один telegram-экспорт дают одинаковую схему графа).
+
+| Step | Status |
+|------|--------|
+| `internal/canon` (evidence-слой, пакет-домен): `Person`/`Attachment`(lazy `Open(ctx)`, без буферизации тела)/`Message`/`Edge`/`EdgeType` (SENT/TO/CC/BCC/REPLY_TO/PART_OF), `Edges()`, `GraphSchema()` | done |
+| `Store{root}`: `Write` (идемпотентный upsert по sha256 тела), `Read` (скипает битые файлы), `LoadManifest`/`SaveManifest` (атомарный); layout `root/<platform>/<thread>/<id>.json`; сегменты путей через `pkg/utils.SafeSegment` | done |
+| `FromMail(r)` на emersion/go-message: envelope (From/To/Cc/Bcc через mail.Header.AddressList), ThreadID из References/Message-Id, ReplyTo из In-Reply-To, тело text/plain (fallback text/html → mailconv.StripHTML), вложения lazy (метаданные) | done |
+| `FromChat(platform,thread,text,from,ts,replyTo)`: Person id = `platform:handle`, парсинг ts (RFC3339), ReplyTo-цепочка | done |
+| TDD (offline, фикстуры synthetic Alice/Bob/example.com): round-trip write→read→canon для mail и chat; идемпотентный повторный write; манифест = sha256(JSON); layout; Edges/схема; golden — mail и telegram дают одинаковую `GraphSchema()` | done — 13 тестов, `-race` зелёные |
+| docs/PLAN.md: секция #99 (этот блок) | done |
+
+Осталось (вне первого инкремента): конверторы существующих источников (gmail/onlyoffice
+`mailconv.Message`, `mailsync.Message`, whatsapp/linkedin экспорт) → канон; запись графа
+в Ladybug (`(:Person)/:Message/:Paragraph` узлы + `SENT|TO|CC|BCC|REPLY_TO|PART_OF`
+рёбра) — будет отдельным инкрементом на #99; миграция `bin/*/import` на канон.
+
+Verification: `go build ./...` green; `go vet ./internal/canon/... ./pkg/utils/...`
+clean; `go test -race ./internal/canon/... ./pkg/utils/...` green. Branch
+`feat/conversation-canon#99` off `release/v1`.

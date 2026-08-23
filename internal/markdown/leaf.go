@@ -2,10 +2,10 @@ package markdown
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/eSlider/2dph/internal/etl"
 )
 
 type Leaf struct {
@@ -120,25 +120,15 @@ func ToAll(text, path, repo string) []Leaf {
 }
 
 func WalkMarkdown(root string) ([]string, error) {
-	var out []string
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil {
-			// unreadable dirs/files (host permission mix) must not abort the walk
-			if os.IsPermission(err) {
-				return nil
-			}
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		ext := strings.ToLower(filepath.Ext(p))
-		if ext == ".md" || ext == ".markdown" {
-			out = append(out, p)
-		}
-		return nil
-	})
-	return out, err
+	files, err := etl.WalkFiles(root, etl.WalkOptions{Exts: []string{".md", ".markdown"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(files))
+	for _, f := range files {
+		out = append(out, f.Path)
+	}
+	return out, nil
 }
 
 func EncodeJSON(leafs []Leaf) (string, error) {

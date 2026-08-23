@@ -1,0 +1,15 @@
+[
+  {
+    "id": "c1",
+    "from": "alice",
+    "text": "Please review the contract.",
+    "timestamp": "2026-08-23T10:05:00Z"
+  },
+  {
+    "id": "c2",
+    "from": "bob",
+    "text": "ok, will review",
+    "timestamp": "2026-08-23T10:10:00Z",
+    "replyTo": "c1"
+  }
+]

@@ -117,6 +117,9 @@ type SyncConfig struct {
 	Raw     bool              // fetch raw RFC 822 (.eml) for RawMailer sources
 	Query   string            // Gmail search query; default in:inbox
 	Policy  RetryPolicy
+	// sources is a test-only seam injecting pre-built Sources before the
+	// configured ones. Empty in production; Run never fills it.
+	sources []Source
 }
 
 // SyncStats is returned by Run.
@@ -275,6 +278,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 		sources = append(sources, imapSrcs...)
 		cfg.Raw = true // imap always syncs raw .eml for the emersion importer
 	}
+	sources = append(cfg.sources, sources...)
 	if len(sources) == 0 {
 		return nil, errors.New("sync: no source configured (need OO, Gmail, M365, IMAP, or a combination)")
 	}

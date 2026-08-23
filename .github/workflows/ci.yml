@@ -108,6 +108,38 @@ jobs:
           /tmp/brain-index --rebuild --json
           KB_ROOT="$PWD" /tmp/brain-eval --json
 
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute scan range (diff of new commits only)
+        id: range
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            RANGE="${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          else
+            BEFORE="${{ github.event.before }}"
+            if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              RANGE="$(git rev-list --max-parents=0 HEAD | tail -1)..$GITHUB_SHA"
+            else
+              RANGE="$BEFORE..$GITHUB_SHA"
+            fi
+          fi
+          echo "RANGE=$RANGE" >> "$GITHUB_ENV"
+          echo "Scanning range: $RANGE"
+
+      - name: Gitleaks (diff-only, fail on leak)
+        uses: docker://zricethezav/gitleaks:latest
+        env:
+          GITLEAKS_RANGE: ${{ env.RANGE }}
+        with:
+          args: detect --source "${{ github.workspace }}" --log-opts="$GITLEAKS_RANGE" --redact --verbose
+
   ocr:
     name: OCR (tesseract fixture)
     if: github.server_url == 'https://github.com'

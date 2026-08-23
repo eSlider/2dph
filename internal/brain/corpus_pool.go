@@ -132,7 +132,7 @@ type ProgressReporter struct {
 	emit     func(string)
 	last     atomic.Int64 // unix nanos of last emit
 	done     atomic.Int64
-	total    int
+	total    atomic.Int64
 	start    time.Time
 	mu       sync.Mutex
 }
@@ -146,7 +146,7 @@ func NewProgressReporter(w io.Writer, interval time.Duration) *ProgressReporter 
 func (r *ProgressReporter) Report(done, total int) {
 	r.done.Store(int64(done))
 	if total > 0 {
-		r.total = total
+		r.total.Store(int64(total))
 	}
 	now := time.Now()
 	if r.interval <= 0 {
@@ -164,7 +164,7 @@ func (r *ProgressReporter) Report(done, total int) {
 // Finish prints a final line regardless of interval.
 func (r *ProgressReporter) Finish(done, total int) {
 	r.done.Store(int64(done))
-	r.total = total
+	r.total.Store(int64(total))
 	r.render(time.Now(), done)
 }
 
@@ -178,10 +178,10 @@ func (r *ProgressReporter) render(now time.Time, done int) {
 	}
 	rate := float64(done) / elapsed
 	var eta string
-	remaining := r.total - done
+	remaining := int(r.total.Load()) - done
 	if done > 0 && remaining > 0 {
 		secs := time.Duration(float64(remaining)/rate) * time.Second
 		eta = fmt.Sprintf(" eta=%s", secs.Round(time.Second))
 	}
-	r.emit(fmt.Sprintf("index: %d/%d %.0f/s%s", done, r.total, rate, eta))
+	r.emit(fmt.Sprintf("index: %d/%d %.0f/s%s", done, r.total.Load(), rate, eta))
 }
