@@ -392,3 +392,31 @@ tokenizer, not the safetensors matrix (measured 3 ingests: RSS 3.5→6.1 GiB;
 Notes: other `LoadModel()` callers (`bin/brain/add.go`, `index.go`,
 `bin/facts/*`) are one-shot CLI processes — unchanged. Diff kept strictly to
 model caching; connection lifecycle in the same function is #109 territory.
+
+## 2026-08-23 — concurrency audit: mailsync, corpuswatch, index, bench (gitea #94)
+
+Audit of the concurrency paths outside `internal/brain` db/conn lifecycle
+(#109/#110 `brainMu`), driving the `internal/mailsync` worker pools, the
+`corpuswatch` poll loop, the `bin/brain/index.go` bulk rebuild and the
+`bin/reasoner/bench.go` bake-off. Goal: data races, unbounded concurrency,
+unsynchronized shared state, goroutine leaks — hardening only, no semantic
+change. Result per component (all verified with `go test -race`):
+
+| Component | Verdict | Hazard(s) found | Fix |
+|-----------|---------|-----------------|-----|
+| `internal/mailsync` `Run` worker pool + gmail/m365/onlyoffice sources | clean | none — counters already atomic, failures slice already under mutex, m365 token already channel-mutexed, bounded workers, no leak | none (test seam + race test only) |
+| `internal/corpuswatch` poll loop | clean | none — single-goroutine loop, `Stamp` is pure filesystem walk, no shared state | none (race test for `Stamp` concurrency) |
+| `bin/brain/index.go` → `WriteCorpus` → `parallelEmbed` + `ProgressReporter` | **hazard fixed** | `ProgressReporter.total` was a plain `int` written from embedding worker goroutines (`Report`) and read under the mutex in `render` → data race | `total` → `atomic.Int64` (`internal/brain/corpus_pool.go`) |
+| `bin/reasoner/bench.go` → `internal/reasoner` `Client.Run` | clean | none — client holds only `*http.Client` + immutable `Config`, `Run` keeps accounting in call-local state | none (race test for concurrent bench runs) |
+
+| Step | Status |
+|------|--------|
+| `internal/brain/corpus_pool.go`: `ProgressReporter.total int` → `atomic.Int64` (race on concurrent `Report`) | done |
+| TDD: `internal/brain/progress_race_test.go` — 16-goroutine concurrent `Report` + `Finish` under `-race`; total converges | done |
+| TDD: `internal/mailsync/sync_race_test.go` — 8-worker `Run` over a fake `Source` under `-race` (test-only `sources` seam, no prod behavior change) | done |
+| TDD: `internal/corpuswatch/stamp_race_test.go` — 16-goroutine concurrent `Stamp` under `-race` | done |
+| TDD: `internal/reasoner/client_race_test.go` — 12 concurrent `Client.Run` + 16×10 shared-client `RunPrompt` under `-race` vs httptest | done |
+
+Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/...`
+clean; touched files gofmt-clean; cgo Zig build of `bin/brain/search.go`
+(`-tags system_ladybug`) green. Branch `audit/concurrency#94` off `release/v1`.
