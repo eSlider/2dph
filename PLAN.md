@@ -376,6 +376,24 @@ double-open stays forbidden inside one process; bulk rebuild keeps its own
 process (`bin/brain/index.go`). Out of scope: corpus CLI path (single-goroutine
 index process), model singleton cache (#110).
 
+## 2026-08-23 — ETL-реестр обработчиков + безопасный walker (gitea #96, epic #88)
+
+Goal: base layer for sync-ETL. A concurrency-safe registry of per-format ETL
+handlers plus a hardened file walker (path traversal / symlink-escape /
+depth-limit / binary-huge-file skip). Runner (#98) and source-adapters (#97)
+build on these.
+
+| Step | Status |
+|------|--------|
+| `internal/etl/registry.go`: `Registry` (RWMutex) mapping handler key → `Handler{Name() string; Handle(ctx, path) error}`; `Register` rejects duplicate/empty keys, `Lookup`/`Names`(sorted)/`Len` — concurrent-safe | done |
+| `internal/etl/walker.go`: `WalkFiles(root, WalkOptions{MaxDepth, MaxBytes, SkipBinary, Exts})` → deterministic sorted `[]File{Path,Rel,Size}`; rejects `..` traversal, never follows symlinked dirs, rejects symlink escapes outside root, honors depth limit, skips huge/binary files | done |
+| `internal/markdown.WalkMarkdown` refactored to the hardened walker (Exts filter) | done |
+| TDD: `internal/etl/etl_test.go` — register/lookup/dup/sorted/concurrent(-race), deterministic order, traversal rejected, symlink-to-outside rejected, depth limit, large-file skip, binary skip, ext filter, missing-root error | done — `go test -race ./internal/...` green, `go vet` clean, gofmt clean |
+
+Notes: scope kept to registry + walker only; pipeline rewiring is #97/#98.
+`internal/mailconv` and `bin/*` walkers stay legacy until a source adapter owns
+them (single-implementation rule D33) — cutover tracked in #98.
+
 ## 2026-08-22 — singleton-cache ingest model (gitea #110)
 
 Goal: kill the ~0.9 GiB/`/ingest` leak. `HTTP.Ingest` called `LoadModel()` per
