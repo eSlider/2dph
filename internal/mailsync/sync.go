@@ -107,6 +107,7 @@ type SyncConfig struct {
 	OO      *OOConfig         // OnlyOffice source (optional)
 	Gmail   *GmailCredentials // Gmail source (optional)
 	M365    *M365Credentials  // Microsoft 365 Graph source (optional)
+	IMAP    *IMAPConfig       // generic IMAP source (optional; always raw .eml)
 	Out     string            // var/corpus/mail root; default <repo>/var/corpus/mail
 	Workers int               // concurrency; default 4
 	Limit   int               // max messages per source (0 = all)
@@ -266,8 +267,16 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 			sources = append(sources, &m365Source{c: c, mailbox: mb, localpart: strings.ToLower(local), stateDir: stateDir, exclude: cfg.M365.excludeSet()})
 		}
 	}
+	if cfg.IMAP != nil {
+		imapSrcs, err := newIMAPSources(ctx, *cfg.IMAP)
+		if err != nil {
+			return nil, fmt.Errorf("imap init: %w", err)
+		}
+		sources = append(sources, imapSrcs...)
+		cfg.Raw = true // imap always syncs raw .eml for the emersion importer
+	}
 	if len(sources) == 0 {
-		return nil, errors.New("sync: no source configured (need OO, Gmail, M365, or a combination)")
+		return nil, errors.New("sync: no source configured (need OO, Gmail, M365, IMAP, or a combination)")
 	}
 
 	stats := &SyncStats{}
