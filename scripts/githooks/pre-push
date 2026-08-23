@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+#
+# pre-push git hook — blocks a push if any NEW commit leaks a secret.
+#
+# Reads the refs being pushed from stdin (format:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# per ref). Scans only the new commits with gitleaks (via secret-scan.sh) and
+# aborts (exit 1) if anything is found.
+#
+# Install: ln -s ../../scripts/githooks/pre-push .git/hooks/pre-push
+#          (or run scripts/githooks/install.sh)
+
+set -euo pipefail
+
+# Resolve symlinks so the hook works whether copied into .git/hooks or
+# symlinked from scripts/githooks (and in worktrees sharing the main repo hooks).
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+ROOT="$(git rev-parse --show-toplevel)"
+if [[ "$SCRIPT_DIR" == "$ROOT/scripts/githooks" ]]; then
+  SCAN="$SCRIPT_DIR/secret-scan.sh"
+else
+  SCAN="$ROOT/scripts/githooks/secret-scan.sh"
+fi
+
+zero=0000000000000000000000000000000000000000
+failed=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [[ -n "$local_sha" ]] || continue
+
+  # Deletion push — nothing to scan.
+  if [[ "$local_sha" == "$zero" ]]; then
+    continue
+  fi
+
+  # New branch (no remote ref yet): scan only the commits this branch ADDS over
+  # its merge-base with the integration branch (PR target), NOT all history.
+  # This keeps pre-existing historical leaks (see #140) from blocking new work.
+  if [[ "$remote_sha" == "$zero" ]]; then
+    base=""
+    for base_ref in origin/release/v1 origin/release/v2 origin/master origin/main; do
+      if git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+        base="$(git merge-base "$base_ref" "$local_sha" 2>/dev/null)"
+        break
+      fi
+    done
+    if [[ -z "$base" ]] && git rev-parse --verify origin/HEAD >/dev/null 2>&1; then
+      base="$(git merge-base origin/HEAD "$local_sha" 2>/dev/null)"
+    fi
+    [[ -z "$base" ]] && base="$(git rev-list --max-parents=0 "$local_sha" 2>/dev/null | tail -1)"
+    range="${base}..${local_sha}"
+  else
+    range="${remote_sha}..${local_sha}"
+  fi
+
+  echo "secret-scan: scanning new commits ${range} (ref ${local_ref})"
+  if ! "$SCAN" --range "$range"; then
+    echo "secret-scan: LEAK FOUND in ${local_ref}; push BLOCKED. Remove the secret before pushing." >&2
+    failed=1
+  fi
+done
+
+if [[ "$failed" -ne 0 ]]; then
+  exit 1
+fi
+exit 0
