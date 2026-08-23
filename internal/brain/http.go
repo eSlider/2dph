@@ -166,22 +166,13 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 var embedIngestLeafs = embedIngestLeafsWithModel
 
 func embedIngestLeafsWithModel(leafs []LeafInput) error {
-	model, err := LoadModel()
+	model, err := getIngestModel()
 	if err != nil {
 		return fmt.Errorf("model: %w", err)
 	}
-	defer model.Close()
-	for i := range leafs {
-		if len(leafs[i].Embedding) > 0 {
-			continue
-		}
-		vec, err := model.Embed(leafs[i].Text)
-		if err != nil {
-			return err
-		}
-		leafs[i].Embedding = vec
-	}
-	return nil
+	// Shared process-living model: never Close it here (Close frees only the
+	// tokenizer and would break concurrent requests while leaking nothing).
+	return embedLeafs(model, leafs)
 }
 
 func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
