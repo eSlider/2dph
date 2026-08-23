@@ -460,3 +460,15 @@ format coverage beyond html/md are out of scope here.
 Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/...`
 clean; new packages gofmt-clean. Branch `feat/content-url-addressing#100` off
 `release/v1`. No end-to-end graph write (that's #99/#101 + Ladybug).
+
+## 2026-08-23 — secret-scan в CI всех репо (gitea #142)
+
+Goal: не допустить новых утечек секретов на этапе PR/push (после #140 — 8 HIGH-файлов в matrix).
+
+| Step | Status |
+|------|--------|
+| Выбор инструмента: **gitleaks** (официальный образ `zricethezav/gitleaks`) — diff/commit-скан, fail-on-leak, generic+private-key правила | done |
+| CI job `secret-scan` (pull_request + push, сканирует только diff новых коммитов) в 2dph (ci.yml), go-onlyoffice (test.yml), go-config (secret-scan.yml), matrix (.gitea/workflows/secret-scan.yml) | done — PR 2dph#143, go-onlyoffice#5, go-config#1, matrix#6 |
+| git pre-push + pre-commit хуки `scripts/githooks/` (+ install.sh), блокируют push/commit при находке | done |
+| Скилы git-workflow + devops: правило «скан перед любым push»; синхронизированы в ai-fabric (release/v2) | done |
+| Верификация: скан ловит реальные утечки matrix #140 (14 findings, exit 1); pre-push блокирует push с секретом | done |
