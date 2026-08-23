@@ -334,3 +334,32 @@ Notes: `pkg/httpapi` write-side (`writeJSON`/`writeRaw`) is a different directio
 `map[string]any`/`interface{}` decode sites in `internal/brain`, `internal/chat`
 (MCP/JSONL) and `internal/config` are domain-shaped and out of scope for this
 pass.
+
+## 2026-08-22 — Ladybug write-path hardening + soak (gitea #109, epic #88)
+
+Goal: kill the silent in-process Ladybug death on `POST /ingest` (~10% of
+writes, ExitCode=0, no Go panic) and prove it with a soak test.
+
+Root cause (release/v1): `HTTP.Ingest` opened a **second** handle on the live
+`kb.lbug` (`OpenWritable`) while the serve read handle stayed open — liblbug
+dies silently when the same file is double-opened inside one process. The
+existing close→reopen swap (`refreshBrain`) also ran unsynchronized against
+concurrent handlers: any reader mid-query could execute a statement against a
+just-closed `*lbug.Connection` (C use-after-close; frame
+`LocalNodeTable::isVisible ← HashIndex::lookupInPersistentIndex`). Error paths
+left the serve handle stale for the process lifetime.
+
+| Step | Status |
+|------|--------|
+| `brainMu sync.RWMutex` guards global db/conn; readers (Get/Stats/Audit, queryFTS/queryVector/attachHops, lookupLeaf/leafStats) hold RLock | done |
+| Ingest serialized (`ingestMu`), holds write lock over close→write→reopen; `closeBrainLocked()` runs BEFORE `OpenWritable()` (no same-file double-open) | done |
+| Restore on every exit path (`ingestWriteLocked` + deferred restore): write-stage errors no longer leave a stale/nil serve handle | done |
+| `embedIngestLeafs` seam — embed step extracted as package var, tests run full Ingest offline (no HF model/daemon); singleton-cache (#110) replaces only its body | done |
+| Soak: `TestIngestSoakWritePath` 200 × real `/ingest` + 8 concurrent readers (Stats/Audit/Get/FTS/vector), temp KB_ROOT, offline | red before fix (native segfault), green after |
+| Race proofs: `TestIngestSwapRaceSafe`, `TestIngestWriteRestoresServeConnOnError` | green under `-race` |
+
+Verify: `bin/cgo/zig go test -race -tags system_ladybug ./internal/brain/`
+green; `go vet` clean; zig build of `bin/brain/search.go` OK. Same-file
+double-open stays forbidden inside one process; bulk rebuild keeps its own
+process (`bin/brain/index.go`). Out of scope: corpus CLI path (single-goroutine
+index process), model singleton cache (#110).
