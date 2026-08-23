@@ -472,3 +472,30 @@ Goal: не допустить новых утечек секретов на эт
 | git pre-push + pre-commit хуки `scripts/githooks/` (+ install.sh), блокируют push/commit при находке | done |
 | Скилы git-workflow + devops: правило «скан перед любым push»; синхронизированы в ai-fabric (release/v2) | done |
 | Верификация: скан ловит реальные утечки matrix #140 (14 findings, exit 1); pre-push блокирует push с секретом | done |
+
+## 2026-08-23 — Conversation-канон: модель + диск + манифест + граф (gitea #99, epic #88)
+
+Goal: единая каноническая модель для почты и чатов — `Message{ID,ThreadID,Platform,
+From,ReplyTo,To,CC,BCC,SentAt,Body,Attachments(lazy)}`; хранение на диске под
+`var/corpus/{mail,chats}` как JSON + манифест sha256 (идемпотентный upsert); граф
+`(:Person)-[:SENT]->(:Message)-[:TO|CC|BCC]->(:Person)`, `[:REPLY_TO]`, `[:PART_OF]`
+параграфы. Первый mergeable инкремент: ядро схемы + диск + манифест + round-trip
+и golden-тест (один `.eml` и один telegram-экспорт дают одинаковую схему графа).
+
+| Step | Status |
+|------|--------|
+| `internal/canon` (evidence-слой, пакет-домен): `Person`/`Attachment`(lazy `Open(ctx)`, без буферизации тела)/`Message`/`Edge`/`EdgeType` (SENT/TO/CC/BCC/REPLY_TO/PART_OF), `Edges()`, `GraphSchema()` | done |
+| `Store{root}`: `Write` (идемпотентный upsert по sha256 тела), `Read` (скипает битые файлы), `LoadManifest`/`SaveManifest` (атомарный); layout `root/<platform>/<thread>/<id>.json`; сегменты путей через `pkg/utils.SafeSegment` | done |
+| `FromMail(r)` на emersion/go-message: envelope (From/To/Cc/Bcc через mail.Header.AddressList), ThreadID из References/Message-Id, ReplyTo из In-Reply-To, тело text/plain (fallback text/html → mailconv.StripHTML), вложения lazy (метаданные) | done |
+| `FromChat(platform,thread,text,from,ts,replyTo)`: Person id = `platform:handle`, парсинг ts (RFC3339), ReplyTo-цепочка | done |
+| TDD (offline, фикстуры synthetic Alice/Bob/example.com): round-trip write→read→canon для mail и chat; идемпотентный повторный write; манифест = sha256(JSON); layout; Edges/схема; golden — mail и telegram дают одинаковую `GraphSchema()` | done — 13 тестов, `-race` зелёные |
+| docs/PLAN.md: секция #99 (этот блок) | done |
+
+Осталось (вне первого инкремента): конверторы существующих источников (gmail/onlyoffice
+`mailconv.Message`, `mailsync.Message`, whatsapp/linkedin экспорт) → канон; запись графа
+в Ladybug (`(:Person)/:Message/:Paragraph` узлы + `SENT|TO|CC|BCC|REPLY_TO|PART_OF`
+рёбра) — будет отдельным инкрементом на #99; миграция `bin/*/import` на канон.
+
+Verification: `go build ./...` green; `go vet ./internal/canon/... ./pkg/utils/...`
+clean; `go test -race ./internal/canon/... ./pkg/utils/...` green. Branch
+`feat/conversation-canon#99` off `release/v1`.
