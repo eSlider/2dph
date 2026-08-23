@@ -1,9 +1,12 @@
 package mailsync
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapclient"
 )
 
 func TestSanitizeFolder(t *testing.T) {
@@ -92,6 +95,83 @@ func TestParseIMAPMessage(t *testing.T) {
 	}
 	if m.MimeMessageID != "<imap-1@example.com>" {
 		t.Fatalf("message-id wrong: %q", m.MimeMessageID)
+	}
+}
+
+// fakeIMAPClient mocks the connection seam (imapClient) so ListIDs retry is
+// testable offline: the first N SEARCH attempts fail, later ones succeed.
+type fakeIMAPClient struct {
+	searches   int
+	failFirst  int // number of leading SEARCH attempts that fail (transient)
+	closeCalls int
+	uids       imap.UIDSet
+}
+
+func (f *fakeIMAPClient) Close() error {
+	f.closeCalls++
+	return nil
+}
+
+func (f *fakeIMAPClient) Fetch(imap.NumSet, *imap.FetchOptions) *imapclient.FetchCommand {
+	return nil
+}
+
+func (f *fakeIMAPClient) SearchAll() (*imap.SearchData, error) {
+	f.searches++
+	if f.searches <= f.failFirst {
+		return nil, errors.New("transient search failure")
+	}
+	return &imap.SearchData{All: f.uids}, nil
+}
+
+// TestListIDsRetryAfterTransientError proves a transient SEARCH error triggers
+// reconnect-and-redial: the dead connection is dropped (Close) and a second
+// SEARCH succeeds, so the folder is not failed wholesale.
+func TestListIDsRetryAfterTransientError(t *testing.T) {
+	var uids imap.UIDSet
+	uids.AddNum(7, 42)
+	fake := &fakeIMAPClient{failFirst: 1, uids: uids}
+	src := &imapSource{
+		cfg:     IMAPConfig{Host: "mail.example.com", User: "alice@example.com", Password: "x"},
+		mailbox: "INBOX",
+		dir:     "INBOX",
+		dialFn:  func() (imapClient, error) { return fake, nil },
+	}
+
+	ids, _, err := src.ListIDs(context.Background(), 0, "")
+	if err != nil {
+		t.Fatalf("ListIDs after retry: %v", err)
+	}
+	if fake.searches != 2 {
+		t.Fatalf("expected 2 SEARCH attempts (initial + retry), got %d", fake.searches)
+	}
+	if fake.closeCalls < 1 {
+		t.Fatalf("expected reconnect to Close the dead connection, got %d Close calls", fake.closeCalls)
+	}
+	if len(ids) != 2 || ids[0] != "7" || ids[1] != "42" {
+		t.Fatalf("unexpected ids: %v", ids)
+	}
+}
+
+// TestListIDsPropagatesFinalError proves the retry happens exactly once: when
+// the redial attempt also fails, the final error is propagated (no busy loop).
+func TestListIDsPropagatesFinalError(t *testing.T) {
+	var uids imap.UIDSet
+	uids.AddNum(9)
+	fake := &fakeIMAPClient{failFirst: 2, uids: uids}
+	src := &imapSource{
+		cfg:     IMAPConfig{Host: "mail.example.com", User: "alice@example.com", Password: "x"},
+		mailbox: "INBOX",
+		dir:     "INBOX",
+		dialFn:  func() (imapClient, error) { return fake, nil },
+	}
+
+	_, _, err := src.ListIDs(context.Background(), 0, "")
+	if err == nil {
+		t.Fatal("expected an error to propagate when the redial attempt also fails")
+	}
+	if fake.searches != 2 {
+		t.Fatalf("expected exactly 2 SEARCH attempts (no busy loop), got %d", fake.searches)
 	}
 }
 

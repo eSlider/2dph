@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +55,29 @@ type imapSource struct {
 	dir     string // sanitized on-disk name under Out
 
 	mu sync.Mutex
-	c  *imapclient.Client
+	c  imapClient
+
+	// dialFn, when set, replaces the real dial for tests that inject a fake
+	// connection (e.g. a transient first SEARCH error to exercise retry).
+	dialFn func() (imapClient, error)
+}
+
+// imapClient is the subset of *imapclient.Client the source drives through its
+// cached connection, kept behind an interface so tests can inject a fake that
+// fails the first SEARCH (transient) and assert reconnect-and-redial retry.
+type imapClient interface {
+	Close() error
+	Fetch(numSet imap.NumSet, options *imap.FetchOptions) *imapclient.FetchCommand
+	SearchAll() (*imap.SearchData, error)
+}
+
+// imapClientImpl adapts a live *imapclient.Client to imapClient.
+type imapClientImpl struct {
+	*imapclient.Client
+}
+
+func (w *imapClientImpl) SearchAll() (*imap.SearchData, error) {
+	return w.UIDSearch(&imap.SearchCriteria{}, nil).Wait()
 }
 
 var _ Source = (*imapSource)(nil)
@@ -87,14 +108,22 @@ func (s *imapSource) dial() error {
 		c.Logout()
 		return fmt.Errorf("imap select %s: %w", s.mailbox, err)
 	}
-	s.c = c
+	s.c = &imapClientImpl{c}
 	return nil
 }
 
 // client returns a live connection, redialing once if the current one died.
-func (s *imapSource) client() (*imapclient.Client, error) {
+func (s *imapSource) client() (imapClient, error) {
 	if s.c != nil {
 		return s.c, nil
+	}
+	if s.dialFn != nil {
+		c, err := s.dialFn()
+		if err != nil {
+			return nil, err
+		}
+		s.c = c
+		return c, nil
 	}
 	if err := s.dial(); err != nil {
 		return nil, err
@@ -102,10 +131,10 @@ func (s *imapSource) client() (*imapclient.Client, error) {
 	return s.c, nil
 }
 
-// reconnect drops the cached connection so the next call redials.
+// reconnect drops the cached connection so the next call redials. It is only
+// called from ListIDs/GetRaw, which already hold s.mu, so no internal locking
+// (a nested Lock on the same non-reentrant mutex would self-deadlock).
 func (s *imapSource) reconnect(err error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.c != nil {
 		s.c.Close()
 		s.c = nil
@@ -122,15 +151,16 @@ func (s *imapSource) ListIDs(ctx context.Context, limit int, cursor string) ([]s
 	if err != nil {
 		return nil, "", err
 	}
-	data, err := c.UIDSearch(&imap.SearchCriteria{}, nil).Wait()
+	data, err := c.SearchAll()
 	if err != nil {
-		if rerr := s.reconnect(err); rerr != nil {
-			return nil, "", rerr
+		_ = s.reconnect(err) // drop dead conn; redial-retry below gets a fresh one
+		c2, cerr := s.client()
+		if cerr != nil {
+			return nil, "", cerr
 		}
-		c, _ = s.client()
-		data, err = c.UIDSearch(&imap.SearchCriteria{}, nil).Wait()
+		data, err = c2.SearchAll()
 		if err != nil {
-			return nil, "", s.reconnect(err)
+			return nil, "", fmt.Errorf("imap %s: %w", s.mailbox, err)
 		}
 	}
 	uids, ok := data.All.(imap.UIDSet)
@@ -145,7 +175,7 @@ func (s *imapSource) ListIDs(ctx context.Context, limit int, cursor string) ([]s
 	for i, u := range nums {
 		ids[i] = fmt.Sprintf("%d", uint32(u))
 	}
-	return ids, "", ctx.Err()
+	return ids, "", nil
 }
 
 // GetRaw fetches the full RFC 822 message via UID FETCH BODY.PEEK[].
@@ -157,7 +187,7 @@ func (s *imapSource) GetRaw(ctx context.Context, id string) ([]byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fetch := func(c *imapclient.Client) ([]byte, error) {
+	fetch := func(c imapClient) ([]byte, error) {
 		msgs, err := c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
 			BodySection: []*imap.FetchItemBodySection{{Peek: true}},
 		}).Collect()
@@ -413,7 +443,7 @@ func IMAPEnv(env map[string]string) (*IMAPConfig, error) {
 				cfg.Folders = append(cfg.Folders, f)
 			}
 		}
-	} else if os.Getenv("IMAP_FOLDERS_ALL") == "0" {
+	} else if env["IMAP_FOLDERS_ALL"] == "0" {
 		cfg.Folders = []string{"INBOX"}
 	}
 	return cfg, nil
