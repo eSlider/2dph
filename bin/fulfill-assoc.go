@@ -67,7 +67,8 @@ func main() {
 		}
 	}
 	if mesh == "" {
-		mesh = "/mnt/8TB/projects/eslider/cv/projects/knowledge-mesh-seed.yaml"
+		fmt.Fprintln(os.Stderr, "mesh: --mesh required (path to knowledge-mesh-seed.yaml)")
+		os.Exit(2)
 	}
 	if _, err := os.Stat(mesh); err != nil {
 		fmt.Fprintln(os.Stderr, "mesh:", err)
