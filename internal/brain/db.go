@@ -118,19 +118,11 @@ func openWithSandboxLocked(epsv string) error {
 			qClose(res)
 		}
 	}
-	if res, err := conn.Query("LOAD EXTENSION FTS"); err != nil {
-		qClose(res)
-		closeBrainLocked()
-		return fmt.Errorf("LOAD EXTENSION FTS: %w", err)
-	} else {
-		qClose(res)
-	}
-	if res, err := conn.Query("LOAD EXTENSION VECTOR"); err != nil {
-		qClose(res)
-		closeBrainLocked()
-		return fmt.Errorf("LOAD EXTENSION VECTOR: %w", err)
-	} else {
-		qClose(res)
+	for _, ext := range []string{"FTS", "VECTOR"} {
+		if err := loadExt(conn, ext); err != nil {
+			closeBrainLocked()
+			return fmt.Errorf("serve handle %w", err)
+		}
 	}
 	migrateIntervalColumns()
 	return nil
