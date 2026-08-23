@@ -276,6 +276,19 @@ Goal: replace `jhillyerd/enmime/v2` with `emersion/go-message` in
 | -benchmem before(env v2.4.1)/after(emersion v0.18.2): ~6–9× faster ns/op, B/op ≈ half, allocs ≈ 40–55% lower | done — bench in `eml_test.go` |
 
 Branch `feat/mime-emersion#95`: c8f7120 (test) → 7015ffc (feat) → 9b4425d (chore/deps).
+## 2026-08-22 — mailsync v1 мелкие фиксы (gitea #111, epic #88)
+
+Goal: small defects found porting mailsync v1 — `mailconv.FromEML` folder
+extraction and the Dockerfile `pkg/` copy.
+
+| Step | Status |
+|------|--------|
+| test (red): `TestFromEMLFolderNestedLayout` — `<root>/<folder>/<id>/<id>.eml` asserts folder=`<folder>` via `message.json` + `message.md` | done |
+| `emlFolder(root,p)`: parent of the `<id>` dir (grandparent of `.eml`) for the nested layout; flat `<root>/*.eml` keeps immediate dir; applied in `FromEML` + `writeMessageJSON` | done |
+| Dockerfile `pkg/` copy: release/v1 root `Dockerfile` already `COPY . .` (covers `pkg/cli` for `internal/ocr`); no `deploy/mail-watcher.Dockerfile` in release/v1 (that file lives on main via #107, not an ancestor) — no change needed | already-fixed (verify only) |
+| `go test ./internal/mailconv/... ./internal/mailsync/... ./internal/ocr/...` + `./internal/...` green; `gofmt -l` clean; `go vet` clean | done |
+
+Branch `fix/mailsync-v1#111` → PR into `release/v1`.
 ## 2026-08-22 — reasoner client → api-client canon (gitea #93, epic #88)
 
 Goal: apply `skills/api-client/SKILL.md` (go-ollama canon) to
