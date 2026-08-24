@@ -62,6 +62,38 @@ func TestFromEMLWritesDatedMessageMD(t *testing.T) {
 	}
 }
 
+// TestFromEMLFile converts a single .eml (per-blob entry used by the ETL
+// runner #98) and is idempotent across repeated calls.
+func TestFromEMLFileConvertsOneEML(t *testing.T) {
+	dir := t.TempDir()
+	eml := filepath.Join(dir, "msg.eml")
+	if err := os.WriteFile(eml, []byte(emlFixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := FromEMLFile(eml, false); err != nil {
+		t.Fatalf("FromEMLFile: %v", err)
+	}
+	mdPath := filepath.Join(dir, "message.md")
+	md, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(md), "# Re: contract review") {
+		t.Fatalf("message.md missing expected subject; got:\n%s", md)
+	}
+	// Idempotent: second call leaves the .md untouched.
+	if err := FromEMLFile(eml, false); err != nil {
+		t.Fatalf("FromEMLFile second call: %v", err)
+	}
+	md2, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(md2) != string(md) {
+		t.Fatal("FromEMLFile second call rewrote an existing message.md (not idempotent)")
+	}
+}
+
 func TestFromEMLAttachmentsRoutedByMIME(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "inbox", "5")

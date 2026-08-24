@@ -222,6 +222,34 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 	return ok, skip, fail, err
 }
 
+// FromEMLFile converts one .eml file to message.md (+ attachment .md),
+// reusing the same per-message pipeline as FromEML. It is the per-blob entry
+// used by the ETL runner (#98) so each .eml is handled exactly once, in
+// parallel, through the bounded worker pool. Idempotent: an existing non-empty
+// message.md is left untouched (the reconcilers' message.json is refreshed).
+func FromEMLFile(path string, ocrEnabled bool) error {
+	root := filepath.Dir(path)
+	msgDir := filepath.Dir(path)
+	id := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	mdPath := filepath.Join(msgDir, "message.md")
+	if st, err := os.Stat(mdPath); err == nil && st.Size() > 0 {
+		writeMessageJSON(root, msgDir, path, id) // keep reconcilers' view fresh (#79)
+		return nil
+	}
+	res, err := parseEMLFile(path)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	msg := res.msg
+	msg.ID = id
+	msg.Folder = emlFolder(root, path)
+	writeMessageJSON(root, msgDir, path, id)
+	if err := os.WriteFile(mdPath, []byte(renderMessageMD(msg, BodyMarkdown(msg))), 0o644); err != nil {
+		return err
+	}
+	return writeEMLAttachments(filepath.Join(msgDir, "attachments"), res.parts, ocrEnabled)
+}
+
 // emlFolder returns the mail folder for an .eml at path p under root.
 // For the mailsync v1 layout <root>/<folder>/<id>/<id>.eml the folder is the
 // parent of the <id> dir (the grandparent of the .eml). A flat layout
