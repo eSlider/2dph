@@ -36,3 +36,9 @@ mnt/
 
 # machine-local config overrides (never committed; CI guard on absolute paths)
 etc/brain/config.local.yml
+
+# AI-agent global config lives at ~/.config/opencode/ — never committed
+.opencode/
+
+# IDE config (Cursor), not a project file
+.cursorignore

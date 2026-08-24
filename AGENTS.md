@@ -121,6 +121,7 @@ replies (`skills/picoclaw/SKILL.md`). `throttled` ≠ absence.
 ## Layout
 
 ```
+.opencode/    NEVER commit — global config, lives at ~/.config/opencode/
 PLAN.md       decisions + status          docs/    truth only (plans → Gitea)
 skills/       vendored agent skills (api-client, etl-handler, …)
 bin/{subj}/   tools ONLY: {verb}-{object}.go, singular, nothing loose at bin/
