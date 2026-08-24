@@ -44,7 +44,6 @@ services:
     network_mode: host
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ~/.config/brain:/secret:ro
     read_only: true
     tmpfs:
@@ -62,7 +61,6 @@ services:
     environment: *env
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["watch", "/corpus"]
@@ -87,7 +85,6 @@ services:
       KB_INDEX_ALLOW_LIVE: "1"
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["index"]
@@ -116,7 +113,6 @@ services:
       MAIL_SYNC_INDEX: "0"
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/home/2dph/.lbdb/extension:ro
       - ~/.config/brain:/secret:ro
       - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
     command: ["mail-sync", "300"]
@@ -149,7 +145,6 @@ services:
     environment: *env
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
       - ~/.config/brain:/secret:ro
     command: ["serve"]
     ports:
