@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# scripts/stack/synapse-matrix - start the Synapse Matrix service (issue #82):
+# expose brain leafs+edges for pc-agent over HTTP.
+#
+#   scripts/stack/synapse-matrix            # start if not healthy (default :8632)
+#   scripts/stack/synapse-matrix --build    # force rebuild the binary first
+#
+# Auth: reads synapse.token from the go-config stack. Empty token = loopback
+# bind only; 0.0.0.0 requires KB_SYNAPSE_TOKEN / config synapse.token.
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
+BUILD_DIR="$ROOT/bin-build"
+PORT="${KB_SYNAPSE_PORT:-8632}"
+HOST="${KB_SYNAPSE_HOST:-127.0.0.1}"
+
+build() {
+  echo "build: compiling synapse-matrix (Zig CGO)" >&2
+  mkdir -p "$BUILD_DIR"
+  eval "$("$ROOT/bin/cgo/zig" env)"
+  go build -tags=system_ladybug,brain_synapse -o "$BUILD_DIR/brain-synapse" "$ROOT/bin/brain/synapse-matrix.go"
+}
+
+if [[ "${1:-}" == "--build" || ! -x "$BUILD_DIR/brain-synapse" ]]; then
+  build
+fi
+
+if curl -sS --max-time 3 "http://$HOST:$PORT/health" 2>/dev/null | grep -q '"status":"ok"'; then
+  echo "synapse: reuse http://$HOST:$PORT" >&2
+else
+  echo "synapse: start http://$HOST:$PORT" >&2
+  KB_SYNAPSE_PORT="$PORT" KB_SYNAPSE_HOST="$HOST" setsid nohup "$BUILD_DIR/brain-synapse" \
+    > /tmp/opencode/synapse-matrix.log 2>&1 < /dev/null &
+  disown
+fi
+
+echo "synapse: http://$HOST:$PORT (GET /openapi.json, POST /mcp)" >&2

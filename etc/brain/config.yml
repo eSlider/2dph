@@ -50,3 +50,10 @@ reasoner:
   baseurl: "http://127.0.0.1:11435/v1"   # REASONER_BASE_URL
   model: "qwen3.5:9b"                    # REASONER_MODEL
   device: "cpu"                          # REASONER_DEVICE
+
+# Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): expose brain
+# leafs+edges for pc-agent. Legacy: KB_SYNAPSE_*.
+synapse:
+  host: "127.0.0.1"      # KB_SYNAPSE_HOST. 0.0.0.0 requires a token.
+  port: 8632             # KB_SYNAPSE_PORT.
+  token: ""              # KB_SYNAPSE_TOKEN. Empty = loopback bind only.

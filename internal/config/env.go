@@ -80,5 +80,18 @@ func legacyEnv() map[string]any {
 		m["reasoner"] = reasoner
 	}
 
+	synapse := map[string]any{}
+	putSynapse := func(key, name string) {
+		if v, ok := os.LookupEnv(name); ok && v != "" {
+			synapse[key] = v
+		}
+	}
+	putSynapse("host", "KB_SYNAPSE_HOST")
+	putSynapse("port", "KB_SYNAPSE_PORT")
+	putSynapse("token", "KB_SYNAPSE_TOKEN")
+	if len(synapse) > 0 {
+		m["synapse"] = synapse
+	}
+
 	return m
 }
