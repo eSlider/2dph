@@ -100,10 +100,11 @@ services:
     tmpfs:
       - /tmp
 
-  # mail-sync ETL: sync → import every 300s into shared var. Full brain rebuild
-  # only when MAIL_SYNC_INDEX=1 (expensive on large mail corpora). Default
-  # sources: onlyoffice,gmail. For M365 set MAIL_SYNC_SRC=m365 and put
-  # M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in ~/.config/brain/mail.env
+  # mail-sync ETL: download (existing mailsync binary) → bounded runner
+  # pipeline import (#98) every 300s into shared var, with a per-run stats YAML.
+  # Full brain rebuild only when MAIL_SYNC_INDEX=1 (expensive on large mail
+  # corpora). Default sources: onlyoffice,gmail. For M365 set MAIL_SYNC_SRC=m365
+  # and put M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in ~/.config/brain/mail.env
   # (or m365.env + MAIL_SYNC_ENV). Gmail OAuth: mount ~/.gmail-mcp.
   #   docker compose up -d mail-sync
   #   scripts/stack/start-mail-sync
@@ -123,7 +124,7 @@ services:
       - ./var:/data/var
       - ~/.config/brain:/secret:ro
       - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
-    command: ["mail-sync", "300"]
+    command: ["runner", "300"]
     read_only: true
     tmpfs:
       - /tmp

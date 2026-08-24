@@ -177,10 +177,11 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
    indexing stay separate for crash safety.
-4. Compose `mail-sync` / `scripts/stack/start-mail-sync` — ETL loop (default
-   `onlyoffice,gmail`, 300s): sync → import on `new>0`; full rebuild only if
-   `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
-   they do not replace the corpus path.
+ 4. Compose `mail-sync` / `scripts/stack/start-mail-sync` — ETL loop (default
+    `onlyoffice,gmail`, 300s): download (existing mailsync binary) → bounded
+    runner pipeline import (#98) with per-run stats YAML; full rebuild only if
+    `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
+    they do not replace the corpus path.
 5. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
    via `bin/brain/search.go`.
 
@@ -418,6 +419,22 @@ build on these.
 Notes: scope kept to registry + walker only; pipeline rewiring is #97/#98.
 `internal/mailconv` and `bin/*` walkers stay legacy until a source adapter owns
 them (single-implementation rule D33) — cutover tracked in #98.
+
+## 2026-08-25 — source adapters (gitea #97) + bounded ETL runner (gitea #98, epic #88)
+
+Goal: unified `Source` adapter layer + the bounded pipeline runner that wires
+`Source → Decode(Registry) → Transform → Load` with backpressure, per-run stats
+YAML and graceful shutdown.
+
+| Step | Status |
+|------|--------|
+| `internal/source`: `Source{Name(); Fetch(ctx,cursor)→[]Blob,Cursor,error}`, `Blob{ID,Kind,Path}`, `Cursor`; `Sync(ctx,src,handle,Options{StatePath})→Stats{Fetched,New,Skipped}` — sha256 seen-set dedup + atomic checkpoints, mid-batch resume | done (#97) |
+| `source.Disk`: re-lists a corpus dir of `.eml`, content-hash identity, cursor never advances (driver dedups) | done (#97) |
+| `internal/runner`: bounded channels between stages (backpressure), `errgroup.WithContext` first-error cancel, wg-accounted goroutines, graceful shutdown; reuses `source.Sync` + `etl.Registry` | done |
+| Runner `Report`: source stats + per-handler ok/failed counts, serialized as stats YAML (`startedAt/duration/source/handlers`) | done |
+| `bin/runner/run.go`: CLI daemon over the disk corpus; `mail` handler → `mailconv.FromEMLFile` (per-blob .eml→md); `--interval` loop + SIGINT/SIGTERM graceful shutdown | done |
+| Compose `mail-sync` migrates to the runner (`command: ["runner","300"]`); `MAIL_SYNC_SRC/ENV/INDEX` semantics preserved (`INDEX=1` = full brain rebuild); download stays on the existing mailsync binary (source-adapter mapping for onlyoffice/gmail = follow-up) | done |
+| TDD: `internal/runner/runner_test.go` — e2e disk source smoke (stats YAML round-trip), bounded in-flight backpressure, graceful shutdown on cancel (-race), unknown-kind error; `internal/mailconv` `FromEMLFile` idempotence | done — `go test -race` green, `go vet` clean, `docker compose config` parses |
 
 ## 2026-08-22 — singleton-cache ingest model (gitea #110)
 
