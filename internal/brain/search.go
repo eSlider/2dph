@@ -20,6 +20,7 @@ import (
 
 	lbug "github.com/LadybugDB/go-ladybug"
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/config"
 	"github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -485,6 +486,12 @@ func ensureDaemon(port int) error {
 
 // Main is the bin/brain/search.go entry: search, serve, or --list-model.
 func Main(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/search: config: %v\n", err)
+		return 1
+	}
+	Configure(cfg)
 	if len(args) > 0 && args[0] == "serve" {
 		port := defaultPort
 		if len(args) > 1 {
