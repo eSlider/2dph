@@ -107,8 +107,10 @@ func InitSchema(conn *lbug.Connection) error {
 		`CREATE NODE TABLE IF NOT EXISTS Commit (id STRING, repo STRING, subject STRING,
 author STRING, email STRING, date STRING, PRIMARY KEY(id))`,
 		`CREATE NODE TABLE IF NOT EXISTS Person (id STRING, name STRING, email STRING, PRIMARY KEY(id))`,
-		`CREATE REL TABLE IF NOT EXISTS HAS_VERSION (FROM File TO Commit)`,
 		`CREATE REL TABLE IF NOT EXISTS AUTHORED (FROM Commit TO Person)`,
+		// SYNAPTIC models user-defined edges between neurons (leafs): issue #82
+		// "Synapse Matrix". `type` is the synapse label (default "synapse").
+		`CREATE REL TABLE IF NOT EXISTS SYNAPTIC (FROM Leaf TO Leaf, type STRING)`,
 	}
 	for _, s := range stmts {
 		if res, err := conn.Query(s); err != nil {

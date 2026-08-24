@@ -183,6 +183,80 @@ func (s *Server) mcpCall(r *http.Request, params json.RawMessage) (any, error) {
 			}
 		}
 		body, err = s.api.Ingest(r.Context(), payload)
+	case "leafs":
+		if !s.tryAcquire(r) {
+			return nil, fmt.Errorf("cancelled")
+		}
+		defer s.release()
+		root := mcpStr(p.Arguments, "root")
+		typ := mcpStr(p.Arguments, "type")
+		source := mcpStr(p.Arguments, "source")
+		text := mcpStr(p.Arguments, "q")
+		limit := 10
+		if raw, ok := p.Arguments["n"]; ok {
+			switch n := raw.(type) {
+			case float64:
+				limit = int(n)
+			case string:
+				if v, e := strconv.Atoi(n); e == nil {
+					limit = v
+				}
+			}
+		}
+		if limit < 1 || limit > 100 {
+			return mcpText(`{"error":"n must be int 1..100"}`, true), nil
+		}
+		body, err = s.api.Leafs(r.Context(), root, typ, source, text, limit)
+	case "edges":
+		id := mcpStr(p.Arguments, "id")
+		if id == "" {
+			return mcpText(`{"error":"id required"}`, true), nil
+		}
+		if !s.tryAcquire(r) {
+			return nil, fmt.Errorf("cancelled")
+		}
+		defer s.release()
+		body, err = s.api.Edges(r.Context(), id)
+	case "addedge":
+		from := mcpStr(p.Arguments, "from")
+		to := mcpStr(p.Arguments, "to")
+		if from == "" || to == "" {
+			return mcpText(`{"error":"from and to required"}`, true), nil
+		}
+		if !s.tryAcquire(r) {
+			return nil, fmt.Errorf("cancelled")
+		}
+		defer s.release()
+		payload, mErr := json.Marshal(p.Arguments)
+		if mErr != nil {
+			return nil, mErr
+		}
+		body, err = s.api.AddEdge(r.Context(), payload)
+	case "path":
+		from := mcpStr(p.Arguments, "from")
+		to := mcpStr(p.Arguments, "to")
+		if from == "" || to == "" {
+			return mcpText(`{"error":"from and to required"}`, true), nil
+		}
+		max := 6
+		if raw, ok := p.Arguments["max"]; ok {
+			switch n := raw.(type) {
+			case float64:
+				max = int(n)
+			case string:
+				if v, e := strconv.Atoi(n); e == nil {
+					max = v
+				}
+			}
+		}
+		if max < 1 || max > 10 {
+			return mcpText(`{"error":"max must be int 1..10"}`, true), nil
+		}
+		if !s.tryAcquire(r) {
+			return nil, fmt.Errorf("cancelled")
+		}
+		defer s.release()
+		body, err = s.api.Path(r.Context(), from, to, max)
 	default:
 		return nil, fmt.Errorf("unknown tool %s", p.Name)
 	}
@@ -190,6 +264,16 @@ func (s *Server) mcpCall(r *http.Request, params json.RawMessage) (any, error) {
 		return mcpText(err.Error(), true), nil
 	}
 	return mcpText(string(body), false), nil
+}
+
+// mcpStr reads a string argument, treating the "null"/"<nil>" sentinels the
+// same as an absent key (mapstructure-style boundaries, see AGENTS.md #6).
+func mcpStr(args map[string]any, key string) string {
+	v := strings.TrimSpace(fmt.Sprint(args[key]))
+	if v == "<nil>" || v == "null" {
+		return ""
+	}
+	return v
 }
 
 func mcpText(text string, isError bool) map[string]any {

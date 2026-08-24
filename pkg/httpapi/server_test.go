@@ -74,6 +74,27 @@ func (f *fakeSearcher) Ingest(_ context.Context, body []byte) ([]byte, error) {
 	return []byte(`{"mode":"add","ids":["fake-leaf"]}`), nil
 }
 
+func (f *fakeSearcher) Leafs(_ context.Context, root, typ, source, text string, limit int) ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"root": root, "type": typ, "source": source, "text": text, "limit": limit,
+		"leafs": []any{map[string]any{"id": "leaf-fake"}},
+	})
+}
+
+func (f *fakeSearcher) Edges(_ context.Context, id string) ([]byte, error) {
+	return json.Marshal(map[string]any{"id": id, "edges": []any{map[string]any{"to": "b", "type": "synapse"}}})
+}
+
+func (f *fakeSearcher) AddEdge(_ context.Context, body []byte) ([]byte, error) {
+	var in map[string]any
+	_ = json.Unmarshal(body, &in)
+	return json.Marshal(map[string]any{"from": in["from"], "to": in["to"], "type": in["type"]})
+}
+
+func (f *fakeSearcher) Path(_ context.Context, from, to string, max int) ([]byte, error) {
+	return json.Marshal(map[string]any{"from": from, "to": to, "max": max, "path": []string{from, to}})
+}
+
 func (f *fakeSearcher) count() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -312,6 +333,104 @@ func TestDefaultSearchCmdIsBrainNotPython(t *testing.T) {
 	}
 	if !strings.Contains(cmd, "brain") {
 		t.Fatalf("search path must be the Go brain binary, got %s", cmd)
+	}
+}
+
+func TestLeafsEndpointPassesFilters(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	code, body := get(t, h, "/leafs?root=facts&type=fact&source=pc-agent&q=matrix&n=5")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", code, body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("body not json: %v (%s)", err, body)
+	}
+	if out["root"] != "facts" || out["type"] != "fact" || out["source"] != "pc-agent" {
+		t.Fatalf("filters not passed: %v", out)
+	}
+	if out["text"] != "matrix" || out["limit"] != float64(5) {
+		t.Fatalf("text/limit not passed: %v", out)
+	}
+	if code, _ := get(t, h, "/leafs?n=0"); code != http.StatusBadRequest {
+		t.Fatalf("bad n code = %d, want 400", code)
+	}
+}
+
+func TestEdgesEndpointAdjacency(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	if code, _ := get(t, h, "/edges"); code != http.StatusBadRequest {
+		t.Fatalf("missing id code = %d, want 400", code)
+	}
+	code, body := get(t, h, "/edges?id=leaf-a")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", code, body)
+	}
+	if !strings.Contains(string(body), "leaf-a") {
+		t.Fatalf("edges body missing id: %s", body)
+	}
+}
+
+func TestAddEdgeEndpoint(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	code, body := postJSON(t, h, "/addedge", `{"from":"a","to":"b","type":"synapse"}`)
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", code, body)
+	}
+	if !strings.Contains(string(body), `"from":"a"`) || !strings.Contains(string(body), `"to":"b"`) {
+		t.Fatalf("addedge body %s", body)
+	}
+}
+
+func TestPathEndpoint(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	if code, _ := get(t, h, "/path?from=a"); code != http.StatusBadRequest {
+		t.Fatalf("missing to code = %d, want 400", code)
+	}
+	code, body := get(t, h, "/path?from=a&to=c&max=5")
+	if code != http.StatusOK {
+		t.Fatalf("code = %d body=%s", code, body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("body not json: %v (%s)", err, body)
+	}
+	if out["from"] != "a" || out["to"] != "c" || out["max"] != float64(5) {
+		t.Fatalf("path args not passed: %v", out)
+	}
+}
+
+func TestSynapseAuthRequiresToken(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	h.SetToken("sekrit")
+	code, body := get(t, h, "/leafs?q=x")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("no-token code = %d, want 401 body=%s", code, body)
+	}
+	// health stays open so orchestrators can probe liveness without auth.
+	code, _ = get(t, h, "/health")
+	if code != http.StatusOK {
+		t.Fatalf("health code = %d, want 200", code)
+	}
+}
+
+func TestSynapseAuthAcceptsBearer(t *testing.T) {
+	h := NewServer(&fakeSearcher{}, 1)
+	h.SetToken("sekrit")
+	req := httptest.NewRequest(http.MethodGet, "/leafs?q=x", nil)
+	req.Header.Set("Authorization", "Bearer sekrit")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bearer code = %d body=%s", rec.Code, rec.Body.String())
+	}
+	// wrong token rejected
+	req = httptest.NewRequest(http.MethodGet, "/leafs?q=x", nil)
+	req.Header.Set("Authorization", "Bearer nope")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong token code = %d, want 401", rec.Code)
 	}
 }
 
