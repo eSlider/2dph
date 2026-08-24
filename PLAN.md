@@ -14,7 +14,10 @@ OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
 [#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in,
 [#163](https://git.produktor.io/eSlider/2dph/issues/163) browser-sync in
 (`bin/cron/browser-sync.go` + 6-hourly systemd timer, reads
-`var/corpus/{gmail,linkedin,djinni}` → POST /ingest; Thorium down tolerated).
+`var/corpus/{gmail,linkedin,djinni}` → POST /ingest; Thorium down tolerated),
+[#82](https://git.produktor.io/eSlider/2dph/issues/82) Synapse Matrix (leafs+edges
+as a service for pc-agent) in — `bin/brain/synapse-matrix.go`, docs
+[docs/brain-synapse.md](docs/brain-synapse.md).
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
@@ -68,6 +71,7 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D31 | concurrency | Public APIs synchronous; ctx-first IO; bounded pools; wg-accounted goroutines; sender closes channels; errgroup for fan-out/fan-in; backpressure over unbounded queues; graceful shutdown; `go test -race` in CI. [#94](https://git.produktor.io/eSlider/2dph/issues/94) |
 | D32 | zero-alloc hot paths | Pre-allocation, buffer reuse (`buf[:0]`), `sync.Pool` with reset, `strings.Builder` over `+`, sets as `map[K]struct{}`, structs over maps; proven by `-benchmem`. Applies to hot paths only — no premature optimization. |
 | D33 | sync-ETL reimplementation | Pipeline `Source.Fetch(ctx,cursor)→[]Blob→Registry.Decode→Transform→Load`; one Handler per format (eml=emersion/go-message `Walk()`, zip=`archive/zip`, html=`x/net/html` optional, pdf=Ghostscript normalize→pdftotext/tesseract); lazy children, walker safety limits; single implementation per transformer; canonical `Conversation` model on disk (`var/corpus`) → brain graph (`SENT/TO/CC/BCC/REPLY_TO/PART_OF`); URL addressing `scheme://platform/path[#anchor]` with `sha256(URL)[:16]` node IDs. Epic [#88](https://git.produktor.io/eSlider/2dph/issues/88): [#95](https://git.produktor.io/eSlider/2dph/issues/95)–[#102](https://git.produktor.io/eSlider/2dph/issues/102). |
+| D34 | synapse edges | User-defined edges between neurons modeled as a `SYNAPTIC (FROM Leaf TO Leaf, type STRING)` rel table (leafs = neurons, edges = synapses); adjacency = both directions; path = `[:SYNAPTIC* ALL SHORTEST 1..N]` (Ladybug exposes only intermediate nodes → rebuild `[from, mid…, to]`). Service `bin/brain/synapse-matrix.go`, auth = token OR loopback bind, config section `synapse`. [#82](https://git.produktor.io/eSlider/2dph/issues/82) |
 
 ## Architecture
 

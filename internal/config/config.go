@@ -65,6 +65,10 @@ type Config struct {
 
 	// Reasoner (internal/reasoner client). Legacy: REASONER_*.
 	Reasoner ReasonerConfig `mapstructure:"reasoner"`
+
+	// Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): brain
+	// leafs+edges exposed for pc-agent. Legacy: KB_SYNAPSE_*.
+	Synapse SynapseConfig `mapstructure:"synapse"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.
@@ -83,6 +87,13 @@ type ReasonerConfig struct {
 	Device  string `mapstructure:"device"`  // Legacy: REASONER_DEVICE.
 }
 
+// SynapseConfig mirrors KB_SYNAPSE_* (Synapse Matrix service) settings.
+type SynapseConfig struct {
+	Host  string `mapstructure:"host"`  // Legacy: KB_SYNAPSE_HOST.
+	Port  int    `mapstructure:"port"`  // Legacy: KB_SYNAPSE_PORT.
+	Token string `mapstructure:"token"` // Legacy: KB_SYNAPSE_TOKEN. Empty = loopback only.
+}
+
 // Defaults returns a Config with the built-in defaults. Load() applies the
 // stack on top of these, so fields absent from every layer keep a sane value.
 func Defaults() Config {
@@ -97,6 +108,10 @@ func Defaults() Config {
 			BaseURL: "http://127.0.0.1:11435/v1",
 			Model:   "qwen3.5:9b",
 			Device:  "cpu",
+		},
+		Synapse: SynapseConfig{
+			Host: "127.0.0.1",
+			Port: 8632,
 		},
 	}
 }
