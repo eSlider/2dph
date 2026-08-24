@@ -11,7 +11,10 @@ OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
 [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 in,
 [#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 in,
 [#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 in,
-[#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in.
+[#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in,
+[#163](https://git.produktor.io/eSlider/2dph/issues/163) browser-sync in
+(`bin/cron/browser-sync.go` + 6-hourly systemd timer, reads
+`var/corpus/{gmail,linkedin,djinni}` → POST /ingest; Thorium down tolerated).
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What

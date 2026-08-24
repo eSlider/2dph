@@ -1,0 +1,7 @@
+{
+  "source": "djinni",
+  "page": "https://djinni.co/my/inbox/",
+  "threads": [
+    {"company": "Example GmbH", "contact": "Alice", "subject": "Senior Go Engineer", "status": "You shared your contacts", "ago": "2d"}
+  ]
+}

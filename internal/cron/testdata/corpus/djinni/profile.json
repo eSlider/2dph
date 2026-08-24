@@ -1,0 +1,13 @@
+{
+  "source": "djinni",
+  "page": "https://djinni.co/my/profile/",
+  "name": "Alice Smith",
+  "title": "Senior Data / Platform Engineer",
+  "skills": [
+    {"skill": "Go", "years": 6},
+    {"skill": "SQL", "years": 11}
+  ],
+  "experience_summary": {
+    "current_role": "Senior Software Engineer, freelance, remote"
+  }
+}
