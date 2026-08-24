@@ -30,7 +30,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
@@ -102,34 +101,15 @@ func run(args []string) int {
 	}
 	sort.Strings(companies)
 
-	var facts, mismatches []string
+	var proven, mismatches []string
 	for orgName, o := range orgs {
-		token := o.Label
-		if token == "" {
-			token = orgName
+		label := o.Label
+		if label == "" {
+			label = orgName
 		}
-		firstToken := ""
-		if parts := strings.Split(token, " "); len(parts) > 0 {
-			firstToken = parts[0]
-		}
-		labels := strings.Split(o.Label, " / ")
 		key := ""
-		for _, k := range companies {
-			if strings.Contains(strings.ToLower(k), strings.ToLower(firstToken)) {
-				key = k
-				break
-			}
-			hit := false
-			for _, t := range labels {
-				if strings.Contains(strings.ToLower(k), strings.ToLower(t)) {
-					hit = true
-					break
-				}
-			}
-			if hit {
-				key = k
-				break
-			}
+		if name, ok := facts.MatchCompanyName(label, companies); ok {
+			key = name
 		}
 		persons := []string{}
 		if key != "" {
@@ -138,7 +118,7 @@ func run(args []string) int {
 		switch {
 		case len(persons) > 0:
 			for _, p := range persons {
-				facts = append(facts, fmt.Sprintf("%s is associated with %s (role: %s, %s)",
+				proven = append(proven, fmt.Sprintf("%s is associated with %s (role: %s, %s)",
 					p, o.Label, def(o.Kind, "?"), o.Period))
 			}
 		case key != "":
@@ -155,26 +135,18 @@ func run(args []string) int {
 		}
 		switch o.Kind {
 		case "employer", "own", "client", "agency", "apprenticeship":
-			token := o.Label
-			if token == "" {
-				token = orgName
+			label := o.Label
+			if label == "" {
+				label = orgName
 			}
-			first := strings.Split(token, " ")[0]
-			found := false
-			for _, k := range companies {
-				if strings.Contains(strings.ToLower(k), strings.ToLower(first)) {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if _, found := facts.MatchCompanyName(label, companies); !found {
 				mismatches = append(mismatches, fmt.Sprintf("corpus org '%s' (%s) not found in CRM", orgName, o.Label))
 			}
 		}
 	}
 
-	fmt.Printf("# CRM association facts proven (corpus x CRM): %d\n", len(facts))
-	for _, f := range facts {
+	fmt.Printf("# CRM association facts proven (corpus x CRM): %d\n", len(proven))
+	for _, f := range proven {
 		fmt.Println("  -", f)
 	}
 	fmt.Printf("# mismatches / one-sided associations: %d\n", len(mismatches))
@@ -214,7 +186,7 @@ func run(args []string) int {
 	rev := time.Now().Format("20060102-150405")
 	src := fmt.Sprintf("ooCRM x %s", filepath.Base(meshPath))
 	written := 0
-	for _, f := range facts {
+	for _, f := range proven {
 		emb, err := model.Embed(f)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "facts/prove-crm: embed: %v\n", err)
