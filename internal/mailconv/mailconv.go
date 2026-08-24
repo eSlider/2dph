@@ -10,8 +10,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/jhillyerd/enmime/v2"
 )
 
 type Attachment struct {
@@ -170,8 +168,9 @@ func renderMessageMD(msg Message, body string) string {
 }
 
 // FromEML converts raw .eml files under root to message.md (+ attachment .md).
-// Unlike FromRaw (message.json), it reads the raw MIME email via enmime so the
-// original Date and MIME-typed attachments are preserved.
+// Unlike FromRaw (message.json), it reads the raw MIME email via
+// emersion/go-message so the original Date and MIME-typed attachments are
+// preserved.
 func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, err error) {
 	err = filepath.Walk(root, func(p string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil || info.IsDir() {
@@ -182,44 +181,24 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 		}
 		msgDir := filepath.Dir(p)
 		id := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
-		// Layout <root>/<folder>/<id>/<id>.eml: the folder is the grandparent
-		// of the .eml (mbox2eml + sync --raw both nest one dir per message).
-		// Flat layout (<root>/*.eml) keeps the immediate dir as before.
-		folder := filepath.Base(msgDir)
-		if msgDir != root {
-			folder = filepath.Base(filepath.Dir(msgDir))
-		}
 		mdPath := filepath.Join(msgDir, "message.md")
 		if !force {
 			if st, err := os.Stat(mdPath); err == nil && st.Size() > 0 {
 				skip++
+				writeMessageJSON(root, msgDir, p, id) // keep reconcilers' view fresh (#79)
 				return nil
 			}
 		}
-		f, err := os.Open(p)
+		res, err := parseEMLFile(p)
 		if err != nil {
 			fail++
 			fmt.Fprintf(os.Stderr, "  [fail] %s: %v\n", msgDir, err)
 			return nil
 		}
-		env, err := enmime.ReadEnvelope(f)
-		f.Close()
-		if err != nil {
-			fail++
-			fmt.Fprintf(os.Stderr, "  [fail] %s: %v\n", msgDir, err)
-			return nil
-		}
-		date, _ := env.Date()
-		msg := Message{
-			Source: "raw-email", ID: id, Folder: folder,
-			Subject:  env.GetHeader("Subject"),
-			From:     env.GetHeader("From"),
-			To:       env.GetHeader("To"),
-			CC:       env.GetHeader("Cc"),
-			Date:     date,
-			TextBody: env.Text,
-			HTMLBody: env.HTML,
-		}
+		msg := res.msg
+		msg.ID = id
+		msg.Folder = emlFolder(root, p)
+		writeMessageJSON(root, msgDir, p, id)
 		body := BodyMarkdown(msg)
 		if dryRun {
 			ok++
@@ -231,7 +210,7 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 			return nil
 		}
 		attDir := filepath.Join(msgDir, "attachments")
-		if err := writeEMLAttachments(attDir, env, ocrEnabled); err != nil {
+		if err := writeEMLAttachments(attDir, res.parts, ocrEnabled); err != nil {
 			fail++
 			fmt.Fprintf(os.Stderr, "  [fail] %s: %v\n", msgDir, err)
 			return nil
@@ -243,12 +222,49 @@ func FromEML(root string, ocrEnabled, force, dryRun bool) (ok, skip, fail int, e
 	return ok, skip, fail, err
 }
 
+// emlFolder returns the mail folder for an .eml at path p under root.
+// For the mailsync v1 layout <root>/<folder>/<id>/<id>.eml the folder is the
+// parent of the <id> dir (the grandparent of the .eml). A flat layout
+// (<root>/*.eml) keeps the immediate dir as before (#111).
+func emlFolder(root, p string) string {
+	msgDir := filepath.Dir(p)
+	if msgDir == root {
+		return filepath.Base(msgDir)
+	}
+	return filepath.Base(filepath.Dir(msgDir))
+}
+
+// parseEMLFile opens a .eml and parses it with parseEML.
+func parseEMLFile(path string) (parsedEML, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return parsedEML{}, err
+	}
+	defer f.Close()
+	return parseEML(f)
+}
+
+// writeMessageJSON persists the decoded message as message.json next to the
+// source .eml so JSON-based consumers (reconcilers, stack sync) see raw-mail
+// sources without reparsing every .eml on each run.
+func writeMessageJSON(root, msgDir, srcPath, id string) {
+	res, err := parseEMLFile(srcPath)
+	if err != nil {
+		return
+	}
+	msg := res.msg
+	msg.ID = id
+	msg.Folder = emlFolder(root, srcPath)
+	out, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(msgDir, "message.json"), out, 0o644)
+}
+
 // writeEMLAttachments writes each decoded MIME part to disk and converts it to
 // markdown through the type-handler registry.
-func writeEMLAttachments(attDir string, env *enmime.Envelope, doOCR bool) error {
-	parts := make([]*enmime.Part, 0, len(env.Attachments)+len(env.Inlines))
-	parts = append(parts, env.Attachments...)
-	parts = append(parts, env.Inlines...)
+func writeEMLAttachments(attDir string, parts []attachmentPart, doOCR bool) error {
 	for i, part := range parts {
 		name := part.FileName
 		if name == "" {

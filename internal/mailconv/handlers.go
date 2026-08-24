@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	ics "github.com/arran4/golang-ical"
-	"github.com/jhillyerd/enmime/v2"
 
 	"github.com/eSlider/2dph/internal/ocr"
 )
@@ -110,22 +109,18 @@ func htmlHandler(path, _, _ string, _ bool) (string, error) {
 }
 
 func emlHandler(path, _, _ string, _ bool) (string, error) {
-	f, err := os.Open(path)
+	res, err := parseEMLFile(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	env, err := enmime.ReadEnvelope(f)
-	if err != nil {
-		return "", err
+	m := res.msg
+	if strings.TrimSpace(m.TextBody) != "" {
+		return strings.TrimSpace(m.TextBody), nil
 	}
-	var b strings.Builder
-	if env.Text != "" {
-		b.WriteString(env.Text)
-	} else if env.HTML != "" {
-		b.WriteString(StripHTML(env.HTML))
+	if strings.TrimSpace(m.HTMLBody) != "" {
+		return strings.TrimSpace(StripHTML(m.HTMLBody)), nil
 	}
-	return strings.TrimSpace(b.String()), nil
+	return "", nil
 }
 
 func structuredHandler(path, _, _ string, _ bool) (string, error) {

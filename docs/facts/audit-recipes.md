@@ -31,9 +31,9 @@ HTTP (`bin/brain/serve.go`, :8630): `/search?q=&as_of=&n=`, `/get?id=&body=1`,
 Read-only Postgres (OnlyOffice, when the VM is up):
 
 ```bash
-bin/db/ssh-tunnel                       # 127.0.0.1:5433 -> vm:5432
-bin/db/psql-yq --profile onlyoffice -s document_asset   # columns
-bin/db/psql-yq --profile onlyoffice -c 'SELECT ...'     # read-only query -> YAML
+scripts/db/ssh-tunnel                       # 127.0.0.1:5433 -> vm:5432
+scripts/db/psql-yq --profile onlyoffice -s document_asset   # columns
+scripts/db/psql-yq --profile onlyoffice -c 'SELECT ...'     # read-only query -> YAML
 ```
 
 Profile lives in `~/.config/brain/db-profiles.yml` (secrets never in the repo).
@@ -80,8 +80,8 @@ flags facts that lost their two-source form.
 
 Every claim's `source` must resolve to an artifact the brain actually holds:
 
-- mail: `var/mail/md` (M365 sync → `bin/mail/sync.go` → `brain/index --with-mail`)
-- telegram/n chat: `var/chats` (`bin/chat/sync.go n|linkedin`)
+- mail: `var/corpus/mail/md` (M365 sync → `bin/mail/sync.go` → `brain/index --with-mail`)
+- telegram/n chat: `var/corpus/chats` (`bin/chat/sync.go n|linkedin`)
 - corpus: `cv/`, `projects/knowledge-mesh-seed.yaml`
 
 ```bash

@@ -1,0 +1,31 @@
+From: "Andriy" <andriy@example.com>
+To: eslider@gmail.com
+Subject: nested alternative + mixed
+Date: Wed, 20 Aug 2026 10:15:00 +0200
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="OUT"
+
+--OUT
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+
+Nested text body.
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<p>Nested <b>html</b> body.</p>
+--ALT--
+--OUT
+Content-Type: text/plain; name="notes.txt"
+Content-Disposition: attachment; filename="notes.txt"
+
+nested attachment data
+--OUT
+Content-Type: image/png; name="logo.png"
+Content-Disposition: attachment; filename="logo.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+--OUT--

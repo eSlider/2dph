@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+#
+# pre-commit git hook — blocks a commit if staged changes contain a secret.
+# Scans only the staged (index) diff with gitleaks (via secret-scan.sh).
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+ROOT="$(git rev-parse --show-toplevel)"
+if [[ "$SCRIPT_DIR" == "$ROOT/scripts/githooks" ]]; then
+  SCAN="$SCRIPT_DIR/secret-scan.sh"
+else
+  SCAN="$ROOT/scripts/githooks/secret-scan.sh"
+fi
+
+if ! "$SCAN" --staged; then
+  echo "pre-commit: LEAK FOUND in staged changes; commit BLOCKED. Remove the secret first." >&2
+  exit 1
+fi
+exit 0

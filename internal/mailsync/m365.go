@@ -386,7 +386,7 @@ type m365FolderState struct {
 }
 
 // m365Source adapts a mailbox to the Source worker-pool contract. Each mailbox
-// gets its own folder under var/mail/m365/<localpart>/ and a per-folder delta
+// gets its own folder under var/corpus/mail/m365/<localpart>/ and a per-folder delta
 // state file.
 type m365Source struct {
 	c         *M365Client

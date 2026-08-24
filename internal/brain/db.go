@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -31,7 +30,7 @@ func RepoRoot() string {
 }
 
 func repoRoot() string {
-	if v := os.Getenv("KB_ROOT"); v != "" {
+	if v := brainCfg().Root; v != "" {
 		return v
 	}
 	if wd, err := os.Getwd(); err == nil {
@@ -72,10 +71,10 @@ func dbPath() string {
 func openBrain() error {
 	brainMu.Lock()
 	defer brainMu.Unlock()
-	return openWithSandboxLocked(eps())
+	return openWithSandboxLocked(brainCfg().Eps)
 }
 
-// openWithSandbox opens the long-lived serve read connection (Write path
+// openWithSandbox opens the long-lived serve read connection (write path
 // excluded). Callers outside the write window take brainMu.Lock.
 func openWithSandbox(epsv string) error {
 	brainMu.Lock()
@@ -88,10 +87,8 @@ func openWithSandboxLocked(epsv string) error {
 	cfg := lbug.DefaultSystemConfig()
 	cfg.MaxNumThreads = 8
 	pool := int64(1 << 30) // 1GB
-	if v := os.Getenv("KB_BUFFER_POOL"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			pool = n
-		}
+	if v := brainCfg().BufferPool; v > 0 {
+		pool = v
 	}
 	cfg.BufferPoolSize = uint64(pool)
 
@@ -121,19 +118,11 @@ func openWithSandboxLocked(epsv string) error {
 			qClose(res)
 		}
 	}
-	if res, err := conn.Query("LOAD EXTENSION FTS"); err != nil {
-		qClose(res)
-		closeBrainLocked()
-		return fmt.Errorf("LOAD EXTENSION FTS: %w", err)
-	} else {
-		qClose(res)
-	}
-	if res, err := conn.Query("LOAD EXTENSION VECTOR"); err != nil {
-		qClose(res)
-		closeBrainLocked()
-		return fmt.Errorf("LOAD EXTENSION VECTOR: %w", err)
-	} else {
-		qClose(res)
+	for _, ext := range []string{"FTS", "VECTOR"} {
+		if err := loadExt(conn, ext); err != nil {
+			closeBrainLocked()
+			return fmt.Errorf("serve handle %w", err)
+		}
 	}
 	migrateIntervalColumns()
 	return nil
@@ -156,7 +145,8 @@ func migrateIntervalColumns() {
 	}
 }
 
-// closeBrain releases the serve read handle. Callers hold brainMu.Lock.
+// closeBrain releases the serve read handle. Callers outside the write
+// window take brainMu.Lock.
 func closeBrain() {
 	brainMu.Lock()
 	defer brainMu.Unlock()

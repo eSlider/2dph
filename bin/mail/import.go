@@ -3,8 +3,8 @@
 //
 // bin/mail/import.go - message.json → markdown (no brain write). Go converter.
 //
-//	./bin/mail/import.go --from-raw var/mail
-//	./bin/mail/import.go --from-raw var/mail --ocr
+//	./bin/mail/import.go --from-raw var/corpus/mail
+//	./bin/mail/import.go --from-raw var/corpus/mail --ocr
 //
 // Live OnlyOffice pull is removed; use bin/mail/sync.go then --from-raw.
 // Indexing is bin/brain/index.go --rebuild.

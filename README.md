@@ -45,10 +45,10 @@ domain area it acts on:
 | `bin/web` | `search.go` | SearXNG second source |
 | `bin/git` | `import.go` | commit history leafs |
 | `bin/chat` | `sync.go` / `import.go` / `apply.go` | conversations |
-| `bin/stack` | `start` / `status` / `stop` | compose dispatcher |
+| `scripts/stack` | `start` / `status` / `stop` | compose dispatcher |
 
 Go methods are executable (`go run` shebang); a few are thin bash launchers
-(`bin/chat`, `bin/db/psql-yq`). Shell completions for all tools (D23) come from
+(`bin/chat`, `scripts/db/psql-yq`). Shell completions for all tools (D23) come from
 `bin/shell/complete.go` — see the runbook. Keep it one-command-one-file so the
 surface stays deductive: you read the path, you know the tool.
 
@@ -169,10 +169,10 @@ bin/web/search.go "LadybugDB vector index" --json
 Mail is a first-class corpus (retrievable through the same search):
 
 ```bash
-bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail  # raw sync (Go)
+bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/corpus/mail  # raw sync (Go)
 bin/mail/sync.go --source m365 --env ~/.config/brain/mail.env          # Microsoft 365 Graph
-bin/stack/start-mail-sync                                              # compose ETL (300s; no auto-rebuild)
-bin/mail/import.go --from-raw var/mail                                  # JSON → markdown
+scripts/stack/start-mail-sync                                              # compose ETL (300s; no auto-rebuild)
+bin/mail/import.go --from-raw var/corpus/mail                                  # JSON → markdown
 bin/brain/add.go --text T --root facts --source "a.md x b.md"
 bin/brain/index.go --rebuild --with-facts --with-chats                  # facts extract + chats md
 bin/brain/index.go --rebuild                                            # rebuild brain (incl. mail)
@@ -210,10 +210,10 @@ go test ./...
 Docker (optional, cached model + var volumes):
 
 ```bash
-bin/stack/start                                # brain HTTP/MCP :8630
-bin/stack/start-assistant                      # + qwen3.5:9b + PicoClaw agent
-bin/stack/status
-bin/stack/stop
+scripts/stack/start                                # brain HTTP/MCP :8630
+scripts/stack/start-assistant                      # + qwen3.5:9b + PicoClaw agent
+scripts/stack/status
+scripts/stack/stop
 docker compose up -d brain                     # API (Zig CGO serve :8630)
 docker compose --profile index run --rm index  # Go Ladybug rebuild (zig cgo)
 docker compose --profile picoclaw up brain-mcp # MCP on 127.0.0.1:8630

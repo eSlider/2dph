@@ -3,166 +3,175 @@
 Evidence-first brain over the ops/eSlider stack. Facts need proof or they are
 `(not confirmed)`.
 
-Read first: [PLAN](PLAN.md) → [docs](docs/) → [roadmap](docs/roadmap.md)
-(epic [#16](https://git.produktor.io/eSlider/2dph/issues/16)).
+Read first: [PLAN](PLAN.md) → [docs](docs/) → [roadmap](docs/roadmap.md).
+Standards epic: [#88](https://git.produktor.io/eSlider/2dph/issues/88).
 
-## Method (detective, no fork)
+## Work — Gitea only (MUST)
 
-> ≥2 independent sources of evidence, or the finding is `(not confirmed)`.
-> Link the lexicon yaml path that backs each claim.
+- Canonical home: `git.produktor.io/eSlider/2dph`. All `github.com/eSlider/go-*`
+  libraries are owned; their working home is Gitea `git.produktor.io/eSlider/<repo>`
+  ([#101]). GitHub is a publish mirror only. Issues, PRs, reviews, epics,
+  milestones, releases exist **only on Gitea** — never on GitHub.
+- Every task starts as a Gitea issue **на русском**. Epics group child issues;
+  milestones are sprints. Agents report progress as issue comments like senior
+  engineers and close issues via commit refs (`(#id)`).
+- Roles: PO owns priorities, acceptance and dispatch; SE sub-agents implement
+  TDD-style against one issue each; sync happens through Gitea only.
+- Branches `type/slug#<issue>`; Conventional Commits
+  `type(scope): summary (#id)` (feat|fix|refactor|chore|docs|test).
+  PR → review → CI green → merge into `release/v1`. No direct pushes to
+  `main`/`release/*`.
+- SemVer tags on Gitea after merge: `fix:`→PATCH, `feat:`→MINOR,
+  breaking (`!`)→MAJOR; next version computed by the semver tool.
 
-- `facts` root = assertions backed by ≥2 independent sources (docker ps ×
-  compose × ssh-config × docs).
-- `info` root = descriptive/narrative leafs, searchable, never asserted as fact.
-- Search is deduction: `facts` → `info` → `web-search` (second independent
-  source). An answer is `confirmed` only if it comes off the facts root.
-- Fact-check every *claim* (facts → info → live → web), not every edit or
-  syntax tweak. PicoClaw: `search` then `get` then `audit` before a factual
-  reply (`skills/picoclaw/SKILL.md`). `throttled` is not a negative finding.
+## Method (detective)
+
+≥2 independent sources or `(not confirmed)`; link the lexicon path behind
+each claim. `facts` root = proven assertions, `info` = narrative. Deduction:
+facts → info → web-search. PicoClaw: search → get → audit before factual
+replies (`skills/picoclaw/SKILL.md`). `throttled` ≠ absence.
 
 ## Hard rules
 
-1. **Secrets.** `~/.config/brain/`, `.env`, `.secrets/` never read into context,
-   printed, or committed. The OnlyOffice password is obtained via the
-   tunnel, never written to this repo.
-2. **Read-only data sources.** Ladybug `var/kb.lbug` and Postgres are opened
-   read-only for queries. Index rebuilds write to `var/` (gitignored).
-3. **PII.** `brain-test`, `cs_brain` client data is never read or quoted.
-4. **No main pushes.** Feature branches + GitHub PR (`gh`); CI (Actions) must be green. Work board: [Gitea issues](https://git.produktor.io/eSlider/2dph/issues).
-5. **TDD.** Failing test before tool code. Unit tests run offline against
-   fixtures; network/db calls are wrapped.
-6. **docs reflect behaviour.** Any change updates `docs/` + `PLAN.md` status.
-7. **Gitea-задачи — на русском.** Все issues, комменты, milestone в `eSlider/2dph` ведутся на русском языке (код/имена команд — как есть).
+1. **Secrets**: `~/.config/brain/`, `.env`, `.secrets/` never read into
+   context, printed, or committed. Tokens live in credential helpers — never
+   embedded in remote URLs.
+2. **Read-only sources**: Ladybug DB and Postgres queried read-only; rebuilds
+   write only under `var/` (gitignored).
+3. **PII**: client data never read or quoted; test data synthetic
+   (Alice/Bob/example.com).
+4. **TDD — нет теста → не работает → задача открыта.** Failing test before
+   tool code; tests run offline vs fixtures; network/db calls wrapped.
+   A task is NOT done until a test proves it (and is green). For mail
+   send/receive specifically: an end-to-end test (send → receipt) is MANDATORY
+   before closing a mail task; until it exists and passes, the issue stays
+   open.
+5. **Docs reflect behaviour**: any change updates `docs/` + `PLAN.md` status.
+6. **No hardcoded absolute paths or host URLs anywhere** (code, comments,
+   tests, scripts). External values load from config; missing key after the
+   full stack = explicit error pointing at `etc/brain/config.yml`.
+7. **Gitea-задачи — на русском** (код и команды как есть).
+
+## Code standards (Go) — mandatory for every implementation phase/issue
+
+1. **Go only.** No Python scripting; no Python remnants (`__pycache__`).
+2. **Static typing first.** No `map[string]any` / stringly-typed values at
+   API boundaries; optional fields are pointers + `omitempty`; enums are named
+   int types. Loose data (JSON forms, env, external payloads) merges into
+   strict structs via `github.com/go-viper/mapstructure/v2`
+   (`WeakDecode` at platform boundaries — see `dialog` reference).
+3. **Primitives only via `pkg/utils/*.go`**: ptr/deref, first-non-empty, time
+   normalization, numeric parsing, URL/path escaping. Never hand-roll per site.
+4. **Clients/connections: read `skills/api-client/SKILL.md` FIRST — mandatory
+   before implementing any client.** First-class example:
+   `eSlider/go-ollama` client.go. Typed CRUD: go-onlyoffice tasks.go.
+5. **Concurrency** (any API/connection/transformation):
+   - public APIs stay synchronous — channels never in public signatures;
+     wrap sync calls internally when async behaviour is needed;
+   - `context.Context` first param on every IO op; transports use
+   - `NewRequestWithContext`; blocking ops `select` on `<-ctx.Done()`;
+   - bounded worker pools (buffered semaphore / jobs+results); fan-out/fan-in
+     for multi-source merges; `errgroup.WithContext` for first-error cancel;
+   - every goroutine wg-accounted; sender closes channels; receive errors
+     never swallowed; backpressure over unbounded queues; no channels for
+     simple CRUD/single-threaded logic;
+   - graceful shutdown via `signal.NotifyContext`; CI runs `go test -race`.
+6. **Config via `github.com/eslider/go-config` only.** Stack lowest→highest:
+   `etc/brain/config.yml` (committed defaults) → `etc/brain/config.local.yml`
+   (gitignored) → `.env` files → process env. One load per process into a
+   strict struct; boot order: config → storage → clients → runner
+   (`NewApp(configPath)` pattern). Merge semantics: nested maps recurse,
+   scalar leaves last-write-wins, slices replace (concat opt-in); keys
+   normalize lower+alnum so YAML/env/Go fields align. Never `os.Getenv` ad
+   hoc. Secrets stay in gitignored `.env`, never in committed YAML.
+7. **Zero-allocation hot paths** (ETL streams, indexing, transports, bulk
+   transforms): pre-allocate known capacity `make([]T,0,cap)`; reuse buffers
+   by resetting length (`buf = buf[:0]`); `sync.Pool` for frequently created
+   objects — zero/reset before Put; no `+` string building in loops —
+   `strings.Builder` / `bytes.Buffer.Grow()`; keep locals off the heap;
+   sets are `map[K]struct{}`; fixed keys → structs over maps; leverage
+   zero-value init. Prove with `go test -bench -benchmem`.
+8. **MIME/EML: `github.com/emersion/go-message` only.** Envelope via its
+   `mail` subpackage; recursive parts via `entity.Walk()` — never hand-split
+   multipart, never flatten to flat attachment lists; stream body entities
+   straight into converters (no whole-body buffering); charsets via
+   `golang.org/x/text`. enmime stays legacy-parity only until cutover [#95].
+9. **ETL handlers: any format may nest any other format** ([#96]).
+   One Handler per type; `Handle(ctx, Blob) → *Result`; Result carries typed
+   Meta + extracted text + lazy `Children []Attachment` (`Open func(ctx)
+   (io.ReadCloser, error)` — never materialized buffers; large payloads spool
+   to `var/tmp`). Registry dispatches by declared MIME × magic-byte sniffing
+   (mismatch wins for safety) and recurses with depth ≤ 10, size/count limits,
+   zip-ratio bomb guard, sanitized filenames (`..`, control chars, >255,
+   collisions → `-<hash8>` suffix). Per-child errors are collected, never
+   fatal to the whole tree. ZIP = `archive/zip`; HTML bytes stay raw unless a
+   processor opts into `golang.org/x/net/html`.
+10. **Single implementation.** Every transformer/handler/extractor/decoder
+    exists exactly once, in `internal/{domain}`; tools and services import it.
+    A duplicate is a bug — delete the copy in the same PR.
+11. **URL content addressing** ([#100]). Every extracted node gets a stable
+    URL `scheme://platform/thread/msg/path-segments[#anchor]`
+    (e.g. `mail://gmail/T42/M17/body/p[3]/table[0]#r2,c5`); node ID =
+    `sha256(URL)[:16]`; content integrity = separate `sha256(body)`. Parts
+    reference each other only via URLs (href/src → `LINKS_TO` edges). Content
+    splits granularly BEFORE insertion: html/md/pdf blocks are mime-typed
+    Items (paragraph/table/image/link/page). DOM/jQuery-like selector
+    mini-language supports point retrieval (`p[3] > table[0] > tr[1] td[2]`).
 
 ## Layout
 
 ```
-PLAN.md       decisions + execution + open questions
-docs/         published docs
-skills/       in-project agent skills (vendored, no external links)
-
-**Tool naming (D14, apply ALWAYS):** `bin/{subject}/{verb}-{object}.go` — singular,
-**no trailing "s"**. `subject` = the object/system you act on; `verb` = the
-action (import/write/read/list/sync…); `object` = what (last token, `-`-joined).
-You read the path and know what it does. Examples: importing contacts into
-OnlyOffice → `bin/onlyoffice/import-contact.go`; reading contacts → `bin/contact/list.go --csv`.
-Never `contacts/…`, never `brainwrite.go` (that is `bin/brain/import-contact.go`).
-Same rule for `var/` and `etc/` subdirs: `var/{subject}/…`, `etc/{subject}/…`.
-
-**Standing rules:**
-- **Go only, no Python** — new tooling is Go (shebang mains); Python never
-  returns to the pipeline.
-- **Libs named by domain** — `internal/{domain}` / `pkg/{domain}` mirror their
-  `bin/{subject}`; files inside are concrete artifacts (`leaf.go`, `yaml.go`).
-  No output-type namespaces (`mdleaves`-style) — no `mdroot`/`mdcontent` creep.
-- **docs/ = truth only** — what works or what is open; plans/proofs go to
-  Gitea issues, then get deleted here.
-- **Non-goals (standing):** no behavior change to graph/search semantics;
-  no rework of the pluggable reasoner / CGO toolchain (D18/D21).
-
-bin/          self-describing tools (singular, `{subject}/{verb}-{object}.go`)
-bin/brain/    import-contact.go import-git.go search.go serve.go index.go add.go get.go stats.go eval.go watch.go
-bin/contact/  list.go (read/normalize csv/vcf/mab → stdout/file)
-bin/onlyoffice/ import-contact.go (reconcile contacts into OO CRM)
-bin/chat/     sync.go import.go facts.go apply.go refresh-session.go; lib: internal/chat
-bin/mail/     sync.go import.go convert-mbox.go ocr.go (lib: internal/mailsync)
-bin/markdown/ split-leaf.go (H2 leaf split; lib: internal/markdown)
-bin/jsonl/    stats.go (DuckDB quantiles / JSONL count; gcc CGO, not Zig)
-bin/postgres/ query.go (read-only YAML)
-bin/web/      search.go (SearXNG)
-bin/reasoner/ bench.go (D18 CPU OpenAI tool-call bench)
-bin/facts/    extract.go audit.go audit-db.go prove-crm.go
-bin/shell/    complete.go (flaggy completions dump, D23)
-pkg/          public reusable Go (cli flaggy D23; repo; contact; duckdb; httpapi) — no 2dph deps
-internal/     private 2dph Go by domain (brain, chat, facts D16, gitlog, websearch, reasoner, mailsync, mailconv, corpuswatch, markdown)
-bin/cgo/      zig zcc zc++ (CGO via zig cc, not gcc)
-bin/stack/    start start-assistant stop status (compose + PicoClaw agent)
-bin/docker-entrypoint  container entrypoint (api: serve|search|watch|index|add|mail-sync)
-compose.yaml  docker composition (root level, not docker/)
-Dockerfile    api (Zig CGO, Go write path; no CPython)
-var/          kb.lbug, var/mail/*, caches (gitignored)
+PLAN.md       decisions + status          docs/    truth only (plans → Gitea)
+skills/       vendored agent skills (api-client, etl-handler, …)
+bin/{subj}/   tools ONLY: {verb}-{object}.go, singular, nothing loose at bin/
+scripts/      executables & orchestration (docker-entrypoint, stack, db) [#89]
+etc/{subject}/ configs; etc/brain/config.yml = central external-sources config
+var/tmp       temp files/spool            var/dist   built binaries/toolchains
+var/log       logs                        var/state  checkpoints/runtime state
+var/cache     caches                      var/hf     model cache
+var/kb.lbug   served DB
+var/corpus/{git,mail,chats,docs,…}  ETL staging → ingest [#89]
+pkg/          reusable Go, no 2dph deps (cli, utils [#92], duckdb, httpapi)
+internal/     private Go by domain, mirrors bin/{subject}
 ```
 
-## Mail pipeline
+Tool naming D14 unchanged: `bin/{subject}/{verb}-{object}.go`, singular.
+Items marked `[#89]`/`[#92]` are mid-migration — see epic #88.
 
-```bash
-bin/mail/sync.go --source onlyoffice,gmail --workers 8 --out var/mail   # raw message.json + attachments
-bin/mail/sync.go --source gmail --query 'from:example.com' --out var/mail  # Gmail search (default in:inbox)
-bin/mail/sync.go --source m365 --env ~/.config/brain/mail.env --out var/mail  # Microsoft Graph (delta)
-bin/mail/import.go --from-raw var/mail                                  # message.json → message.md (convert only)
-bin/brain/index.go --rebuild --with-facts --with-chats
-bin/stack/start-mail-sync                                               # compose ETL: sync→import every 300s
+## Owned repos — shared template
+
+go-config · go-onlyoffice · go-ollama (+ siblings under `eSlider/go-*`):
+subpackage-per-domain — `doc.go`, `client.go` (Client + Config/DSN +
+transport core), `{domain}/` packages, `cmd/`. Same Gitea workflow, same
+standards. Reference implementations: go-ollama `client.go` (first-class),
+go-onlyoffice `tasks.go` typed CRUD, `dialog` package (reply chains, upsert
+idempotency, weak-decode boundaries), esliderbot `app.go` (bootstrap order,
+relative `etc/config.yml`).
+
+## Sync-ETL pipeline (epic #88)
+
+```
+Source.Fetch(ctx,cursor) → []Blob → Registry.Decode → Transform → Load(brain)
 ```
 
-- `sync` (Go) downloads messages + attachments; Gmail uses paginated list +
-  `body.attachmentId` (not partId) for attachments. Sources: `onlyoffice`,
-  `gmail`, `m365` (client-credentials + delta link; commit after success).
-- Compose `mail-sync` / `bin/stack/start-mail-sync`: ETL loop (default
-  `onlyoffice,gmail`, 300s). On `new>0` runs import; full `--rebuild` only if
-  `MAIL_SYNC_INDEX=1`. Secrets: `~/.config/brain/mail.env` + `~/.gmail-mcp`.
-  Case wrappers (e.g. family `gmail-sync-la-quinta.sh`) and ai-bot
-  `gmail-reauth.sh` reuse this sync/OAuth — do not fork corpus download.
-- `import` converts body + attachments to markdown. PDFs use poppler
-  `pdftotext -layout` fast path (~15ms); textless/scanned PDFs use
-  `pdftoppm` + tesseract `eng+deu` (`bin/mail/ocr.go`). Optional
-  `OCR_ENGINE=paddle`. Conversion never touches the brain DB (crash safety).
-- Bulk rebuild is `bin/brain/index.go --rebuild`; it still deletes
-  `var/kb.lbug` and creates FTS/HNSW last. Single-leaf
-  write is `bin/brain/add.go` (safe while indexes exist; do not DROP INDEX).
-  Keep conversion + indexing separate so a conversion crash can't leave the
-  DB mid-transaction.
+- Sources (one adapter each): onlyoffice · gmail · m365 · disk · chat
+  platforms · git history. Atomic checkpoints in `var/state/<source>.json`;
+  sha256 seen-set idempotency; upsert-on-conflict writes [#97][#98].
+- **Conversation canon** ([#99]): one model for mail AND chats —
+  `Message{ID, ThreadID, Platform, From, ReplyTo, To, CC, BCC, SentAt, Body,
+  Attachments(lazy)}`. Stored on disk (`var/corpus/{mail,chats}` JSON +
+  manifest) as the evidence layer; the brain ingests ONLY this canon:
+  `(:Person)-[:SENT|TO|CC|BCC]->(:Message)`, `[:REPLY_TO]` threads,
+  `[:PART_OF]` paragraphs. Rebuild without network; dedup by hash.
+- PDF handler: original preserved in corpus; Ghostscript normalization
+  (strip export protection → shrink → simplify extraction) produces the
+  working artifact in `var/tmp`; then pdftotext fast path / tesseract
+  fallback [#102].
 
 ## Tools
 
-```bash
-bin/facts/audit.go ["self"|"db"|"contradict"]     # 2-source + D16 adjudication
-bin/facts/prove-crm.go [--dry-run]                       # proof person↔company/company↔project (ooCRM × corpus SoT)
-bin/brain/search.go "query" [--root facts|info]   # deduction search → YAML
-bin/brain/search.go "query" --as-of 2025-01-01    # D24 fact intervals
-bin/brain/search.go "query" --no-web              # local graph only
-source <(./bin/shell/complete.go bash)              # flaggy completions (D23)
-eval "$(bin/cgo/zig env)"                         # optional; Ladybug shebangs call bin/cgo/zig
-bin/brain/index.go --rebuild [--with-mail] [--with-facts] [--with-chats]
-bin/brain/add.go --text T --root facts --source "a.md x b.md"  # incremental write
-bin/brain/add.go --json                                      # stdin leaf or {leafs:[...]}
-bin/brain/get.go <id> [--body] [--json]          # Go read (Zig CGO)
-bin/brain/stats.go [--json]
-bin/brain/eval.go [--json]                       # recall@5; questions in internal/brain/rank
-bin/brain/serve.go                               # HTTP :8630; GET /openapi.json POST /mcp
-bin/stack/start                                  # brain HTTP/MCP (reuse healthy :8630)
-bin/stack/start-assistant                        # + reasoner + PicoClaw agent
-bin/stack/status                                 # YAML health
-bin/stack/stop                                   # compose stop; volumes kept
-bin/markdown/split-leaf.go [dir]                      # H2 leafs → YAML (Go)
-bin/brain/import-git.go [REPO] [--json] [--limit N]     # go-git history → commit leafs
-bin/web/search.go "query" [--json]                # SearXNG; throttled ≠ absence
-bin/reasoner/bench.go [--model ID] [--json]     # D18 CPU tool-call bake-off
-bin/postgres/query.go --profile onlyoffice -c 'SELECT 1'
-bin/jsonl/stats.go                                  # D22 DuckDB quantiles / JSONL (gcc CGO)
-bin/mail/ocr.go <image|pdf>                      # tesseract eng+deu (scans)
-bin/md/tables                                     # what the graph holds → YAML
-bin/brain/deduce "question"                       # thinking wrapper
-```
-
-Never start a shell command with `cd` — use the tool working-directory
-parameter. Search before reading whole files. For YAML/JSON/XML/CSV/TOML/HCL
-prefer mikefarah/yq (`skills/yq/SKILL.md`). For bulk rows and quantiles use
-duckdb-go (`pkg/duckdb`, `skills/duckdb/SKILL.md`), not Ladybug.
-
-## GitHub safety rules (ABSOLUTE — never violate)
-
-1. **No absolute paths in committed files.** Replace `/mnt/`, `/home/<user>/`,
-   `/Users/<user>/` with env vars (`$HOME`, `$PROJECTS_ROOT`, `$DOCS_BASE`).
-2. **No PII in commits.** No real names, phones, emails of third parties.
-   Test data must be synthetic (Alice, Bob, Charlie, Diana, example.com).
-3. **No credentials/secrets in commits.** API keys, tokens, passwords, session
-   strings, phone numbers only in gitignored `.env` files, referenced by path.
-4. **Curasoft, edelweiss — no files, no mentions.** Remove all traces if found.
-5. **Check git history before push.** If any commit contains leaks, rewrite
-   history (rebase + force push) AND delete affected GitHub releases/tags.
-6. **Plans live in Gitea issues, not docs/.** docs/ holds only what is true
-   and current (design, runbook, roadmap). Historical plans/proofs are
-   archived as comments on their Gitea issue, then deleted from the repo.
+See `bin/*/doc.go` and `docs/runbook.md`. Paths above are post-migration
+targets; until [#89] lands, legacy paths remain functional.
 
 ## Communication
 

@@ -10,33 +10,27 @@ require (
 	github.com/duckdb/duckdb-go/v2 v2.10505.0
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
-	github.com/eslider/go-onlyoffice v0.13.0
+	github.com/eslider/go-config v0.4.0
+	github.com/eslider/go-onlyoffice v0.14.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/integrii/flaggy v1.8.0
+	github.com/nyaruka/phonenumbers v1.8.1
 	golang.org/x/sys v0.47.0
 	golang.org/x/text v0.40.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.56.0
 )
 
+replace (
+	github.com/eslider/go-config => git.produktor.io/eSlider/go-config v0.4.0
+	github.com/eslider/go-onlyoffice => git.produktor.io/eSlider/go-onlyoffice v0.14.0
+)
+
 require (
-	github.com/cention-sany/utf7 v0.0.0-20170124080048-26cad61bd60a // indirect
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/clipperhouse/displaywidth v0.11.0 // indirect
-	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
-	github.com/fatih/color v1.19.0 // indirect
-	github.com/gogs/chardet v0.0.0-20211120154057-b7413eaefb8f // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
-	github.com/inbucket/html2text v1.0.0 // indirect
-	github.com/mattn/go-colorable v0.1.14 // indirect
-	github.com/mattn/go-runewidth v0.0.23 // indirect
-	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
-	github.com/olekukonko/errors v1.3.0 // indirect
-	github.com/olekukonko/ll v0.1.8 // indirect
-	github.com/olekukonko/tablewriter v1.1.4 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
-	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
+	github.com/joho/godotenv v1.5.1 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )
 
 require (
@@ -53,17 +47,16 @@ require (
 	github.com/duckdb/duckdb-go-bindings/lib/linux-arm64 v0.10505.0 // indirect
 	github.com/duckdb/duckdb-go-bindings/lib/windows-amd64 v0.10505.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/emersion/go-vcard v0.0.0-20260618161152-d854b7e0e2d3
+	github.com/emersion/go-vcard v0.1.0
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.5.0
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/flatbuffers v25.12.19+incompatible // indirect
 	github.com/google/uuid v1.6.0
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
-	github.com/jhillyerd/enmime/v2 v2.4.1
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect

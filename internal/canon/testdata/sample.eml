@@ -1,0 +1,32 @@
+From: Alice <alice@example.com>
+To: Bob <bob@example.com>
+Cc: Carol <carol@example.com>
+Subject: Re: Contract review
+Date: Tue, 18 Aug 2026 13:47:04 +0100
+Message-ID: <m1@example.com>
+In-Reply-To: <m0@example.com>
+References: <m0@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BND"
+
+--BND
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+
+first paragraph
+
+second paragraph
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<p>first paragraph</p><p>second paragraph</p>
+--ALT--
+--BND
+Content-Type: application/pdf; name="terms.pdf"
+Content-Disposition: attachment; filename="terms.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK
+--BND--

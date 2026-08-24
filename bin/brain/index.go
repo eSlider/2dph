@@ -10,19 +10,21 @@
 //
 // Bulk mail/corpus still --rebuild (fresh file, indexes last).
 // NOTE: never run gofmt -w on this file — it breaks the shebang.
-//
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
+	"github.com/eSlider/2dph/internal/config"
 	cliparse "github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -31,10 +33,10 @@ func main() {
 }
 
 type indexFlags struct {
-	db, factsJSON, withChats, since                                              string
-	corpus                                                                       []string
+	db, factsJSON, withChats, since                                                     string
+	corpus                                                                              []string
 	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut, skip, force bool
-	limit, workers, batch, progress                                              int
+	limit, workers, batch, progress                                                     int
 }
 
 // gitRepoRoot resolves the actual repository checkout (independent of
@@ -49,6 +51,13 @@ func gitRepoRoot() string {
 }
 
 func run(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: config: %v\n", err)
+		return 1
+	}
+	brain.Configure(cfg)
+
 	// historic wrapper prepended --with-mail; keep default off unless passed
 	v := indexFlags{}
 	p := cliparse.New("brain-index")
@@ -56,7 +65,7 @@ func run(args []string) int {
 	p.String(&v.db, "", "db", "path to kb.lbug")
 	p.Bool(&v.rebuild, "", "rebuild", "fresh db + indexes")
 	p.Bool(&v.noDefaults, "", "no-defaults", "skip README/docs/skills")
-	p.Bool(&v.withMail, "", "with-mail", "include var/mail message.md leafs")
+	p.Bool(&v.withMail, "", "with-mail", "include var/corpus/mail message.md leafs")
 	p.Bool(&v.withFacts, "", "with-facts", "facts/extract --json --dry-run")
 	p.String(&v.factsJSON, "", "facts-json", "JSON facts file")
 	p.String(&v.withChats, "", "with-chats", "chat markdown dir (empty=off; bare flag via const path)")
@@ -84,13 +93,12 @@ func run(args []string) int {
 	if dbpath == "" {
 		dbpath = filepath.Join(root, "var", "kb.lbug")
 	}
-	port := os.Getenv("KB_PORT")
-	if port == "" {
+	port := strconv.Itoa(cfg.Port)
+	if cfg.Port <= 0 {
 		port = "8630"
 	}
 
 	var leafs []brain.CorpusLeaf
-	var err error
 	if !v.noDefaults {
 		leafs, err = brain.LoadDefaultCorpus(root)
 		if err != nil {
@@ -118,7 +126,7 @@ func run(args []string) int {
 	}
 	mailN := 0
 	if v.withMail {
-		mail, err := brain.LoadMailLeafs(filepath.Join(root, "var", "mail"), v.since, 0)
+		mail, err := brain.LoadMailLeafs(filepath.Join(root, "var", "corpus", "mail"), v.since, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "brain/index: mail: %v\n", err)
 			return 1
@@ -175,8 +183,8 @@ func run(args []string) int {
 		}
 		if gitRoot := gitRepoRoot(); gitRoot != "" &&
 			dbpath == filepath.Join(gitRoot, "var", "kb.lbug") &&
-			os.Getenv("KB_INDEX_ALLOW_LIVE") != "1" &&
-			brain.BrainAPIAlive("127.0.0.1:" + port) {
+			!cfg.IndexAllowLive &&
+			brain.BrainAPIAlive("127.0.0.1:"+port) {
 			reasons = append(reasons, fmt.Sprintf("a brain API is answering on 127.0.0.1:%s (compose brain bind-mounts this db)", port))
 		}
 		if len(reasons) > 0 && !v.force {

@@ -1,8 +1,6 @@
 package reasoner
 
 import (
-	"os"
-
 	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/integrii/flaggy"
 )
@@ -20,15 +18,8 @@ func Parser() *flaggy.Parser {
 }
 
 func NewCLI() CLI {
-	base := os.Getenv("REASONER_BASE_URL")
-	if base == "" {
-		base = "http://127.0.0.1:11435/v1"
-	}
-	model := os.Getenv("REASONER_MODEL")
-	if model == "" {
-		model = OllamaRAM
-	}
-	return CLI{Base: base, Model: model, Device: "cpu"}
+	c := LoadEnv()
+	return CLI{Base: c.BaseURL, Model: c.Model, Device: c.Device}
 }
 
 func Bind(c *CLI) *flaggy.Parser {

@@ -11,23 +11,23 @@ import (
 	"github.com/eSlider/2dph/internal/brain/rank"
 )
 
-// TestIngestWriteRestoresServeConnOnError proves finding 1: when a
-// write-stage step (InitSchema/AddLeafs/EnsureIndexes) fails, the serve read
-// connection must still be restored on exit. Before the fix the deferred
-// closeW() closed the writable handle but no refreshBrain ran, so the global
-// conn stayed nil and /search, /get and /stats returned "brain not open" for
-// the rest of the process lifetime.
+// TestIngestWriteRestoresServeConnOnError proves: when a write-stage step
+// (InitSchema/AddLeafs/EnsureIndexes) fails, the serve read connection must
+// still be restored on exit. Before the fix the deferred closeW() closed the
+// writable handle but no refreshBrain ran on error paths, leaving the serve
+// handle stale (or gone), so /search, /get and /stats served an old snapshot
+// or "brain not open" for the rest of the process lifetime.
 func TestIngestWriteRestoresServeConnOnError(t *testing.T) {
-	t.Setenv("KB_BUFFER_POOL", "134217728")
-	t.Setenv("KB_ROOT", t.TempDir()) // dbPath() lands in temp, never the real var/
+	restoreCfg := soakSetup(t)
+	defer restoreCfg()
+	stubEmbeddings(t)
+
 	dbpath := dbPath()
-	// openWithSandbox opens an existing db (serve reads a pre-built kb.lbug),
-	// so make the var/ dir the file must live in.
 	if err := os.MkdirAll(filepath.Dir(dbpath), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := openWithSandbox(eps()); err != nil {
+	if err := openWithSandbox(brainCfg().Eps); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -36,7 +36,7 @@ func TestIngestWriteRestoresServeConnOnError(t *testing.T) {
 		brainMu.Unlock()
 	}()
 
-	// Force a write-stage error: AddLeafs rejects an empty source.
+	// Force a write-stage error: UpsertLeaf rejects an empty source.
 	brainMu.Lock()
 	_, err := ingestWriteLocked(dbpath, []LeafInput{{Text: "x", Source: ""}})
 	brainMu.Unlock()
@@ -48,19 +48,20 @@ func TestIngestWriteRestoresServeConnOnError(t *testing.T) {
 		t.Fatal("serve conn not restored after write-stage error")
 	}
 	h := HTTP{}
-	if _, statErr := h.Stats(nil); statErr != nil {
+	if _, statErr := h.Stats(t.Context()); statErr != nil {
 		t.Fatalf("stats failed after restore: %v", statErr)
 	}
 }
 
-// TestIngestSwapRaceSafe proves finding 2: readers (Get/Stats/Audit and the
-// FTS path) hold brainMu.RLock for the whole query while Ingest's close →
-// write → reopen window holds brainMu.Lock. Run with -race: before the
-// RWMutex this was a data race on the package-global conn (a handler could
-// execute a prepared statement against a just-closed *lbug.Connection).
+// TestIngestSwapRaceSafe proves: readers (Get/Stats/Audit and the FTS/vector
+// path) hold brainMu.RLock for the whole query while Ingest's close → write →
+// reopen window holds brainMu.Lock. Run with -race: before the RWMutex this
+// was a data race on the package-global conn (a handler could execute a
+// prepared statement against a just-closed *lbug.Connection — the C-level
+// use-after-close behind the #109 segfault).
 func TestIngestSwapRaceSafe(t *testing.T) {
-	t.Setenv("KB_BUFFER_POOL", "134217728")
-	t.Setenv("KB_ROOT", t.TempDir())
+	restoreCfg := soakSetup(t)
+	defer restoreCfg()
 	dbpath := dbPath()
 
 	// Seed the db writable first (like production: an existing kb.lbug), then
@@ -72,9 +73,11 @@ func TestIngestSwapRaceSafe(t *testing.T) {
 	if err := InitSchema(wconn); err != nil {
 		t.Fatal(err)
 	}
+	vec := make([]float64, EmbedDim)
+	vec[0] = 0.5
 	ids, err := AddLeafs(wconn, []LeafInput{
-		{Text: "race proof leaf one", Source: "race-test", Root: "info", Type: "reference"},
-		{Text: "race proof leaf two", Source: "race-test", Root: "info", Type: "reference"},
+		{Text: "race proof leaf one", Source: "race-test", Root: "info", Type: "reference", Embedding: vec},
+		{Text: "race proof leaf two", Source: "race-test", Root: "info", Type: "reference", Embedding: vec},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +88,7 @@ func TestIngestSwapRaceSafe(t *testing.T) {
 	wconn.Close()
 	wdb.Close()
 
-	if err := openWithSandbox(eps()); err != nil {
+	if err := openWithSandbox(brainCfg().Eps); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -103,7 +106,7 @@ func TestIngestSwapRaceSafe(t *testing.T) {
 		for i := 0; i < 60; i++ {
 			brainMu.Lock()
 			closeBrainLocked()
-			if err := openWithSandboxLocked(eps()); err != nil {
+			if err := openWithSandboxLocked(brainCfg().Eps); err != nil {
 				brainMu.Unlock()
 				t.Error(err)
 				return
@@ -119,15 +122,30 @@ func TestIngestSwapRaceSafe(t *testing.T) {
 			defer wg.Done()
 			h := HTTP{}
 			for j := 0; j < 60; j++ {
-				_, _ = h.Get(nil, ids[j%len(ids)], false)
-				_, _ = h.Stats(nil)
-				_, _ = h.Audit(nil)
+				if _, err := h.Get(t.Context(), ids[j%len(ids)], false); err != nil {
+					t.Errorf("get: %v", err)
+					return
+				}
+				if _, err := h.Stats(t.Context()); err != nil {
+					t.Errorf("stats: %v", err)
+					return
+				}
+				if _, err := h.Audit(t.Context()); err != nil {
+					t.Errorf("audit: %v", err)
+					return
+				}
+				emb := make([]float64, EmbedDim)
+				emb[0] = 0.5
+				if _, err := queryVector(emb, 5); err != nil {
+					t.Errorf("vector: %v", err)
+					return
+				}
 				brainMu.RLock()
 				stmt, err := conn.Prepare(rank.FTSStmt)
 				if err == nil {
-					res, _ := conn.Execute(stmt, map[string]any{"q": "race", "n": 5})
+					res, execErr := conn.Execute(stmt, map[string]any{"q": "race", "n": 5})
 					stmt.Close()
-					if res != nil {
+					if execErr == nil && res != nil {
 						res.Close()
 					}
 				}

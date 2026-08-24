@@ -1,11 +1,14 @@
 //usr/bin/env go run -tags=chats_sync "$0" "$@"; exit
 //go:build chats_sync
 //
-// bin/chat/sync.go - download chat messages to var/chats/<platform>/.
+// bin/chat/sync.go - platform sync entrypoints (telegram|linkedin|whatsapp)
+// plus the jsonl→md importer. Downloads chat messages to
+// var/corpus/chats/<platform>/.
 //
 //	./bin/chat/sync.go telegram [--limit N] [--phone PHONE]
 //	./bin/chat/sync.go linkedin [--limit N] [--refresh]
-//
+//	./bin/chat/sync.go whatsapp --from DIR [--out DIR]
+//	./bin/chat/sync.go import [platform]
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
 
@@ -18,7 +21,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, `usage: bin/chat/sync.go telegram|linkedin [flags]`)
+		fmt.Fprintln(os.Stderr, `usage: bin/chat/sync.go telegram|linkedin|whatsapp [flags]`)
 		os.Exit(2)
 	}
 	platform := os.Args[1]
@@ -29,12 +32,9 @@ func main() {
 	case "linkedin":
 		os.Exit(chat.RunSyncLinkedIn(args))
 	case "whatsapp":
-		fmt.Fprintln(os.Stderr, "chats: WhatsApp sync is out of v1")
-		os.Exit(1)
-	case "help", "-h", "--help":
-		fmt.Fprintln(os.Stderr, `usage: bin/chat/sync.go telegram|linkedin [flags]
-WhatsApp sync is out of v1.`)
-		return
+		os.Exit(chat.RunSyncWhatsApp(args))
+	case "import":
+		os.Exit(chat.RunImport(args))
 	default:
 		fmt.Fprintf(os.Stderr, "chats: unknown platform %q\n", platform)
 		os.Exit(2)

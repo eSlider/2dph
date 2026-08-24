@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -45,10 +44,8 @@ func OpenWritable(path string) (*lbug.Database, *lbug.Connection, error) {
 	cfg.ReadOnly = false
 	cfg.MaxNumThreads = 8
 	cfg.BufferPoolSize = 1 << 30
-	if v := os.Getenv("KB_BUFFER_POOL"); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			cfg.BufferPoolSize = uint64(n)
-		}
+	if v := brainCfg().BufferPool; v > 0 {
+		cfg.BufferPoolSize = uint64(v)
 	}
 	db, err := lbug.OpenDatabase(path, cfg)
 	if err != nil {

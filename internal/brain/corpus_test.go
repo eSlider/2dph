@@ -11,8 +11,8 @@ import (
 
 func TestIndexableFilter(t *testing.T) {
 	for _, keep := range []string{
-		"/home/ano/projects/eSlider/docs/runbook.md",
-		"/home/ano/projects/inventar/docs/catalog/clients.yaml",
+		"/users/alice/projects/eSlider/docs/runbook.md",
+		"/users/bob/projects/inventar/docs/catalog/clients.yaml",
 		"/repo/README.md",
 	} {
 		if !indexable(keep) {
@@ -20,17 +20,17 @@ func TestIndexableFilter(t *testing.T) {
 		}
 	}
 	for _, drop := range []string{
-		"/home/ano/projects/eSlider/_archive/energy/notes.md",
+		"/users/alice/projects/eSlider/_archive/energy/notes.md",
 		"/app/node_modules/readme.md",
 		"/app/.venv/lib/foo.md",
-		"/app/var/mail/msg.md",
+		"/app/var/corpus/mail/msg.md",
 		"/app/.git/HEAD",
-		"/home/ano/projects/secret-trust-wallet.png.md",
-		"/home/ano/projects/creds/allowlist.yaml",
-		"/home/ano/projects/brave/Passwords.csv.md",
-		"/home/ano/.ssh/id_rsa.md",
-		"/home/ano/projects/certs/cert.p12.md",
-		"/home/ano/projects/app/.env.md",
+		"/users/alice/projects/secret-trust-wallet.png.md",
+		"/users/alice/projects/creds/allowlist.yaml",
+		"/users/alice/projects/brave/Passwords.csv.md",
+		"/users/alice/.ssh/id_rsa.md",
+		"/users/alice/projects/certs/cert.p12.md",
+		"/users/alice/projects/app/.env.md",
 	} {
 		if indexable(drop) {
 			t.Errorf("expected %q to be filtered", drop)

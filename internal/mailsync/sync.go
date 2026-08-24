@@ -108,7 +108,7 @@ type SyncConfig struct {
 	Gmail   *GmailCredentials // Gmail source (optional)
 	M365    *M365Credentials  // Microsoft 365 Graph source (optional)
 	IMAP    *IMAPConfig       // generic IMAP source (optional; always raw .eml)
-	Out     string            // var/mail root; default <repo>/var/mail
+	Out     string            // var/corpus/mail root; default <repo>/var/corpus/mail
 	Workers int               // concurrency; default 4
 	Limit   int               // max messages per source (0 = all)
 	Offset  int               // skip first N messages per source
@@ -117,6 +117,9 @@ type SyncConfig struct {
 	Raw     bool              // fetch raw RFC 822 (.eml) for RawMailer sources
 	Query   string            // Gmail search query; default in:inbox
 	Policy  RetryPolicy
+	// sources is a test-only seam injecting pre-built Sources before the
+	// configured ones. Empty in production; Run never fills it.
+	sources []Source
 }
 
 // SyncStats is returned by Run.
@@ -142,7 +145,7 @@ type Source interface {
 // stays retryable without gaps.
 
 // RawMailer is an optional Source capability: GetRaw returns the raw RFC 822
-// email for an id, written as <folder>/<id>/<id>.eml for the enmime importer.
+// email for an id, written as <folder>/<id>/<id>.eml for the mailconv importer.
 // When SyncConfig.Raw is set, only sources implementing RawMailer are synced
 // (e.g. Gmail, which can return format=raw).
 type RawMailer interface {
@@ -230,7 +233,7 @@ func (s *gmailSource) DownloadAttachment(ctx context.Context, msg *Message, att 
 // Run executes the sync across the configured sources with a worker pool.
 func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	if cfg.Out == "" {
-		cfg.Out = "var/mail"
+		cfg.Out = "var/corpus/mail"
 	}
 	if cfg.Workers <= 0 {
 		cfg.Workers = 4
@@ -273,8 +276,9 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 			return nil, fmt.Errorf("imap init: %w", err)
 		}
 		sources = append(sources, imapSrcs...)
-		cfg.Raw = true // imap always syncs raw .eml for the enmime importer
+		cfg.Raw = true // imap always syncs raw .eml for the emersion importer
 	}
+	sources = append(cfg.sources, sources...)
 	if len(sources) == 0 {
 		return nil, errors.New("sync: no source configured (need OO, Gmail, M365, IMAP, or a combination)")
 	}

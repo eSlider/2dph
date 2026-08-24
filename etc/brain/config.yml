@@ -1,0 +1,52 @@
+# 2dph typed configuration (internal/config).
+#
+# Load stack, deep-merged lowest→highest priority:
+#   etc/brain/config.yml → etc/brain/config.local.yml (gitignored) → .env → process env
+# Maps recurse; scalar leaves are last-write-wins; keys are lower+alnum.
+# Transitional legacy env names (KB_*, BRAIN_SEARCH_*) override these for now.
+#
+# Copy this file to etc/brain/config.local.yml and edit it for machine-local
+# overrides — do not commit secrets or absolute host paths here.
+
+# Repo root (corpus/db location). Legacy: KB_ROOT. Empty = auto-discover.
+root: ""
+
+# HTTP API server (pkg/httpapi / bin/brain/serve.go).
+host: "127.0.0.1"      # Legacy: KB_HOST. Use 0.0.0.0 when container-published.
+port: 8630             # Legacy: KB_PORT.
+workers: 4             # Legacy: KB_WORKERS. Parallel search backends.
+pprof: ""              # Legacy: KB_PPROF. e.g. "6060" to expose /debug/pprof.
+
+# Search backend / embedding daemon (internal/brain).
+search_cmd: ""                  # Legacy: KB_SEARCH_CMD. Empty = <root>/var/bin/brain-search.
+search_daemon_port: 17830       # Legacy: KBSEARCH_PORT.
+search_no_daemon: false         # Legacy: KBSEARCH_NO_DAEMON=1 disables the embed daemon.
+model: ""                       # Legacy: KBSEARCH_MODEL. Explicit potion model dir.
+hf_home: ""                     # Legacy: HF_HOME. HuggingFace cache root.
+
+# Ladybug buffer pool (bytes). Legacy: KB_BUFFER_POOL.
+buffer_pool: 1073741824
+
+# Indexer (bin/brain/index.go).
+index_allow_live: false         # Legacy: KB_INDEX_ALLOW_LIVE=1 skips the live-db guard.
+
+# Watch (bin/brain/watch.go). Legacy: KB_WATCH_INTERVAL / KB_WATCH_DIRS.
+watch_interval: 30              # seconds
+watch_dirs: []                  # e.g. ["/corpus"]
+
+# OnlyOffice CLI path override (internal/mailsync). Legacy: OO_CLI.
+oocli: ""
+
+# SearXNG web search (internal/websearch). Legacy: BRAIN_SEARCH_*.
+search:
+  url: ""    # BRAIN_SEARCH_URL
+  user: ""   # BRAIN_SEARCH_USER
+  pass: ""   # BRAIN_SEARCH_PASS
+  cache: ""  # BRAIN_SEARCH_CACHE
+  env: ""    # BRAIN_SEARCH_ENV
+
+# Reasoner (internal/reasoner client, bin/reasoner/bench.go). Legacy: REASONER_*.
+reasoner:
+  baseurl: "http://127.0.0.1:11435/v1"   # REASONER_BASE_URL
+  model: "qwen3.5:9b"                    # REASONER_MODEL
+  device: "cpu"                          # REASONER_DEVICE

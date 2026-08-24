@@ -12,7 +12,7 @@ description: >-
 Use https://github.com/mikefarah/yq to work with YAML, JSON, XML, CSV, TOML, HCL where it's efficient and less code.
 
 This is the Go `yq` (`yq --version` contains `mikefarah`). It is not
-kislyuk/yq (Python, jq-syntax, YAML-only wrapper). `bin/db/psql-yq` already
+kislyuk/yq (Python, jq-syntax, YAML-only wrapper). `scripts/db/psql-yq` already
 calls this binary.
 
 Prefer `yq` over `python3 -c`, `jq`, or ad-hoc parsers when one expression

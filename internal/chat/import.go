@@ -21,12 +21,25 @@ func RunImport(args []string) int {
 
 	root := Dir()
 	mdRoot := filepath.Join(root, "md")
-	glob := filepath.Join(root, "telegram", "*", "messages.jsonl")
+	platforms := []string{"telegram", "whatsapp"}
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		p := args[0]
+		if !validPlatform(p) {
+			fmt.Fprintf(os.Stderr, "chats import: unknown platform %q (want telegram|whatsapp)\n", p)
+			return 2
+		}
+		platforms = []string{p}
+	}
 
-	matches, err := filepath.Glob(glob)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "chats import: glob %s: %v\n", glob, err)
-		return 1
+	var matches []string
+	for _, plat := range platforms {
+		glob := filepath.Join(root, plat, "*", "messages.jsonl")
+		ms, err := filepath.Glob(glob)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "chats import: glob %s: %v\n", glob, err)
+			return 1
+		}
+		matches = append(matches, ms...)
 	}
 	if len(matches) == 0 {
 		fmt.Fprintf(os.Stderr, "chats import: no messages.jsonl found under %s\n", root)
@@ -36,6 +49,12 @@ func RunImport(args []string) int {
 	written := 0
 	failed := 0
 	for _, jsonlPath := range matches {
+		platform := platformOf(jsonlPath, root)
+		if platform == "" {
+			fmt.Fprintf(os.Stderr, "chats import: unhandled platform path %s\n", jsonlPath)
+			failed++
+			continue
+		}
 		chatID := filepath.Base(filepath.Dir(jsonlPath))
 
 		messages, chatName, err := readJSONL(jsonlPath)
@@ -65,7 +84,7 @@ func RunImport(args []string) int {
 		var b bytes.Buffer
 		b.WriteString("---\n")
 		fmt.Fprintf(&b, "id: %s\n", firstID)
-		fmt.Fprintf(&b, "platform: telegram\n")
+		fmt.Fprintf(&b, "platform: %s\n", platform)
 		fmt.Fprintf(&b, "chat_id: %s\n", chatID)
 		fmt.Fprintf(&b, "chat_name: %s\n", escapeYAML(chatName))
 		fmt.Fprintf(&b, "participants: [")
@@ -97,7 +116,7 @@ func RunImport(args []string) int {
 			b.WriteString(line + "\n\n")
 		}
 
-		mdFile := filepath.Join(mdRoot, "telegram", sanitizeDir(chatName), "messages.md")
+		mdFile := filepath.Join(mdRoot, platform, sanitizeDir(chatName), "messages.md")
 		if err := os.MkdirAll(filepath.Dir(mdFile), 0755); err != nil {
 			fmt.Fprintf(os.Stderr, "chats import: mkdir %s: %v\n", filepath.Dir(mdFile), err)
 			failed++
@@ -195,4 +214,27 @@ func sanitizeDir(name string) string {
 		" ", "_",
 	)
 	return strings.TrimSpace(r.Replace(name))
+}
+
+// validPlatforms lists the platforms chat import understands. Anything else
+// is rejected rather than silently ingested under a wrong label.
+var validPlatforms = map[string]bool{"telegram": true, "whatsapp": true}
+
+func validPlatform(p string) bool {
+	return validPlatforms[p]
+}
+
+// platformOf derives the platform label from the path layout
+// <root>/<platform>/<chat>/messages.jsonl. Returns "" for an unknown or
+// unrelatable path so the caller can reject it instead of mislabelling it.
+func platformOf(path, root string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || len(rel) == 0 {
+		return ""
+	}
+	parts := strings.SplitN(filepath.ToSlash(rel), "/", 2)
+	if !validPlatform(parts[0]) {
+		return ""
+	}
+	return parts[0]
 }

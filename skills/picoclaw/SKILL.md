@@ -13,9 +13,9 @@ PicoClaw speaks MCP at `POST /mcp` on `bin/brain/serve.go`. Compose profile
 (see [docs/picoclaw.md](../../docs/picoclaw.md)).
 
 ```bash
-bin/stack/start-assistant     # brain + qwen3.5:9b + gateway + picoclaw agent
-bin/stack/status
-bin/stack/stop
+scripts/stack/start-assistant     # brain + qwen3.5:9b + gateway + picoclaw agent
+scripts/stack/status
+scripts/stack/stop
 ```
 
 ## Tool order (before a factual reply)

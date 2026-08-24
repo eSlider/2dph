@@ -15,30 +15,8 @@ import (
 // ingestMu serializes /ingest writes: the serve process holds kb.lbug open
 // for its lifetime, and Ladybug dies silently if the same file is opened a
 // second time inside one process. The read handle is released for the write
-// window and reopened afterwards (see Ingest).
+// window and reopened afterwards (see ingestWriteLocked).
 var ingestMu sync.Mutex
-
-// ingestModel caches the embedding model for the life of the process.
-// LoadModel() per request leaked ~0.5-1GB each call: StaticModel.Close frees
-// only the tokenizer, never the matrix. Same long-lived pattern as the
-// embed daemon.
-var (
-	ingestModelMu sync.Mutex
-	ingestModel   *StaticModel
-)
-
-func getIngestModel() (*StaticModel, error) {
-	ingestModelMu.Lock()
-	defer ingestModelMu.Unlock()
-	if ingestModel == nil {
-		m, err := LoadModel()
-		if err != nil {
-			return nil, err
-		}
-		ingestModel = m
-	}
-	return ingestModel, nil
-}
 
 // Ready opens the Ladybug file for the life of the serve process.
 func Ready() error {
@@ -183,6 +161,20 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 	return json.Marshal(map[string]any{"status": "ok", "by_confidence": rows})
 }
 
+// embedIngestLeafs fills missing embeddings for /ingest leafs. Package-level
+// var so tests can run the full Ingest path offline, without the HF model.
+var embedIngestLeafs = embedIngestLeafsWithModel
+
+func embedIngestLeafsWithModel(leafs []LeafInput) error {
+	model, err := getIngestModel()
+	if err != nil {
+		return fmt.Errorf("model: %w", err)
+	}
+	// Shared process-living model: never Close it here (Close frees only the
+	// tokenizer and would break concurrent requests while leaking nothing).
+	return embedLeafs(model, leafs)
+}
+
 func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if len(bytes.TrimSpace(body)) == 0 {
 		return json.Marshal(map[string]any{
@@ -195,29 +187,17 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	model, err := getIngestModel()
-	if err != nil {
-		return nil, fmt.Errorf("model: %w", err)
-	}
-	for i := range leafs {
-		if len(leafs[i].Embedding) > 0 {
-			continue
-		}
-		vec, err := model.Embed(leafs[i].Text)
-		if err != nil {
-			return nil, err
-		}
-		leafs[i].Embedding = vec
+	if err := embedIngestLeafs(leafs); err != nil {
+		return nil, err
 	}
 	ingestMu.Lock()
 	defer ingestMu.Unlock()
-
-	dbpath := dbPath()
 	// Writers must own the swap: block all readers for the close → write →
 	// reopen window so a handler never runs a statement against a connection
 	// that Ingest just closed.
 	brainMu.Lock()
 	defer brainMu.Unlock()
+	dbpath := dbPath()
 	ids, err := ingestWriteLocked(dbpath, leafs)
 	if err != nil {
 		return nil, err
@@ -225,16 +205,17 @@ func (HTTP) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	return json.Marshal(map[string]any{"mode": "add", "ids": ids, "db": dbpath})
 }
 
-// ingestWriteLocked closes the serve read handle, writes leafs through a
-// private writable handle, then reopens the serve read connection so
-// /search, /get and /stats see the new leafs without a restart. The reopen
-// runs on every exit path — including InitSchema/AddLeafs/EnsureIndexes
-// errors — so the process never lands in a "brain not open" state for its
-// lifetime (Ladybug WAL snapshots the read connection at its first query).
-// Caller holds brainMu.Lock.
+// ingestWriteLocked closes the serve read handle BEFORE opening kb.lbug
+// writable — Ladybug dies silently in-process when the same file is opened
+// twice — writes leafs through the private writable handle, then reopens the
+// serve read connection so /search, /get and /stats see the new leafs without
+// a restart. The reopen runs on every exit path — including
+// InitSchema/AddLeafs/EnsureIndexes errors — so the process never lands in a
+// "brain not open" state for its lifetime (Ladybug WAL snapshots the read
+// connection at its first query). Caller holds brainMu.Lock.
 func ingestWriteLocked(dbpath string, leafs []LeafInput) ([]string, error) {
 	closeBrainLocked() // release the read handle: same-file double-open kills lbug
-	db, conn, err := OpenWritable(dbpath)
+	wdb, wconn, err := OpenWritable(dbpath)
 	if err != nil {
 		_ = refreshBrainLocked() // restore serving before reporting the error
 		return nil, err
@@ -243,11 +224,11 @@ func ingestWriteLocked(dbpath string, leafs []LeafInput) ([]string, error) {
 	closeW := func() {
 		if !closed {
 			closed = true
-			if conn != nil {
-				conn.Close()
+			if wconn != nil {
+				wconn.Close()
 			}
-			if db != nil {
-				db.Close()
+			if wdb != nil {
+				wdb.Close()
 			}
 		}
 	}
@@ -256,14 +237,14 @@ func ingestWriteLocked(dbpath string, leafs []LeafInput) ([]string, error) {
 		_ = refreshBrainLocked()
 	}
 	defer restore()
-	if err := InitSchema(conn); err != nil {
+	if err := InitSchema(wconn); err != nil {
 		return nil, err
 	}
-	ids, err := AddLeafs(conn, leafs)
+	ids, err := AddLeafs(wconn, leafs)
 	if err != nil {
 		return nil, err
 	}
-	if err := EnsureIndexes(conn); err != nil {
+	if err := EnsureIndexes(wconn); err != nil {
 		return nil, err
 	}
 	// Ladybug only exposes the write to fresh readers once the writable
@@ -285,7 +266,7 @@ func refreshBrain() error {
 // refreshBrainLocked assumes brainMu is held write-locked.
 func refreshBrainLocked() error {
 	closeBrainLocked()
-	return openWithSandboxLocked(eps())
+	return openWithSandboxLocked(brainCfg().Eps)
 }
 
 func parseIngestLeafs(raw []byte) ([]LeafInput, error) {

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# scripts/docker-entrypoint - run 2dph tools inside the container.
+#
+# API image (Zig CGO binaries, Go write path):
+#   serve | search | watch | index | add | mail-sync [N]
+#   mail-sync [N]   ETL loop: sync -> import (Go); optional index (default 300s)
+# All-Go: no python sidecar (the old index image is gone).
+#
+# Usage comment starts at line 2 (self-describing convention).
+set -euo pipefail
+
+CMD="${1:-shell}"
+shift || true
+
+if [ -x /usr/local/bin/brain-serve ]; then
+	case "$CMD" in
+		shell) exec bash ;;
+		serve)
+			# The HTTP API's embedQuery calls a search daemon on KBSEARCH_PORT
+			# (default 17830). Without it every query spawned a doomed
+			# subprocess + 10s poll before falling back to a per-query model
+			# load (~12s). Start the embed daemon, then serve the API.
+			port="${KBSEARCH_PORT:-17830}"
+			/usr/local/bin/brain-search serve "$port" &
+			exec /usr/local/bin/brain-serve "$@" ;;
+		search) exec /usr/local/bin/brain-search "$@" ;;
+		watch) exec /usr/local/bin/brain-watch "$@" ;;
+		index) exec /usr/local/bin/brain-index "$@" ;;
+		add) exec /usr/local/bin/brain-add "$@" ;;
+		mail-sync)
+			# ETL: pull mail, convert to md when new>0. Full --rebuild is opt-in
+			# (MAIL_SYNC_INDEX=1) — ~29k leaf rebuild is minutes, not a 10s loop.
+			interval="${1:-300}"
+			[ "$interval" -gt 0 ] 2>/dev/null || interval=300
+			: "${MAIL_SYNC_ENV:=/secret/mail.env}"
+			: "${MAIL_SYNC_SRC:=onlyoffice,gmail}"
+			: "${MAIL_SYNC_OUT:=/data/var/corpus/mail}"
+			: "${MAIL_SYNC_INDEX:=0}"
+			while true; do
+				out="$("/usr/local/bin/mail-sync" --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" 2>&1)" || true
+				echo "$out"
+				new="$(printf '%s\n' "$out" | sed -n 's/.*new=\([0-9]*\).*/\1/p' | tail -1)"
+				if [ -n "$new" ] && [ "$new" -gt 0 ] 2>/dev/null; then
+					/usr/local/bin/mail-import --from-raw "$MAIL_SYNC_OUT" 2>&1 | tail -1
+					if [ "$MAIL_SYNC_INDEX" = "1" ]; then
+						/usr/local/bin/brain-index --rebuild --with-mail 2>&1 | tail -1
+					fi
+				fi
+				sleep "$interval"
+			done
+			;;
+		*) echo "unknown command: $CMD (api: serve|search|watch|index|add|mail-sync)" >&2; exit 2 ;;
+	esac
+fi
+
+exec bash

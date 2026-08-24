@@ -1,0 +1,3 @@
+Buffer-Pool: 2048
+Search-Cmd: var/bin/brain-search
+Root: /var/lib/2dph

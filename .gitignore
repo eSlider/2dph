@@ -8,6 +8,8 @@ __pycache__/
 .DS_Store
 *.env
 .env
+# testdata fixtures may ship .env (committed, not secrets)
+!internal/config/testdata/**/.env
 .secrets/
 lib-ladybug/
 go.work.local
@@ -21,7 +23,7 @@ mnt/
 # go build ./bin/mail/sync.go drops a binary named `sync` in cwd
 /sync
 
-# native brain binaries built by bin/stack/serve-brain
+# native brain binaries built by scripts/stack/serve-brain
 /bin-build/
 
 # local compiled binaries dropped in repo root (go run -o . / go build)
@@ -31,3 +33,6 @@ mnt/
 
 # knowledge-mesh corpus dump (data, not source)
 /corpus/
+
+# machine-local config overrides (never committed; CI guard on absolute paths)
+etc/brain/config.local.yml
