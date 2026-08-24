@@ -40,6 +40,14 @@ services:
       KB_ROOT: /data
       KB_WORKERS: "4"
       KB_PORT: "8630"
+      # Ladybug write path needs a pool larger than the ~1.4GB DB (docs/brain/rebuild.md).
+      # Rebuild uses 10GB; the serve-side incremental pool stays at the 4GB default
+      # to avoid HNSW write stalls with a large pool.
+      KB_BUFFER_POOL: "4294967296"
+      # In-process embedding: the daemon on KBSEARCH_PORT is only started by
+      # the entrypoint when the image carries a working brain-search; embedding
+      # in-process avoids a respawn loop against a dead daemon.
+      KBSEARCH_NO_DAEMON: "1"
       KB_PPROF: "1707"
     network_mode: host
     volumes:
