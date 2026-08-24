@@ -1,0 +1,17 @@
+[Unit]
+Description=2dph periodic browser extraction -> brain ingest
+Documentation=https://git.produktor.io/eSlider/2dph/issues/163
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# @REPO_ROOT@ is substituted at install time (scripts/browser-sync-install.sh);
+# committed files never carry machine-specific absolute paths.
+ExecStart=@REPO_ROOT@/scripts/browser-sync-run
+StandardOutput=append:@REPO_ROOT@/var/log/browser-sync.log
+StandardError=append:@REPO_ROOT@/var/log/browser-sync.log
+# A hard corpus/brain failure exits non-zero and is retried on the next timer
+# tick; Thorium being down is handled inside the daemon (not a failure).
+Restart=on-failure
+RestartSec=60

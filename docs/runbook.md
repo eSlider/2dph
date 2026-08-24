@@ -89,6 +89,23 @@ docker compose --profile picoclaw up brain-mcp   # MCP 127.0.0.1:8630
 `GET /openapi.json`, `POST /mcp`. Agent tool order: `search` → `get` → `audit`.
 See [picoclaw.md](picoclaw.md).
 
+## Browser sync (periodic, #163)
+
+Pushes the browser-extracted corpus (`var/corpus/{gmail,linkedin,djinni}`) into
+the brain as leafs every 6 h. Thorium down is tolerated: extraction is skipped
+and the last-known corpus is still ingested.
+
+```bash
+./bin/cron/browser-sync.go                  # one cycle, default paths
+./bin/cron/browser-sync.go --skip-extract   # no Thorium probe
+./bin/cron/browser-sync.go --interval 6h    # run continuously
+sudo scripts/browser-sync-install.sh        # install the 6-hourly systemd timer
+```
+
+Log: `var/log/browser-sync.log`. The systemd units
+(`scripts/browser-sync.{service,timer}`) use an `@REPO_ROOT@` placeholder; the
+install script substitutes the real root at install time.
+
 ## Reasoner (optional, D18)
 
 CPU sidecar on `127.0.0.1:11435`. Weights are not in the 2dph image.

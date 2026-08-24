@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# scripts/browser-sync-run - run the browser-sync daemon once (used by the
+# systemd timer and for manual invocations).
+#
+#   scripts/browser-sync-run --skip-extract
+#
+# Builds the daemon into bin-build/ on first use, then runs it one-shot
+# against the current repo root. Extra args are passed through.
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+BUILD_DIR="$ROOT/bin-build"
+BIN="$BUILD_DIR/browser-sync"
+
+if [[ ! -x "$BIN" ]]; then
+  echo "build: compiling browser-sync" >&2
+  mkdir -p "$BUILD_DIR"
+  go build -o "$BIN" "$ROOT/bin/cron/browser-sync.go"
+fi
+
+exec "$BIN" --root "$ROOT" "$@"

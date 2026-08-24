@@ -1,0 +1,8 @@
+{
+  "source": "linkedin",
+  "page": "https://www.linkedin.com/mynetwork/invite-connect/connections/",
+  "page_1_connections": [
+    {"name": "Alice Smith", "headline": "Data Engineer at Example"},
+    {"name": "Bob Jones", "headline": "Platform Engineer"}
+  ]
+}

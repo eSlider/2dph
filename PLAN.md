@@ -12,6 +12,9 @@ OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
 [#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 in,
 [#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 in,
 [#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in,
+[#163](https://git.produktor.io/eSlider/2dph/issues/163) browser-sync in
+(`bin/cron/browser-sync.go` + 6-hourly systemd timer, reads
+`var/corpus/{gmail,linkedin,djinni}` → POST /ingest; Thorium down tolerated),
 [#82](https://git.produktor.io/eSlider/2dph/issues/82) Synapse Matrix (leafs+edges
 as a service for pc-agent) in — `bin/brain/synapse-matrix.go`, docs
 [docs/brain-synapse.md](docs/brain-synapse.md).
