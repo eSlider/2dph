@@ -126,6 +126,18 @@ write never commits, so the on-disk DB is the last successful state. A full
 rebuild is only needed after a deliberate `--rebuild` or a corrupt DB, not
 after a restart.
 
+## Disk mail/contacts import (#79)
+
+Sources on `/mnt/8TB` (TB mbox, .eml, VCF/MAB) → corpus pipeline; see
+[mail-sources.md](mail-sources.md) for the authoritative source table + status.
+PST stays blocked until `libpst-utils` (`readpst`) is installed.
+
+```bash
+./bin/mail/convert-mbox.go --in <tb-root> --out var/corpus/mail --source tb-profile --dry-run
+./bin/mail/convert-mbox.go --in <tb-root> --out var/corpus/mail --source tb-profile
+./bin/mail/import.go --from-eml var/corpus/mail
+```
+
 ## Browser sync (periodic, #163)
 
 Pushes the browser-extracted corpus (`var/corpus/{gmail,linkedin,djinni}`) into
