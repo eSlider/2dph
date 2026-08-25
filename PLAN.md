@@ -712,3 +712,23 @@ brain; шаг волны `mail-index`. Решение B: `LoadMailLeafs` рас�
 | Известное ограничение: векторный поиск — линейный скан (#192), ~32s при 313k leafs | open — отдельный issue на оптимизацию |
 
 Branch `feat/mail-corpus-brain#199`, PR #200 → release/v1.
+
+## 2026-08-25 — импорт Outlook PST: readpst -e → .eml → пайплайн (gitea #185)
+
+Goal: закрыть остаток #79 — два PST-файла (Andriy + копия в бэкапе 128Gb).
+`readpst -e` → набор `.eml` → существующий `mailconv.FromEML` (source-тег `pst/`).
+Конвертер по решению PO: readpst из пакета `pst-utils` (Ubuntu 24.04; бывший
+`libpst-utils`).
+
+| Step | Status |
+|------|--------|
+| readpst на хост: системная установка `apt-get install pst-utils` заблокирована (нет passwordless sudo) — установлен локально в `var/dist/readpst` (dpkg-deb -x, `pst.readpst` в config.local.yml) | done (блокер зафиксирован в issue) |
+| `internal/source/pst.go`: адаптер `source.PST` (#97-паттерн) — `readpst -e` в вытираемый scratch (`var/tmp/pst/<label>`), политика #79 через `mailconv.SkipFolder` (немецкие имена: Entwürfe/Vorlagen/Gelöschte Objekte/Junk-E-Mail/Postausgang), контент-адресный копирование в корпус `Out/<label>/<folder>/<sha256:16>/<sha256:16>.eml`; `ImportPST`/`PlanPST` (sync + `mailconv.FromEML`), `--dry-run` план | done |
+| нормализация `LibPST-iamunique-<n>` MIME-boundary (readpst вставляет случайный токен на каждом прогоне) — иначе контент-ID нестабильны и повторный прогон плодит дубли | done (найдено на реальных данных, TDD-тест) |
+| `bin/mail/import-pst.go`: тонкая CLI-обёртка (flaggy, конфиг pst.*, ctx-first, идемпотентность, state `var/state/pst.json`) | done |
+| конфиг: `Config.PST` + секция `pst:` в `etc/brain/config.yml` (sources/readpst/out/state; отсутствие sources = явная ошибка с указанием на конфиг) | done |
+| TDD offline (synthetic Alice/Bob/example.com, фейковый readpst через test-seam hook): конверсия .eml→canon (folder=Posteingang), идемпотентный повтор (0 дублей), state-чекпойнт, dry-run, policy-исключения, resolveReadPST (override→PATH→var/dist→ошибка), идентичные архивы (дедуп по seen-set) | done — `go test -race ./internal/source/ ./internal/mailconv/ ./internal/config/` green |
+| Прогон реальных PST (оба файла байт-идентичны, sha256 совпадает): 1 уникальное письмо (Outlook-приветствие 2005, `Posteingang`) × 2 лейбла; повторный прогон new=0 skipped=2, дублей нет; readpst извлёк также 78 VCF + 6 ICS (импортируются другими пайплайнами, #68) | done |
+| docs: `docs/mail-sources.md` (статусы PST → импортировано, секция PST-импорт), PLAN.md (этот блок) | done |
+
+Verification: `go build ./...` (кроме pre-existing build-tag пакетов bin/{reasoner,onlyoffice,postgres} — main без тега), `go vet ./...`, `go test -race ./...` зелёные; gofmt чист (shebang-файлы исключены). Корпус: `var/corpus/mail/pst/{pst-andriy,pst-backup-128g-vorlagen}` + state `var/state/pst.json` (1 seen-id). Branch `feat/pst-import#185`.
