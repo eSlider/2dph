@@ -51,6 +51,9 @@ replies (`skills/picoclaw/SKILL.md`). `throttled` ≠ absence.
    embedded in remote URLs.
 2. **Read-only sources**: Ladybug DB and Postgres queried read-only; rebuilds
    write only under `var/` (gitignored).
+2a. **No `sudo`**: no passwordless sudo; privileged ops (chown, mount, systemd
+   on foreign roots) go through `docker run --rm -v <host>:/host busybox ...`
+   (docker group, uid 1000 on host = 1000 inside unless remapped).
 3. **PII**: client data never read or quoted; test data synthetic
    (Alice/Bob/example.com).
 4. **TDD — нет теста → не работает → задача открыта.** Failing test before
