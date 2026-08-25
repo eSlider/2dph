@@ -39,7 +39,7 @@ type Config struct {
 	Pprof   string `mapstructure:"pprof"`
 
 	// Search backend / embedding daemon (internal/brain).
-	SearchCmd        string `mapstructure:"searchcmd"`        // Legacy: KB_SEARCH_CMD.
+	SearchCmd        string `mapstructure:"searchcmd"` // Legacy: KB_SEARCH_CMD.
 	SearchDaemonPort int    `mapstructure:"searchdaemonport"` // Legacy: KBSEARCH_PORT.
 	SearchNoDaemon   bool   `mapstructure:"searchnodaemon"`   // Legacy: KBSEARCH_NO_DAEMON.
 	Model            string `mapstructure:"model"`            // Legacy: KBSEARCH_MODEL.
@@ -69,10 +69,6 @@ type Config struct {
 	// Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): brain
 	// leafs+edges exposed for pc-agent. Legacy: KB_SYNAPSE_*.
 	Synapse SynapseConfig `mapstructure:"synapse"`
-
-	// WebDAV demo drive (bin/webdav/serve-demo.go, issue #72): read-only
-	// endpoint served behind the NPM proxy at drive.produktor.io.
-	WebDAV WebDAVConfig `mapstructure:"webdav"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.
@@ -98,19 +94,6 @@ type SynapseConfig struct {
 	Token string `mapstructure:"token"` // Legacy: KB_SYNAPSE_TOKEN. Empty = loopback only.
 }
 
-// WebDAVConfig configures the read-only demo drive (issue #72). Credentials
-// are demo-only and live in gitignored etc/brain/config.local.yml; the
-// committed config.yml carries defaults with no secrets.
-type WebDAVConfig struct {
-	Host   string `mapstructure:"host"`   // Bind address; loopback is enough (NPM fronts TLS).
-	Port   int    `mapstructure:"port"`   // e.g. 8099.
-	Root   string `mapstructure:"root"`   // Absolute dir to serve read-only.
-	Realm  string `mapstructure:"realm"`  // WWW-Authenticate realm.
-	User   string `mapstructure:"user"`   // Demo user.
-	Pass   string `mapstructure:"pass"`   // Demo password.
-	Prefix string `mapstructure:"prefix"` // Mount prefix, e.g. "/webdav"; empty = "/".
-}
-
 // Defaults returns a Config with the built-in defaults. Load() applies the
 // stack on top of these, so fields absent from every layer keep a sane value.
 func Defaults() Config {
@@ -129,11 +112,6 @@ func Defaults() Config {
 		Synapse: SynapseConfig{
 			Host: "127.0.0.1",
 			Port: 8632,
-		},
-		WebDAV: WebDAVConfig{
-			Host:  "127.0.0.1",
-			Port:  8099,
-			Realm: "produktor demo drive",
 		},
 	}
 }

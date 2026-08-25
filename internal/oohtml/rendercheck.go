@@ -15,7 +15,6 @@ const (
 	IssueMissingGreeting   Code = "missing-greeting"
 	IssueMissingOffer      Code = "missing-offer"
 	IssueMissingSignature  Code = "missing-signature"
-	IssueMissingDemoLink   Code = "missing-demo-link"
 	IssueDuplicateChatline Code = "duplicate-chatline"
 )
 
@@ -50,9 +49,6 @@ func RenderCheck(html string, want TemplateData) []CheckIssue {
 	}
 	if want.SignerName != "" && (!strings.Contains(html, want.SignerName) || !strings.Contains(html, want.SiteURL)) {
 		add(IssueMissingSignature, "signature (name or site link) not present")
-	}
-	if want.DemoURL != "" && !strings.Contains(html, want.DemoURL) {
-		add(IssueMissingDemoLink, "demo-drive link "+want.DemoURL+" not present (issue #72)")
 	}
 
 	paras := paragraphTexts(html)
