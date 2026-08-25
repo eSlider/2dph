@@ -586,3 +586,20 @@ Verification: `go test -race ./internal/facts/` green (тесты crm/company-me
 (данные заполняет внешний `graph.py`, вне репо). company→project пока недоказуем
 из-за этого data-gap; person→company недоказуем — CRM-компании с персонами не
 совпадают с corpus orgs. Branch `feat/crm-assoc#55`.
+
+## 2026-08-25 — facts lookup + contradiction-as-not-confirmed test plan (gitea #58, epic #52)
+
+Goal: prove the `search → get → audit` operator flow on ONE known deal and the
+contradiction-as-`(not confirmed)` path (D16), offline with synthetic fixtures.
+
+| Step | Status |
+|------|--------|
+| offline test: `search` (fuse FTS+vector, root filter) → `get` (leaf by id → source/confidence) → `audit` (`facts.CheckFactRow` + `facts.Adjudicate`) confirms two-source facts on synthetic deal `acme-2026` (Alice/Bob/example.com) | done |
+| offline test: 2v2 contradiction leaf (`a x b vs c x d`, no rule fires) stays `(not confirmed)`/hypothesis until audited; never a confirmed fact; deduction escalates | done |
+| operator flow documented for bot/assistant (`search`/`get`/`audit`; confirmed vs `(not confirmed)`) — `docs/facts/audit-recipes.md` | done |
+
+Verification: `go vet ./internal/facts/... ./internal/brain/rank/...` clean;
+`go test -race ./internal/brain/rank/ ./internal/facts/` green
+(`TestDealSearchGetAuditConfirmedFlow`, `TestDealContradictionNotConfirmedUntilAudited`).
+Блокер #53 закрыт; live `get` против `var/kb.lbug` + OnlyOffice CRM остаётся
+вне объёма (offline-план доказывает cgo-free логику). Branch `test/facts-lookup#58`.
