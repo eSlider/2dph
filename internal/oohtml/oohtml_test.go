@@ -107,6 +107,39 @@ func TestRenderCheckDuplicateChatline(t *testing.T) {
 	}
 }
 
+// TestBuildIncludesDemoLink proves the offer block renders the live demo-drive
+// link when DemoURL is set (issue #72).
+func TestBuildIncludesDemoLink(t *testing.T) {
+	tmpl := sampleTemplate()
+	tmpl.DemoURL = "https://drive.produktor.io/webdav"
+	tmpl.DemoLabel = "Mount the live demo drive"
+	html, err := Build(tmpl)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if !strings.Contains(html, tmpl.DemoURL) {
+		t.Fatalf("demo URL not present in built HTML:\n%s", html)
+	}
+	if !strings.Contains(html, tmpl.DemoLabel) {
+		t.Fatalf("demo label not present in built HTML:\n%s", html)
+	}
+}
+
+// TestRenderCheckMissingDemoLink asserts a requested demo link that vanishes
+// from the fetched HTML blocks the send.
+func TestRenderCheckMissingDemoLink(t *testing.T) {
+	tmpl := sampleTemplate()
+	tmpl.DemoURL = "https://drive.produktor.io/webdav"
+	html, err := Build(tmpl)
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	html = strings.ReplaceAll(html, tmpl.DemoURL, "https://example.com/gone")
+	if !hasIssue(RenderCheck(html, tmpl), IssueMissingDemoLink) {
+		t.Fatalf("expected missing-demo-link issue")
+	}
+}
+
 func hasIssue(issues []CheckIssue, code Code) bool {
 	for _, i := range issues {
 		if i.Code == code {
