@@ -541,3 +541,23 @@ From,ReplyTo,To,CC,BCC,SentAt,Body,Attachments(lazy)}`; хранение на д
 Verification: `go build ./...` green; `go vet ./internal/canon/... ./pkg/utils/...`
 clean; `go test -race ./internal/canon/... ./pkg/utils/...` green. Branch
 `feat/conversation-canon#99` off `release/v1`.
+
+## 2026-08-25 — OO Mail: HTML-шаблон + render-check до отправки (gitea #76)
+
+Goal: из wave-1 письма уходили plain-text одной строкой; теперь брендированный
+HTML-шаблон + гейт рендер-проверки, блокирующий send, пока черновик не пройдёт
+assert (абзацы, подпись, logo cid, chat-line без дублей).
+
+| Step | Status |
+|------|--------|
+| `internal/oohtml` (новый пакет-домен): брендированный шаблон produktor.io (палитра #76: cream `#FAF5EA`, ink `#0A0A0A`, navy `#142039`/`#0E1626`, CTA `#F2C849`, primary `#143A6F`; system-ui; inline-стили; логотип `cid:produktor-logo.gif` без remote-URL) | done |
+| `RenderCheck(html, TemplateData)` — типизированный ассерт: paragraphs ≥2, greeting, offer+CTA, signature+site, logo cid, отсутствие дублей текстовых блоков (`Code` enum) | done |
+| `Mailer.Send(ctx, SendParams)` — TDD-гейт: `Build` → `SaveMailDraft`(HTML) → `GetMailMessage` back → `RenderCheck` → `SendMail` только при чистой проверке; иначе error «render check failed, send blocked» | done |
+| `BuildMessage(w, …)` — MIME `multipart/related` через `emersion/go-message`: HTML-часть + inline `image/gif` с `Content-ID` = логотип (cid-embedding, не remote fetch) | done |
+| Лого-ассеты `etc/onlyoffice/assets/produktor-logo.{png,gif,-64.gif}` | готовы |
+| TDD offline (фикстуры synthetic Alice/Bob/example.com; fakeStore вместо сети): 10 тестов, `-race` зелёные | done |
+
+Verification: `go vet ./...` clean; `go test -race ./internal/oohtml/` green (10/10).
+Branch `feat/ooo-mail-html-template#76` off `release/v1`. Осталось вне объёма:
+wiring в OnlyOffice CLI (`oo mails send`) и фактическая отправка с вложенным
+cid-логотипом через драфт-API OnlyOffice.
