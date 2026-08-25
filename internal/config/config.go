@@ -39,7 +39,7 @@ type Config struct {
 	Pprof   string `mapstructure:"pprof"`
 
 	// Search backend / embedding daemon (internal/brain).
-	SearchCmd        string `mapstructure:"searchcmd"` // Legacy: KB_SEARCH_CMD.
+	SearchCmd        string `mapstructure:"searchcmd"`        // Legacy: KB_SEARCH_CMD.
 	SearchDaemonPort int    `mapstructure:"searchdaemonport"` // Legacy: KBSEARCH_PORT.
 	SearchNoDaemon   bool   `mapstructure:"searchnodaemon"`   // Legacy: KBSEARCH_NO_DAEMON.
 	Model            string `mapstructure:"model"`            // Legacy: KBSEARCH_MODEL.
@@ -69,6 +69,11 @@ type Config struct {
 	// Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): brain
 	// leafs+edges exposed for pc-agent. Legacy: KB_SYNAPSE_*.
 	Synapse SynapseConfig `mapstructure:"synapse"`
+
+	// PST Outlook import (bin/mail/import-pst.go, issue #185): readpst -e →
+	// .eml → the mailconv pipeline. Paths of the source .pst files are machine
+	// inventory (see #79) and belong in config.local.yml, never in code.
+	PST PSTConfig `mapstructure:"pst"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.
@@ -92,6 +97,29 @@ type SynapseConfig struct {
 	Host  string `mapstructure:"host"`  // Legacy: KB_SYNAPSE_HOST.
 	Port  int    `mapstructure:"port"`  // Legacy: KB_SYNAPSE_PORT.
 	Token string `mapstructure:"token"` // Legacy: KB_SYNAPSE_TOKEN. Empty = loopback only.
+}
+
+// PSTConfig configures the Outlook PST import (#185). All paths are external
+// values loaded from config (D28): the .pst inventory lives in the source map
+// (#79), the readpst binary may be machine-local.
+type PSTConfig struct {
+	// Sources are the .pst files to import: label (corpus subdir) + path
+	// (absolute, see #79). Empty = the import tool fails with a config error.
+	Sources []PSTSource `mapstructure:"sources"`
+	// ReadPST overrides the readpst binary path; empty = PATH lookup, then
+	// the repo-local var/dist toolchain dir, then an explicit config error.
+	ReadPST string `mapstructure:"readpst"`
+	// Out is the corpus root for extracted mail; empty = <root>/var/corpus/mail/pst.
+	Out string `mapstructure:"out"`
+	// State is the source checkpoint; empty = <root>/var/state/pst.json.
+	State string `mapstructure:"state"`
+}
+
+// PSTSource is one .pst archive to import: Label names the corpus subdir and
+// the message source tag; Path is the absolute .pst path (see #79).
+type PSTSource struct {
+	Label string `mapstructure:"label"`
+	Path  string `mapstructure:"path"`
 }
 
 // Defaults returns a Config with the built-in defaults. Load() applies the

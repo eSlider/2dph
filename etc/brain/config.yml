@@ -57,3 +57,13 @@ synapse:
   host: "127.0.0.1"      # KB_SYNAPSE_HOST. 0.0.0.0 requires a token.
   port: 8632             # KB_SYNAPSE_PORT.
   token: ""              # KB_SYNAPSE_TOKEN. Empty = loopback bind only.
+
+# Outlook PST import (bin/mail/import-pst.go, issue #185): readpst -e → .eml →
+# the mailconv pipeline. The .pst file inventory is machine-local (source map
+# #79); put the real paths in config.local.yml, never in code. Missing
+# pst.sources = explicit error from the tool pointing at this file.
+pst:
+  sources: []            # e.g. [{label: pst-andriy, path: "<abs path, see #79>"}]
+  readpst: ""            # readpst binary override; empty = PATH, then var/dist/readpst
+  out: ""                # corpus root; empty = <root>/var/corpus/mail/pst
+  state: ""              # checkpoint; empty = <root>/var/state/pst.json

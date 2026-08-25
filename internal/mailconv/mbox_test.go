@@ -80,6 +80,30 @@ func TestMboxMessage(t *testing.T) {
 	}
 }
 
+// TestSkipFolderPolicy proves the #79 exclusion policy covers both the
+// English Thunderbird names and the German Outlook folder names readpst emits
+// (Entwürfe=Drafts, Vorlagen=Templates, Gelöschte Objekte=Deleted Items,
+// Junk-E-Mail, Postausgang=Outbox/Unsent). Own folders (Inbox, Sent,
+// Persönliche Ordner) stay importable.
+func TestSkipFolderPolicy(t *testing.T) {
+	excluded := []string{
+		"Drafts", "Draft.sbd", "Templates", "Trash", "Junk", "Junk-E-Mail",
+		"Spam", "Unsent Messages", "Entwürfe", "Vorlagen",
+		"Gelöschte Objekte", "Postausgang",
+	}
+	for _, f := range excluded {
+		if !SkipFolder(f) {
+			t.Errorf("SkipFolder(%q) = false, want true (policy #79)", f)
+		}
+	}
+	kept := []string{"Inbox", "Posteingang", "Gesendete Objekte", "Sent", "Persönliche Ordner", "Kalender"}
+	for _, f := range kept {
+		if SkipFolder(f) {
+			t.Errorf("SkipFolder(%q) = true, want false", f)
+		}
+	}
+}
+
 // TestSplitMboxDirIdempotent proves the disk importer is idempotent across
 // re-runs (state-free dedup by content-addressed output): a second run writes
 // zero new messages and never duplicates the .eml tree (issue #79, like #74).
