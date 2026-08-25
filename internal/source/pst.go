@@ -2,17 +2,35 @@ package source
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/eSlider/2dph/internal/etl"
 	"github.com/eSlider/2dph/internal/mailconv"
 	"github.com/eSlider/2dph/pkg/utils"
 )
+
+// reBoundary matches the per-run random MIME boundary token readpst embeds in
+// extracted .eml ("LibPST-iamunique-<digits>"). The digits differ on every
+// extraction, so raw .eml bytes are NOT stable across runs — a plain content
+// hash would re-import the same message on every run. The token is a converter
+// artifact, not part of the original email: replacing it with a fixed value
+// makes extraction deterministic and content addressing stable.
+var reBoundary = regexp.MustCompile(`(?i)LibPST-iamunique-\d+`)
+
+// normalizeEML returns a stable, content-addressable form of a readpst
+// .eml: all LibPST-iamunique boundary tokens are rewritten to a fixed value.
+// The MIME structure (and therefore the parsed Message) is unchanged.
+func normalizeEML(b []byte) []byte {
+	return reBoundary.ReplaceAll(b, []byte("libpst-boundary"))
+}
 
 // PST is the sync-ETL adapter for Outlook .pst archives (#185): it runs
 // readpst -e on each configured source into a wiped staging dir and yields one
@@ -87,20 +105,25 @@ func (p *PST) Fetch(ctx context.Context, _ Cursor) ([]Blob, Cursor, error) {
 		if skipPolicyDir(f.Rel) {
 			continue
 		}
-		sum, err := sha256File(f.Path)
+		raw, err := os.ReadFile(f.Path)
 		if err != nil {
 			return nil, "", err
 		}
-		target, err := p.corpusTarget(f.Rel, sum)
+		// readpst's random MIME boundary makes raw bytes unstable across runs;
+		// hash + store the normalized form so re-runs dedup (idempotency).
+		norm := normalizeEML(raw)
+		sum := sha256.Sum256(norm)
+		id := hex.EncodeToString(sum[:])
+		target, err := p.corpusTarget(f.Rel, id)
 		if err != nil {
 			return nil, "", err
 		}
 		if _, err := os.Stat(target); err != nil {
-			if err := copyFile(f.Path, target); err != nil {
+			if err := copyFileBytes(target, norm); err != nil {
 				return nil, "", err
 			}
 		}
-		blobs = append(blobs, Blob{ID: sum, Kind: "mail", Path: target})
+		blobs = append(blobs, Blob{ID: id, Kind: "mail", Path: target})
 	}
 	return blobs, "", nil
 }
@@ -134,13 +157,9 @@ func skipPolicyDir(rel string) bool {
 	return false
 }
 
-// copyFile copies one extracted .eml into its content-addressed corpus target
-// (mkdir -p the parent; small MIME files, no streaming needed).
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
+// copyFileBytes writes normalized .eml bytes into their content-addressed
+// corpus target (mkdir -p the parent; small MIME files, no streaming needed).
+func copyFileBytes(dst string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}

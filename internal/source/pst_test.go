@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,12 +25,18 @@ func swapReadPST(fn func(context.Context, string, string, string) error) func() 
 // out/<Folder>/, named 1.eml, 2.eml … (readpst naming). Content is synthetic
 // (Alice/Bob/example.com) and derived from the pst path so two sources yield
 // distinct messages. It reproduces the German Outlook folder layout of the
-// real archives, including a Drafts folder the #79 policy must exclude.
+// real archives, including a Drafts folder the #79 policy must exclude — and
+// readpst's per-run random MIME boundary token ("LibPST-iamunique-<n>"), which
+// makes raw extraction bytes unstable across runs.
+var fakeBoundarySeq = 0
+
 func fakeReadPST(_ context.Context, _ string, pstPath, out string) error {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return err
 	}
 	base := filepath.Base(pstPath)
+	fakeBoundarySeq++
+	boundary := fmt.Sprintf("--boundary-LibPST-iamunique-%d_-_-", fakeBoundarySeq)
 	for i, folder := range []string{"Posteingang", "Entwürfe"} {
 		dir := filepath.Join(out, "Persönliche Ordner", folder)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -41,8 +48,11 @@ func fakeReadPST(_ context.Context, _ string, pstPath, out string) error {
 			"Subject: pst " + base + " #" + string(rune('0'+n)) + "\n" +
 			"Date: Tue, 18 Aug 2026 09:00:00 +0000\n" +
 			"MIME-Version: 1.0\n" +
+			"Content-Type: multipart/mixed; boundary=\"" + boundary + "\"\n\n" +
+			"--" + boundary + "\n" +
 			"Content-Type: text/plain; charset=utf-8\n\n" +
-			"Message " + string(rune('0'+n)) + " from " + base + ".\n"
+			"Message " + string(rune('0'+n)) + " from " + base + ".\n" +
+			"--" + boundary + "--\n"
 		if err := os.WriteFile(filepath.Join(dir, string(rune('0'+n))+".eml"), []byte(eml), 0o644); err != nil {
 			return err
 		}
@@ -146,6 +156,54 @@ func TestImportPSTIdempotentRerun(t *testing.T) {
 	}
 	if len(cp.Seen) != 1 {
 		t.Fatalf("state seen-set = %d ids, want 1 (stable)", len(cp.Seen))
+	}
+}
+
+// TestImportPSTIdenticalArchives covers the production case: the two real PST
+// files are byte-identical (the second is a backup copy), so their extracted
+// .eml normalize to the same content. The seen-set dedups the second source —
+// run 1 imports it once (New=1, Skipped=1), the corpus keeps one copy per
+// label (provenance) and the checkpoint records a single id.
+func TestImportPSTIdenticalArchives(t *testing.T) {
+	defer swapReadPST(fakeReadPST)()
+	tmp := t.TempDir()
+	mk := func(dir string) string {
+		t.Helper()
+		p := filepath.Join(tmp, dir, "archive.pst")
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("same archive bytes"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	o := ImportOptions{
+		Sources: []PSTSource{
+			{Label: "pst-a", Path: mk("a")},
+			{Label: "pst-b", Path: mk("b")},
+		},
+		Staging:   filepath.Join(tmp, "staging"),
+		Out:       filepath.Join(tmp, "corpus"),
+		StatePath: filepath.Join(tmp, "state", "pst.json"),
+	}
+	st, _, err := ImportPST(context.Background(), o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Fetched != 2 || st.New != 1 || st.Skipped != 1 {
+		t.Fatalf("stats = %+v, want Fetched=2 New=1 Skipped=1 (identical archive deduped)", st)
+	}
+	// One corpus copy per label (both sources imported), one seen id.
+	if got := countFiles(o.Out, ".eml"); got != 2 {
+		t.Fatalf("corpus .eml = %d, want 2 (one per label)", got)
+	}
+	cp, err := loadCheckpoint(o.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cp.Seen) != 1 {
+		t.Fatalf("state seen-set = %d ids, want 1 (identical content)", len(cp.Seen))
 	}
 }
 
