@@ -30,6 +30,10 @@ services:
       cache_from:
         - ghcr.io/eslider/2dph:cache
     command: ["serve"]
+    # Run as the host user, not the image's uid 1001, so files written into
+    # ./var match the host tools that open the same kb.lbug (#195). Override
+    # with KB_UID/KB_GID on hosts with a different account.
+    user: "${KB_UID:-1000}:${KB_GID:-1000}"
     environment: &env
       HOME: /data
       HF_HOME: /data/var/hf
@@ -119,6 +123,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
+    # Same host-uid alignment as brain (#195): the ETL loop writes var/corpus
+    # as the host user so host tools can read it.
+    user: "${KB_UID:-1000}:${KB_GID:-1000}"
     environment:
       HOME: /home/2dph
       HF_HOME: /data/var/hf
