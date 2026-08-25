@@ -28,16 +28,19 @@ bin/facts/audit.go contradict                                       # adjudicate
 HTTP (`bin/brain/serve.go`, :8630): `/search?q=&as_of=&n=`, `/get?id=&body=1`,
 `/stats`, `/audit`, `/ingest`, `/openapi.json`, `/mcp`.
 
-Read-only Postgres (OnlyOffice, when the VM is up):
+Read-only Postgres (OnlyOffice, via SSH tunnel when the VM is up):
 
 ```bash
 scripts/db/ssh-tunnel                       # 127.0.0.1:5433 -> vm:5432
-scripts/db/psql-yq --profile onlyoffice -s document_asset   # columns
-scripts/db/psql-yq --profile onlyoffice -c 'SELECT ...'     # read-only query -> YAML
+scripts/db/psql-yq --profile onlyoffice -s doc_changes     # columns
+scripts/db/psql-yq --profile onlyoffice -c 'SELECT ...'    # read-only query -> YAML
 ```
 
-Profile lives in `~/.config/brain/db-profiles.yml` (secrets never in the repo).
-Blocked on #53.
+Profile lives in `~/.config/brain/db-profiles.yml` (0600, secrets never in the
+repo). Passwords come from `~/.config/ops/onlyoffice.env`, bootstrapped from the
+VM's `/etc/onlyoffice/documentserver/local.json` (dbUser/dbPass). The profile
+uses `network: host` so the docker psql client shares the host loopback and can
+reach the SSH tunnel on `127.0.0.1:5433`. (#53)
 
 ## Recipes
 
