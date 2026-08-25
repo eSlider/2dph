@@ -647,3 +647,26 @@ Verification: `go vet ./internal/mailconv/ ./bin/mail/` clean;
 ./internal/canon/ ./pkg/contact/` green. Исключения политики (#79): Krylov,
 Drafts/Templates/Trash/Junk/Spam/Unsent, *.msf. Mail-send путь не трогали.
 Branch `feat/mail-import-gap#79`.
+
+## 2026-08-25 — docs/skills: синк под текущий тулзверь агентов (gitea #81)
+
+Goal: свежий агент по AGENTS.md делает sync-волну, reconcile report,
+interaction write — без вопросов в чат. Git ops truth: git = HTTPS+token,
+tea CLI для issues/PR (SSH deploy-key :222 на write сломан, #73 closed
+obsoleted-by).
+
+| Step | Status |
+|------|--------|
+| AGENTS.md: git-ops truth (#81/#73), go-onlyoffice split «примитивы→lib, флоу→2dph», Tools-блок с sync-волной + reconcile + interaction, source map #79 + exclusion policy | done |
+| skills: `api-client` — go-onlyoffice split; `etl-handler` — sync-волна + OO-флоу | done |
+| `docs/runbook.md` — секция «Sync wave + OO CRM» с verified-командами | done |
+| verify: sync `--dry-run` печатает волну; reconcile/import-interaction `--help` и корпус-скан работают; OO-запись — только с env-кредами | done |
+
+Verification: `go run ./bin/stack/sync.go --dry-run` ok;
+`go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go --help`
+и `go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --help`
+ok (флаги `--sources/--write/--limit` совпадают с докой). Найдено при
+верификации: `--only` в `bin/stack/sync.go` принимает имена шагов
+(`mail,mail-import,chats,contact-brain,git-brain,contact-crm`), а не логические
+группы — хелп-строка флага это врёт; документировано как есть, баг — на PO
+(#81-коммент). Branch `docs/skills-sync#81`.
