@@ -89,6 +89,43 @@ docker compose --profile picoclaw up brain-mcp   # MCP 127.0.0.1:8630
 `GET /openapi.json`, `POST /mcp`. Agent tool order: `search` → `get` → `audit`.
 See [picoclaw.md](picoclaw.md).
 
+### Brain health-check & restart (#180)
+
+The brain wedged once (2026-08-24): a `/ingest` write blocked forever inside
+the Ladybug C layer, holding the read/write lock, so every search/get/audit
+hung while `/health` still answered `ok` (it never touches the DB). The static
+healthcheck let the container sit "healthy" but unresponsive until a manual
+restart.
+
+**Health-check** — probe the DB read path, not `/health`:
+
+```bash
+# fast (healthy): a real MATCH over kb.lbug
+curl -sS --max-time 5 http://127.0.0.1:8630/stats   # -> {"total":9204,"by_root":{...}}
+# live check of every agent tool
+curl -sS --max-time 10 "http://127.0.0.1:8630/search?q=test&n=1&noweb=1"
+```
+
+`/stats` returns quickly only when the read handle is healthy; a wedged brain
+times out. The compose `brain` healthcheck uses `/stats` for exactly this
+reason (see `compose.yaml`), so docker auto-restarts a deadlocked container
+(`restart: unless-stopped`) instead of leaving it "healthy".
+
+**Restart**:
+
+```bash
+docker compose up -d brain          # or: docker restart 2dph-brain-1
+# verify: process not a zombie, leaf count unchanged
+ps -eo pid,ppid,stat,args | grep -E "brain-(serve|search)"   # no <defunct>
+curl -sS --max-time 5 http://127.0.0.1:8630/stats            # total unchanged
+```
+
+Data lives in `var/kb.lbug` (host path, gitignored) and survives a container
+restart unchanged — verify with `sha256sum var/kb.lbug` before/after. A stuck
+write never commits, so the on-disk DB is the last successful state. A full
+rebuild is only needed after a deliberate `--rebuild` or a corrupt DB, not
+after a restart.
+
 ## Browser sync (periodic, #163)
 
 Pushes the browser-extracted corpus (`var/corpus/{gmail,linkedin,djinni}`) into
