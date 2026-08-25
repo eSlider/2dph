@@ -12,6 +12,12 @@ Standards epic: [#88](https://git.produktor.io/eSlider/2dph/issues/88).
   libraries are owned; their working home is Gitea `git.produktor.io/eSlider/<repo>`
   ([#101]). GitHub is a publish mirror only. Issues, PRs, reviews, epics,
   milestones, releases exist **only on Gitea** — never on GitHub.
+- **GitHub = showroom (rule #190)**: nothing non-project lands on the GitHub
+  mirror — no sales/offer material, no internal paths/hosts/ports, no
+  host-specific docs. Before pushing a branch/tag to GitHub, verify the diff
+  is project content (like the #142 gitleaks scan, but by content too).
+  A leaked feature is purged from GitHub history with `git filter-repo`
+  (precedent #152/#190); Gitea stays the canonical home.
 - **Git transport (current truth, #81/#73)**: git ops are **HTTPS + token**
   only — the Gitea SSH deploy-key (`:222`) is broken on write (#73 closed as
   obsoleted by this). Issues/PRs via the **tea** CLI (API base
