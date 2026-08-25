@@ -18,6 +18,12 @@ import (
 // ErrHelp means -h/--help was requested (exit 0).
 var ErrHelp = errors.New("help")
 
+// ExitSkip is the exit code a tool returns when its work is deliberately not
+// run — credentials or a source session are missing (e.g. chats without
+// TELEGRAM_* / LINKEDIN_* config). The stack wave prints SKIP for it and does
+// not count it as a failure.
+const ExitSkip = 3
+
 var parseMu sync.Mutex
 
 // New returns a per-call parser. Never reuse: flaggy parses once.

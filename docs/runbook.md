@@ -149,10 +149,54 @@ go run ./bin/stack/sync.go --dry-run                     # print the wave
 go run ./bin/stack/sync.go                               # default wave
 go run ./bin/stack/sync.go --only mail,mail-import       # subset, order kept
 go run ./bin/stack/sync.go --with-chats --contacts <vcf> # + chats, contacts
+go run ./bin/stack/sync.go --with-chats --git-root <dir> # + chats, git history
 ```
 
 `--only` takes actual step names (fixed order): `mail`, `mail-import`,
 `chats`, `contact-brain`, `git-brain`, `contact-crm`.
+
+### chats step (--with-chats, #195)
+
+The `chats` step is one logical step name that runs two sub-commands
+sequentially: `bin/chat/sync.go telegram`, then `bin/chat/sync.go linkedin`.
+Both download messages to `var/corpus/chats/<platform>/`.
+
+Credentials come from the environment:
+
+| Env var | Purpose |
+|---------|---------|
+| `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PHONE` | Telegram app credentials |
+| `TELEGRAM_MCP_DIR` | path to the telegram-mcp checkout (session read from its `.env`) |
+| `TELEGRAM_SESSION_STRING` | optional; otherwise read from `TELEGRAM_MCP_DIR/.env` |
+| `LINKEDIN_USER_DATA_DIR` | LinkedIn profile dir with session files (default `~/.linkedin-mcp/profile`) |
+
+**SKIP semantics**: a platform whose credentials/session are missing prints
+`chats: SKIP …` and exits with code 3 (`pkg/cli.ExitSkip`) — the wave shows
+`SKIP`, never `FAIL`. The same convention applies to `mail` sources without
+creds (onlyoffice/m365/imap). Tools with credentials present but broken
+(config paths, invalid API id) still FAIL loudly.
+
+### var/ permissions (uid 1001 vs 1000)
+
+The brain/mail-sync containers write `var/**` as uid 1001 (Dockerfile
+`useradd --uid 1001`) while host tools run as uid 1000. A container write
+leaves `var/kb.lbug.wal` and `var/corpus/**` unopenable by the wave
+(`OpenDatabase … status 1`). Since compose.yaml now runs the containers as
+the host uid (`user: "${KB_UID:-1000}:${KB_GID:-1000}"`), new writes align
+automatically; a one-time repair for already-misowned files goes through
+docker busybox (no sudo on this host):
+
+```bash
+scripts/stack/fix-var-perms            # chown -R var/ to the caller uid:gid
+scripts/stack/fix-var-perms --check    # report files NOT owned by the caller
+```
+
+Run it after any container write or when a wave step fails on `var/**`.
+The wave also quiesces the compose brain container around write steps
+(`docker compose stop brain` → writes → `start brain`), so `git-brain` does
+not collide with the running serve process holding `kb.lbug`.
+
+### OnlyOffice CRM tools
 
 OnlyOffice CRM tools need `ONLYOFFICE_URL`/`ONLYOFFICE_USER`/`ONLYOFFICE_PASS`
 env. Both are read-only (report) by default; `--write` applies changes.

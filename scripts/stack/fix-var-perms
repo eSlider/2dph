@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# scripts/stack/fix-var-perms - align var/ ownership with the host user.
+#
+# The brain / mail-sync containers create files in ./var as uid 1001
+# (Dockerfile: useradd --create-home --uid 1001), while host tools run as
+# uid 1000. The wave then fails to open var/kb.lbug (WAL not writable) or
+# write var/corpus — issue #195.
+#
+# No sudo on this host (AGENTS.md hard rule 2a): privileged ops go through
+# docker busybox with the host dir bind-mounted.
+#
+#   scripts/stack/fix-var-perms            # chown -R var/ to the caller uid:gid
+#   scripts/stack/fix-var-perms --check    # report files NOT owned by the caller
+#
+# Run it after any container write (or when a wave step fails on
+# var/** permissions). Permanent fix: align the container uid with the host
+# uid in Dockerfile/compose instead of 1001.
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
+UID_HOST="$(id -u)"
+GID_HOST="$(id -g)"
+
+case "${1:-}" in
+-h | --help)
+	sed -n '2,12p' "$0"
+	exit 0
+	;;
+--check)
+	find "$ROOT/var" ! -user "$UID_HOST" -printf '%u:%g %p\n' 2>/dev/null | head -50
+	;;
+*)
+	echo "fix-var-perms: chown $ROOT/var -> $UID_HOST:$GID_HOST (docker busybox)" >&2
+	docker run --rm -v "$ROOT/var:/host/var" busybox chown -R "$UID_HOST:$GID_HOST" /host/var
+	echo "fix-var-perms: done" >&2
+	;;
+esac

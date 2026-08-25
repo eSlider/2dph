@@ -28,8 +28,8 @@ func RunSyncTelegram(args []string) int {
 		phoneNum = envVar("TELEGRAM_PHONE", "")
 	}
 	if apiIDStr == "" || apiHash == "" || phoneNum == "" {
-		fmt.Fprintln(os.Stderr, "chats: need TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE in env")
-		return 2
+		fmt.Fprintln(os.Stderr, "chats: SKIP telegram: need TELEGRAM_API_ID, TELEGRAM_API_HASH, TELEGRAM_PHONE in env")
+		return cliparse.ExitSkip
 	}
 	apiID, err := strconv.Atoi(apiIDStr)
 	if err != nil {
@@ -39,8 +39,8 @@ func RunSyncTelegram(args []string) int {
 
 	mcpDir := envVar("TELEGRAM_MCP_DIR", "")
 	if mcpDir == "" {
-		fmt.Fprintln(os.Stderr, "chats: set TELEGRAM_MCP_DIR to telegram-mcp directory")
-		return 1
+		fmt.Fprintln(os.Stderr, "chats: SKIP telegram: set TELEGRAM_MCP_DIR to telegram-mcp directory")
+		return cliparse.ExitSkip
 	}
 	if _, err := os.Stat(filepath.Join(mcpDir, "main.py")); err != nil {
 		fmt.Fprintf(os.Stderr, "chats: TELEGRAM_MCP_DIR=%s: main.py not found\n", mcpDir)
@@ -63,8 +63,8 @@ func RunSyncTelegram(args []string) int {
 		sessionStr = envVar("TELEGRAM_SESSION_STRING", "")
 	}
 	if sessionStr == "" {
-		fmt.Fprintln(os.Stderr, "chats: TELEGRAM_SESSION_STRING not found; set env or in TELEGRAM_MCP_DIR/.env")
-		return 1
+		fmt.Fprintln(os.Stderr, "chats: SKIP telegram: TELEGRAM_SESSION_STRING not found; set env or in TELEGRAM_MCP_DIR/.env")
+		return cliparse.ExitSkip
 	}
 
 	src := NewTelegramMCPSource(apiID, apiHash, phoneNum, sessionStr, mcpDir)
