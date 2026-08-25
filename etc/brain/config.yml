@@ -52,8 +52,20 @@ reasoner:
   device: "cpu"                          # REASONER_DEVICE
 
 # Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): expose brain
-# leafs+edges for pc-agent. Legacy: KB_SYNAPSE_*.
+# leafs+edges exposed for pc-agent. Legacy: KB_SYNAPSE_*.
 synapse:
   host: "127.0.0.1"      # KB_SYNAPSE_HOST. 0.0.0.0 requires a token.
   port: 8632             # KB_SYNAPSE_PORT.
   token: ""              # KB_SYNAPSE_TOKEN. Empty = loopback bind only.
+
+# Read-only WebDAV demo drive (bin/webdav/serve-demo.go, issue #72), served
+# behind the NPM proxy at drive.produktor.io. NO SECRETS HERE: demo credentials
+# (user/pass) go in gitignored etc/brain/config.local.yml.
+webdav:
+  host: "127.0.0.1"      # loopback only; NPM fronts TLS.
+  port: 8099
+  root: ""               # absolute demo dir, set locally (e.g. <repo>/etc/webdav/demo)
+  realm: "produktor demo drive"
+  user: ""               # set in config.local.yml
+  pass: ""               # set in config.local.yml
+  prefix: "/webdav"      # mount prefix; "" = "/"
