@@ -625,3 +625,25 @@ Verification: `go vet ./internal/brain/ ./bin/facts/` clean;
 `go test -race ./internal/brain/ -run 'TestSourceCount|TestPromoteEligible|TestPromoteFacts'` green.
 Live write to `var/kb.lbug` requires the brain stopped + DB-owner (uid 1001/root)
 write access — procedure in `docs/facts/ingest.md`. Branch `feat/facts-ingest#181`.
+
+## 2026-08-25 — импорт-гэп почты/контактов с /mnt/8TB (gitea #79)
+
+Goal: закрыть гэп импорта дисковых источников почты/контактов на /mnt/8TB,
+которые не были в пайплайне (#68/#74 импортировали только var/mail). Wave-1
+(#84) уже импортировал mbox/.eml: tb-andriy-profile 35,368 · tb-backup-128g
+39,435 · tb-2010-zip 1,289 · contacts-eml 125 (Krylov исключён). Этот шаг —
+вынести mbox-сплиттер в тестируемый слой + доказать импорт тестами.
+
+| Step | Status |
+|------|--------|
+| инвентарь источников подтверждён на диске (read-only): TB-профиль Mail/ImapMail, оба PST (265 KB), Backup E-Mails, zip-2010, VCF/MAB — таблица-истина в `docs/mail-sources.md` | done |
+| mbox-сплиттер вынесен из build-tag скрипта в `internal/mailconv` (single implementation): `SplitMbox`, `SplitMboxDir`, `MboxMessage`, `LooksMbox`; `bin/mail/convert-mbox.go` — тонкая обёртка | done |
+| TDD: `TestSplitMbox`, `TestMboxMessage` (mbox→Message + source-тег), `TestSplitMboxDirIdempotent` (повторный прогон без дублей, контент-адресация sha256:16), `TestFromEMLFlatRoot` (contacts-eml плоский root) — `go test -race ./internal/mailconv/` зелёные | done |
+| PST: `readpst` НЕ установлен → источник остаётся ЗАБЛОКИРОВАН; путь закрытия (libpst-utils → readpst -e → .eml → FromEML) задокументирован, не подделан | done |
+| docs: `docs/mail-sources.md` (таблица-истина), runbook-секция, конфиг/abs-путей в коммитах нет | done |
+
+Verification: `go vet ./internal/mailconv/ ./bin/mail/` clean;
+`go test -race ./internal/mailconv/ ./internal/source/ ./internal/mailsync/
+./internal/canon/ ./pkg/contact/` green. Исключения политики (#79): Krylov,
+Drafts/Templates/Trash/Junk/Spam/Unsent, *.msf. Mail-send путь не трогали.
+Branch `feat/mail-import-gap#79`.
