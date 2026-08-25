@@ -603,3 +603,25 @@ Verification: `go vet ./internal/facts/... ./internal/brain/rank/...` clean;
 (`TestDealSearchGetAuditConfirmedFlow`, `TestDealContradictionNotConfirmedUntilAudited`).
 Блокер #53 закрыт; live `get` против `var/kb.lbug` + OnlyOffice CRM остаётся
 вне объёма (offline-план доказывает cgo-free логику). Branch `test/facts-lookup#58`.
+
+## 2026-08-25 — facts-root ingestion: repair empty facts layer (gitea #181)
+
+Goal: the production brain had **0 facts-root** leafs — all 9204 in `info`
+(9201 confirmed). Root cause: `bin/brain/index.go --rebuild` was run without
+`--with-facts`; `internal/brain/corpus.go` writes every corpus leaf as
+`root=info` (single file source), and the 2-source facts layer is a separate
+`bin/facts/extract.go` stage. Audit: all 9201 confirmed info leafs are
+single-source corpus leafs → **0** qualify for re-rooting by the ≥2-sources rule.
+
+| Step | Status |
+|------|--------|
+| `internal/brain` facts-promotion core: `SourceCount` (source string, `" x "` separator), `PromoteEligible` (≥2 sources + confirmed → facts), `PromoteFacts`/`EligibleInfoLeafs` (DB scan, idempotent upsert) | done |
+| TDD tests: `TestSourceCount`, `TestPromoteEligible`, `TestPromoteFactsPromotesAndIdempotent`, `TestPromoteFactsReadPathDistinguishes` — `go test -race ./internal/brain/` green | done |
+| `bin/facts/promote.go` CLI (`--dry-run`, `--db`); `bin/facts/extract.go --dry-run` = 18 two-source facts | done |
+| live DB: writes blocked (var/ owned 1001, no sudo; in-service `/ingest` bulk write hung the C layer → container restart). Full ingestion demonstrated on a faithful copy: before facts=0 info=9204 → after facts=18 info=9204 | done |
+| docs: `docs/facts/ingest.md` procedure + live runbook; `docs/brain/rebuild.md` facts note | done |
+
+Verification: `go vet ./internal/brain/ ./bin/facts/` clean;
+`go test -race ./internal/brain/ -run 'TestSourceCount|TestPromoteEligible|TestPromoteFacts'` green.
+Live write to `var/kb.lbug` requires the brain stopped + DB-owner (uid 1001/root)
+write access — procedure in `docs/facts/ingest.md`. Branch `feat/facts-ingest#181`.

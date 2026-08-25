@@ -15,6 +15,14 @@ Fresh rebuild of info + mail + facts with control flags:
         --rebuild --with-mail --with-facts \
         --workers 12 --batch 256 --progress 5 --skip
 
+> Facts require `--with-facts` (or `--facts-json`). Corpus leafs are always
+> written as `root=info` (single file source each); the facts layer
+> (`root=facts`, ≥2 independent sources) comes from `bin/facts/extract.go` and
+> is only ingested on rebuild when the flag is set. A rebuild **without**
+> `--with-facts` leaves the facts-root empty even though all leafs are
+> `confidence=confirmed` (#181). To repair an existing DB, see
+> `docs/facts/ingest.md` (`bin/facts/extract.go` + `bin/facts/promote.go`).
+
 - `--workers N`   parallel embedding goroutines (default 4; use ~cores on the box)
 - `--batch N`     leafs per upsert transaction (default 64)
 - `--progress N`  print rate + ETA every N seconds to stderr
