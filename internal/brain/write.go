@@ -298,7 +298,14 @@ func leafIndexNames(conn *lbug.Connection) (map[string]bool, error) {
 	return out, nil
 }
 
-// EnsureIndexes creates FTS + HNSW when missing. Never DROP INDEX.
+// EnsureIndexes creates the FTS index when missing. Never DROP INDEX.
+//
+// The HNSW vector index (Leaf_vec) is deliberately NOT created here: liblbug
+// 0.19.0 SIGSEGVs on HNSW insert once the graph passes ~1300 nodes (NULL
+// deref in simsimd_cos_f32 during OnDiskHNSWIndex::shrinkForNode). Vector
+// ranking now runs in-process via queryVector's brute-force cosine scan
+// (search.go), so Leaf_vec is neither required nor used. An existing index is
+// left in place (untouched) so data is never dropped.
 func EnsureIndexes(conn *lbug.Connection) error {
 	names, err := leafIndexNames(conn)
 	if err != nil {
@@ -312,21 +319,11 @@ func EnsureIndexes(conn *lbug.Connection) error {
 			qClose(res)
 		}
 	}
-	if !names["Leaf_vec"] {
-		if res, err := conn.Query(
-			"CALL CREATE_VECTOR_INDEX('Leaf', 'Leaf_vec', 'embedding', metric := 'cosine')",
-		); err != nil {
-			qClose(res)
-			return fmt.Errorf("CREATE_VECTOR_INDEX: %w (delete kb.lbug and --rebuild)", err)
-		} else {
-			qClose(res)
-		}
-	}
 	names, err = leafIndexNames(conn)
 	if err != nil {
 		return err
 	}
-	for _, need := range []string{"id", "Leaf_vec"} {
+	for _, need := range []string{"id"} {
 		if !names[need] {
 			return fmt.Errorf("Leaf indexes incomplete: missing %s; have %v", need, names)
 		}
