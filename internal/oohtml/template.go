@@ -49,8 +49,6 @@ type TemplateData struct {
 	OfferText    string // offer-block copy
 	CTAURL       string // offer call-to-action link
 	CTALabel     string // offer call-to-action label
-	DemoURL      string // live WebDAV demo-drive link (issue #72)
-	DemoLabel    string // demo-drive link label
 	SignerName   string // signature name / initials
 	SignerRole   string // signature role
 	SiteURL      string // produktor.io link target
@@ -104,7 +102,6 @@ func Build(d TemplateData) (string, error) {
 			<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:6px;background-color:` + PaletteCTA + `;">
 				<a href="` + esc(d.CTAURL) + `" style="display:inline-block;padding:10px 22px;font-family:system-ui,Arial,sans-serif;font-size:15px;font-weight:600;color:` + PaletteNavy + `;text-decoration:none;border-radius:6px;">` + esc(d.CTALabel) + `</a>
 			</td></tr></table>
-			` + demoLink(d) + `
 		</td></tr></table>
 	</td></tr>
 
@@ -134,17 +131,4 @@ func Build(d TemplateData) (string, error) {
 func esc(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;")
 	return r.Replace(s)
-}
-
-// demoLink renders the secondary live-demo-drive link under the offer CTA when
-// DemoURL is set (issue #72). Empty DemoURL yields no extra markup.
-func demoLink(d TemplateData) string {
-	if strings.TrimSpace(d.DemoURL) == "" {
-		return ""
-	}
-	label := strings.TrimSpace(d.DemoLabel)
-	if label == "" {
-		label = "Try the live WebDAV drive"
-	}
-	return `<p style="margin:10px 0 0;font-size:14px;"><a href="` + esc(d.DemoURL) + `" style="color:` + PalettePrimary + `;text-decoration:underline;">` + esc(label) + `</a></p>`
 }

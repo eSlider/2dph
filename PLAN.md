@@ -561,23 +561,3 @@ Verification: `go vet ./...` clean; `go test -race ./internal/oohtml/` green (10
 Branch `feat/ooo-mail-html-template#76` off `release/v1`. Осталось вне объёма:
 wiring в OnlyOffice CLI (`oo mails send`) и фактическая отправка с вложенным
 cid-логотипом через драфт-API OnlyOffice.
-
-## 2026-08-25 — WebDAV demo-drive для оффера (gitea #72)
-
-Goal: кликабельный proof к офферу €900–1500 — read-only WebDAV-диск на
-produktor.io (drive.produktor.io), ссылка в wave-1 письме вместо только текста.
-
-| Step | Status |
-|------|--------|
-| Решение: маленький Go WebDAV-сервер (`golang.org/x/net/webdav`) за NPM-прокси (не портал-мост oo-webdav — тот для живого портала, не для демо) | done |
-| `internal/webdavdemo` — read-only сервер: Basic auth + `/healthz` + жёсткий 403 на все write-методы (PUT/MKCOL/MOVE/COPY/DELETE/PROPPATCH) | done |
-| TDD offline vs фикстуры: PROPFIND 207+файлы, GET, 401 без/с неверными кредами, 403 на write, файл не меняется после rejected PUT | done (7 тестов, `-race` зелёные) |
-| `bin/webdav/serve-demo.go` + `deploy/webdav-demo.Dockerfile` + `etc/webdav/demo/` (брендированный `proof.html`, `readme.txt`) | done |
-| `internal/config` `WebDAVConfig` + `etc/brain/config.yml` секция (без секретов; креды в gitignored) | done |
-| `internal/oohtml`: `DemoURL`/`DemoLabel` в offer-блоке + render-check `missing-demo-link` | done |
-| Деплой на host (arc-01): контейнер `produktor/webdav-demo` (`--restart unless-stopped`, `0.0.0.0:8099`), PROPFIND 207 через docker0 (путь NPM) | done (локально жив) |
-| Публичный URL `drive.produktor.io` с TLS: DNS wildcard уже резолвит, но NPM proxy-host не добавлен — bot-креды NPM протухли (`Invalid email or password`); шаги задокументированы в `docs/webdav-demo.md` | blocked (owner: DevOps) |
-
-Verification: `go vet ./internal/webdavdemo/ ./internal/oohtml/ ./internal/config/`
-clean; `go test -race ./internal/webdavdemo/ ./internal/oohtml/` green.
-Branch `feat/webdav-demo-link#72` off `release/v1`.
