@@ -18,11 +18,14 @@ if [ -x /usr/local/bin/brain-serve ]; then
 		shell) exec bash ;;
 		serve)
 			# The HTTP API's embedQuery calls a search daemon on KBSEARCH_PORT
-			# (default 17830). Without it every query spawned a doomed
-			# subprocess + 10s poll before falling back to a per-query model
-			# load (~12s). Start the embed daemon, then serve the API.
-			port="${KBSEARCH_PORT:-17830}"
-			/usr/local/bin/brain-search serve "$port" &
+			# (default 17830). KBSEARCH_NO_DAEMON=1 (compose default) embeds
+			# in-process instead, so only spawn the daemon when that is off:
+			# a brain-search that dies on startup (e.g. model not found) would
+			# otherwise become an unreaped zombie under brain-serve (#180).
+			if [ "${KBSEARCH_NO_DAEMON:-0}" != "1" ]; then
+				port="${KBSEARCH_PORT:-17830}"
+				/usr/local/bin/brain-search serve "$port" &
+			fi
 			exec /usr/local/bin/brain-serve "$@" ;;
 		search) exec /usr/local/bin/brain-search "$@" ;;
 		watch) exec /usr/local/bin/brain-watch "$@" ;;

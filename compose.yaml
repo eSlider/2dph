@@ -56,8 +56,13 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # Probe the DB read path, not the static /health: a wedged brain still
+    # answers /health "ok" while every search/get/audit hangs on the read
+    # lock. /stats runs a real MATCH over kb.lbug, so when the read handle is
+    # deadlocked it times out here and docker (restart: unless-stopped) recycles
+    # the container instead of leaving it "healthy" and unresponsive (#180).
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8630/health"]
+      test: ["CMD", "wget", "-qO-", "--timeout=3", "http://127.0.0.1:8630/stats"]
       interval: 30s
       timeout: 5s
       retries: 3
