@@ -670,3 +670,24 @@ ok (флаги `--sources/--write/--limit` совпадают с докой). Н
 (`mail,mail-import,chats,contact-brain,git-brain,contact-crm`), а не логические
 группы — хелп-строка флага это врёт; документировано как есть, баг — на PO
 (#81-коммент). Branch `docs/skills-sync#81`.
+
+## 2026-08-25 — HNSW Leaf_vec краш → in-process cosine scan (gitea #192)
+
+Goal: liblbug 0.19.0 SIGSEGV на вставке в HNSW Leaf_vec (NULL deref в
+simsimd_cos_f32, OnDiskHNSWIndex::shrinkForNode) при графе >~1300 нод — наш
+канон с ~28k leafs был под крашом (rc=139, тихий рестарт). Порт фикса mdx-1
+(medex/brain-stack 6e0f379). Bug A (close/reopen race) у нас уже закрыт #109.
+
+| Step | Status |
+|------|--------|
+| `rank/query.go`: VecStmt удалён (комментарий с rationale) | done |
+| `search.go`: queryVector → brute-force cosine scan по `l.embedding` (vecScanStmt), cosineToQuery + sqrt64; импорты math/sort | done |
+| `write.go`: EnsureIndexes создаёт только FTS `id`; Leaf_vec не создаётся/не требуется, существующий не дропается | done |
+| TDD: `vector_test.go` — cosine known-vectors, zero-norm → 0 (не NaN), float64-элементы, truncation | done — `zig go test -tags system_ladybug ./internal/brain/` green (кроме пре-существующих modeldir env-failures), vet clean, gofmt clean |
+| reindex live kb.lbug (`bin/brain/index.go --rebuild`) — ждёт PO-подтверждения | pending |
+| PLAN.md блок | done |
+
+Verification: `bin/cgo/zig go test -tags system_ladybug -skip TestModelDir
+./internal/brain/` ok; `go test ./internal/brain/rank/` ok. Пре-существующие
+падения `TestModelDir*` (HF-модель уже локально в models/, окружение) — не
+связаны с этим изменением. Branch `fix/hnsw-cosine-scan#192`.
