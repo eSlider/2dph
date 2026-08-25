@@ -11,7 +11,9 @@
 //	                                        (orgs: employer/client/...  + projects)
 //
 // Only associations supported by BOTH sources are written as root=facts.
-// Mismatches are reported (or, with --fix-crm, printed as oo CLI commands).
+// Mismatches are reported. The two-source merge rule lives in
+// internal/facts.CRMAssocFacts (single implementation, repo rule #10) — this
+// CLI only feeds it the corpus orgs + ooCRM graph and writes the proven facts.
 //
 // Usage:
 //
@@ -29,21 +31,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
 	"github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/facts"
 )
-
-type crmGraph struct {
-	CompaniesWithPersons map[string][]string `json:"companies_with_persons"`
-	ProjectsContacts     map[string]struct {
-		Title     string   `json:"title"`
-		Companies []string `json:"companies"`
-	} `json:"projects_contacts"`
-}
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -89,61 +82,15 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "facts/prove-crm: graph: %v\n", err)
 		return 1
 	}
-	var g crmGraph
+	var g facts.CRMAssoc
 	if err := json.Unmarshal(gdata, &g); err != nil {
 		fmt.Fprintf(os.Stderr, "facts/prove-crm: graph json: %v\n", err)
 		return 1
 	}
 
-	companies := make([]string, 0, len(g.CompaniesWithPersons))
-	for k := range g.CompaniesWithPersons {
-		companies = append(companies, k)
-	}
-	sort.Strings(companies)
-
-	var proven, mismatches []string
-	for orgName, o := range orgs {
-		label := o.Label
-		if label == "" {
-			label = orgName
-		}
-		key := ""
-		if name, ok := facts.MatchCompanyName(label, companies); ok {
-			key = name
-		}
-		persons := []string{}
-		if key != "" {
-			persons = g.CompaniesWithPersons[key]
-		}
-		switch {
-		case len(persons) > 0:
-			for _, p := range persons {
-				proven = append(proven, fmt.Sprintf("%s is associated with %s (role: %s, %s)",
-					p, o.Label, def(o.Kind, "?"), o.Period))
-			}
-		case key != "":
-			mismatches = append(mismatches, fmt.Sprintf("corpus org '%s' (%s) has no CRM persons", orgName, o.Label))
-		default:
-			mismatches = append(mismatches, fmt.Sprintf("corpus org '%s' (%s) not found in CRM", orgName, o.Label))
-		}
-	}
-
-	// corpus employer claims vs CRM.
-	for orgName, o := range orgs {
-		if o.Kind == "" {
-			continue
-		}
-		switch o.Kind {
-		case "employer", "own", "client", "agency", "apprenticeship":
-			label := o.Label
-			if label == "" {
-				label = orgName
-			}
-			if _, found := facts.MatchCompanyName(label, companies); !found {
-				mismatches = append(mismatches, fmt.Sprintf("corpus org '%s' (%s) not found in CRM", orgName, o.Label))
-			}
-		}
-	}
+	// Two-source merge (corpus orgs x ooCRM graph) — single implementation in
+	// internal/facts so the rule is covered by offline unit tests (#55).
+	proven, mismatches := facts.CRMAssocFacts(orgs, g)
 
 	fmt.Printf("# CRM association facts proven (corpus x CRM): %d\n", len(proven))
 	for _, f := range proven {
@@ -204,13 +151,6 @@ func run(args []string) int {
 	}
 	fmt.Printf("# wrote %d facts into var/kb.lbug (facts was %d)\n", written, statsBefore)
 	return 0
-}
-
-func def(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }
 
 func toInt(v any) int {

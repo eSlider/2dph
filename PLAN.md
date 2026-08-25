@@ -564,3 +564,25 @@ Verification: `go vet ./...` clean; `go test -race ./internal/oohtml/` green (10
 Branch `feat/ooo-mail-html-template#76` off `release/v1`. Осталось вне объёма:
 wiring в OnlyOffice CLI (`oo mails send`) и фактическая отправка с вложенным
 cid-логотипом через драфт-API OnlyOffice.
+
+## 2026-08-25 — CRM association two-source rule (gitea #55, epic #52)
+
+Goal: `bin/facts/prove-crm` (issue references it as `bin/facts/crm`) должен
+доказывать person→company И company→project как `root=facts` только когда оба
+источника (corpus SoT `eslider/cv/projects/knowledge-mesh-seed.yaml` × ooCRM
+`graph.json`) согласны; односторонние — mismatch, никогда fact.
+
+| Step | Status |
+|------|--------|
+| merge-правило вынесено из `main()` в `internal/facts.CRMAssocFacts` (single implementation, rule #10): person→company (companies_with_persons) + company→project (projects_contacts) | done |
+| фикс ложного совпадения: generic-токены (`client`, `gmbh`, `ag`, `systems`, `platform`, …) больше не двигают company-match (`significantTokens` stopwords) — «Markets Platform (client)» больше не матчит «Client not named yet» | done |
+| дедуп mismatches (раньше employer-kind loop дублировал «not found») + отчёт CRM-only компаний и проектов без company | done |
+| TDD offline на synthetic-фикстурах: two-source rule + все mismatch-пути + generic-token регрессия, `-race` зелёные | done |
+
+Verification: `go test -race ./internal/facts/` green (тесты crm/company-merge).
+Против реального SoT (dry-run): proven=0; 9 corpus-org не в CRM; 4 CRM-only
+компании (Capitole, Client not named yet, Teksystems, talabat); 198 проектов
+без company — `projects_contacts[].companies` в `graph.json` пуст у всех
+(данные заполняет внешний `graph.py`, вне репо). company→project пока недоказуем
+из-за этого data-gap; person→company недоказуем — CRM-компании с персонами не
+совпадают с corpus orgs. Branch `feat/crm-assoc#55`.

@@ -67,6 +67,11 @@ For one subject, compare `source` lists. If two facts assert the same claim with
 disjoint refs, or one contradicts the other, run `audit contradict`. A 2v2 with
 no authority/temporal rule stays `(not confirmed)`. Cross-check against the
 OnlyOffice CRM graph and the corpus SoT (`bin/facts/prove-crm --mismatches`).
+`bin/facts/prove-crm.go` proves person→company and company→project associations
+as `root=facts` only when BOTH sources agree (corpus org × ooCRM graph); every
+one-sided association is reported as a mismatch, never a fact. The merge rule
+lives in `internal/facts.CRMAssocFacts` (single implementation, covered by
+offline unit tests).
 
 ### 3. Stale status
 

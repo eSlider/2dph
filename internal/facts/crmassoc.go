@@ -24,7 +24,10 @@ func MatchCompanyName(label string, companyNames []string) (string, bool) {
 }
 
 // significantTokens extracts lowercased words of >=4 alpha chars, trimmed of
-// surrounding punctuation. Short tokens (it, of, ag) never drive a match.
+// surrounding punctuation. Short tokens (it, of, ag) and generic legal/role
+// words (client, gmbh, ag, systems, platform, …) never drive a company match:
+// otherwise the corpus label "Markets Platform (client)" would match the CRM
+// company "Client not named yet" through the word "client" (#55).
 func significantTokens(s string) []string {
 	var out []string
 	for _, w := range strings.Fields(s) {
@@ -35,9 +38,23 @@ func significantTokens(s string) []string {
 				alpha++
 			}
 		}
-		if alpha >= 4 {
-			out = append(out, strings.ToLower(w))
+		if alpha < 4 {
+			continue
 		}
+		lw := strings.ToLower(w)
+		if _, stop := companyStopwords[lw]; stop {
+			continue
+		}
+		out = append(out, lw)
 	}
 	return out
+}
+
+// companyStopwords are generic legal/role tokens that must never be the basis
+// of a company-name association. A real company match is driven by its proper
+// name, not by a suffix or role annotation.
+var companyStopwords = map[string]struct{}{
+	"client": {}, "customer": {}, "employer": {}, "company": {},
+	"gmbh": {}, "ag": {}, "ltd": {}, "limited": {}, "llc": {}, "inc": {},
+	"group": {}, "platform": {}, "systems": {},
 }

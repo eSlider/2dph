@@ -39,3 +39,19 @@ func TestMatchCompanyNameAkaAndLabel(t *testing.T) {
 		t.Fatalf("slash label match = %q, %v; want produktor.io GmbH, true", got, ok)
 	}
 }
+
+// TestMatchCompanyNameGenericTokensNeverMatch guards #55's false positive: a
+// generic legal/role word ("client", "gmbh", "ag", "systems", "platform", …)
+// in a corpus label must never drive a company match. Otherwise the corpus org
+// "Markets Platform (client)" matched the CRM company "Client not named yet".
+func TestMatchCompanyNameGenericTokensNeverMatch(t *testing.T) {
+	if got, ok := MatchCompanyName("Markets Platform (client)", []string{"Client not named yet", "Capitole", "talabat"}); ok {
+		t.Fatalf("generic 'client' token matched CRM company %q", got)
+	}
+	if _, ok := MatchCompanyName("IT GmbH", []string{"GmbH Services"}); ok {
+		t.Fatal("generic 'gmbh' token must not match")
+	}
+	if _, ok := MatchCompanyName("GRID GmbH / GRIDFACTOR", []string{"GmbH Factor"}); ok {
+		t.Fatal("generic 'gmbh' token must not match")
+	}
+}
