@@ -138,7 +138,9 @@ jobs:
         env:
           GITLEAKS_RANGE: ${{ env.RANGE }}
         with:
-          args: detect --source "${{ github.workspace }}" --log-opts="$GITLEAKS_RANGE" --redact --verbose
+          # docker action mounts the repo at /github/workspace; ${{ github.workspace }}
+          # is the HOST path (not visible inside the container) -> use the container path.
+          args: detect --source /github/workspace --log-opts="$GITLEAKS_RANGE" --redact --verbose
 
   ocr:
     name: OCR (tesseract fixture)
@@ -193,8 +195,9 @@ jobs:
           PREV=$(git tag --sort=-v:refname | grep -v "^$TAG$" | head -1 || true)
           RANGE=""
           [ -n "$PREV" ] && RANGE="$PREV..HEAD"
+          # git log limited with -n (not piped to head) to avoid SIGPIPE under pipefail
           { echo "2dph $TAG — changes from conventional commits";
-            git log --format='- %s' $RANGE | head -40; } > /tmp/notes
+            git log --format='- %s' -n 40 $RANGE; } > /tmp/notes
           gh release create "$TAG" \
             --repo "${{ github.repository }}" \
             --target "$GITHUB_SHA" \
