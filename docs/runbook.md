@@ -138,6 +138,39 @@ PST stays blocked until `libpst-utils` (`readpst`) is installed.
 ./bin/mail/import.go --from-eml var/corpus/mail
 ```
 
+## Sync wave + OO CRM (AGENTS.md, #81)
+
+Deterministic ingest/reconcile wave; every step is a reconcile/upsert, so the
+wave is idempotent. `--dry-run` prints the fixed order without executing.
+Bulk rebuild is NOT part of the wave (use `bin/brain/index.go --rebuild`).
+
+```bash
+go run ./bin/stack/sync.go --dry-run                     # print the wave
+go run ./bin/stack/sync.go                               # default wave
+go run ./bin/stack/sync.go --only mail,mail-import       # subset, order kept
+go run ./bin/stack/sync.go --with-chats --contacts <vcf> # + chats, contacts
+```
+
+`--only` takes actual step names (fixed order): `mail`, `mail-import`,
+`chats`, `contact-brain`, `git-brain`, `contact-crm`.
+
+OnlyOffice CRM tools need `ONLYOFFICE_URL`/`ONLYOFFICE_USER`/`ONLYOFFICE_PASS`
+env. Both are read-only (report) by default; `--write` applies changes.
+
+```bash
+# reconcile report — human mail senders vs OO CRM persons (match by email)
+go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go
+go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go --write --limit 200
+
+# interaction write — mail → history note on the person's opportunity
+go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go
+go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --write --limit 50
+```
+
+Both scan `var/corpus/mail` by default (`--sources` to override) and build an
+email → person index in one pass over the whole CRM. Machine senders
+(newsletter/bounce/platform) never become contacts.
+
 ## Browser sync (periodic, #163)
 
 Pushes the browser-extracted corpus (`var/corpus/{gmail,linkedin,djinni}`) into

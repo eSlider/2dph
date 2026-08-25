@@ -12,6 +12,13 @@ Standards epic: [#88](https://git.produktor.io/eSlider/2dph/issues/88).
   libraries are owned; their working home is Gitea `git.produktor.io/eSlider/<repo>`
   ([#101]). GitHub is a publish mirror only. Issues, PRs, reviews, epics,
   milestones, releases exist **only on Gitea** — never on GitHub.
+- **Git transport (current truth, #81/#73)**: git ops are **HTTPS + token**
+  only — the Gitea SSH deploy-key (`:222`) is broken on write (#73 closed as
+  obsoleted by this). Issues/PRs via the **tea** CLI (API base
+  `https://git.produktor.io`, token in `~/.tea/tea.yml`). Some local checkouts
+  still point `origin` at the SSH `:222` key, which is broken on write — reset
+  `origin` to the HTTPS+token URL or push via tea. Never embed a token in a
+  remote URL — credentials live in `~/.tea/tea.yml` / credential helpers.
 - Every task starts as a Gitea issue **на русском**. Epics group child issues;
   milestones are sprints. Agents report progress as issue comments like senior
   engineers and close issues via commit refs (`(#id)`).
@@ -149,6 +156,14 @@ go-onlyoffice `tasks.go` typed CRUD, `dialog` package (reply chains, upsert
 idempotency, weak-decode boundaries), esliderbot `app.go` (bootstrap order,
 relative `etc/config.yml`).
 
+**go-onlyoffice split (current truth, #81)**: primitives → lib, flow → 2dph.
+The library owns one typed client method per OO API call (`CreatePerson`,
+`AddHistoryNote`, `BuildContactEmailIndex`, …); 2dph `bin/onlyoffice/*` tools
+own the *flows* (reconcile, interaction import) and only orchestrate those
+primitives. Add a new OO capability in the library first, then a 2dph tool
+that uses it — never inline raw OO calls in 2dph. GitHub is a publish mirror
+only; working home and issues live on Gitea (`git.produktor.io/eSlider/go-onlyoffice`).
+
 ## Sync-ETL pipeline (epic #88)
 
 ```
@@ -173,6 +188,41 @@ Source.Fetch(ctx,cursor) → []Blob → Registry.Decode → Transform → Load(b
 
 See `bin/*/doc.go` and `docs/runbook.md`. Paths above are post-migration
 targets; until [#89] lands, legacy paths remain functional.
+
+Common agent flows (each is a deterministic reconcile/upsert, idempotent):
+
+```bash
+# (a) sync wave — every ingest/reconcile step in fixed order
+go run ./bin/stack/sync.go --dry-run                     # print the wave
+go run ./bin/stack/sync.go                               # default wave
+go run ./bin/stack/sync.go --only mail,mail-import       # subset, order kept
+go run ./bin/stack/sync.go --with-chats --contacts <vcf> # + chats, contacts
+
+# (b) reconcile report — human mail senders vs OO CRM (read-only by default)
+go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go
+go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go --write --limit 200
+
+# (c) interaction write — mail → history note on the person's opportunity
+go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go
+go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --write --limit 50
+```
+
+`--only` takes actual step names (fixed order): `mail`, `mail-import`,
+`chats`, `contact-brain`, `git-brain`, `contact-crm` (subsets keep the wave
+order; logical group names like `mail,crm` are NOT accepted).
+
+OnlyOffice tools need `ONLYOFFICE_URL`/`ONLYOFFICE_USER`/`ONLYOFFICE_PASS` in
+the environment (see go-onlyoffice `GetEnvironmentCredentials`).
+
+### Source map + exclusion policy (#79)
+
+What is on disk under the external source root, what is already imported, and
+what stays excluded is inventoried in
+[#79](https://git.produktor.io/eSlider/2dph/issues/79) (authoritative) and
+summarised in [docs/mail-sources.md](docs/mail-sources.md). Policy: never
+import `Aleksey Krylov` (foreign correspondence), Drafts/Templates/Trash/Junk/
+Spam/Unsent, `*.msf`, `filterlog.html`, `soft/drivers/**/*.pst`. Do not embed
+absolute source-root paths in runnable instructions — reference #79 instead.
 
 ## Communication
 

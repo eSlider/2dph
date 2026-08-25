@@ -89,6 +89,21 @@ Stored on disk (`var/corpus/{mail,chats}` JSON + sha256 manifest) BEFORE any
 brain write; upsert-on-conflict idempotency; soft-delete timestamps keep
 edited-message history (`valid_to`). The brain ingests only this canon.
 
+## Orchestration: sync wave + OO CRM flows (#81)
+
+Handlers and reconcilers are orchestrated as deterministic, idempotent waves
+(`bin/stack/sync.go`) and standalone OnlyOffice tools:
+
+```bash
+go run ./bin/stack/sync.go --dry-run                       # print the wave
+go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go
+go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --write
+```
+
+Corpus root for mail reconcilers defaults to `var/corpus/mail` (overridable
+with `--sources`). OnlyOffice tools need `ONLYOFFICE_URL`/`USER`/`PASS` env.
+See AGENTS.md `Tools` for the full command set.
+
 ## Checklist before PR
 
 - Single implementation — no duplicate parser anywhere else (delete copies).

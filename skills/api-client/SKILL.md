@@ -8,6 +8,12 @@ First-class example: https://github.com/eSlider/go-ollama (client.go).
 Typed CRUD reference: go-onlyoffice `tasks.go` (`CreateProjectTask`,
 `UpdateProjectTask`, `GetTasks`).
 
+go-onlyoffice split (AGENTS.md, #81): primitives live in the lib — one typed
+client method per OO API call (`CreatePerson`, `AddHistoryNote`,
+`BuildContactEmailIndex`, …). Flows (reconcile, interaction import) live in
+2dph `bin/onlyoffice/*` and only orchestrate those primitives. Never inline
+raw OO calls in 2dph; add the capability in go-onlyoffice first.
+
 ## Shape (mandatory)
 
 1. `type Client struct { hc *http.Client; cfg Config }` — one handle; state
