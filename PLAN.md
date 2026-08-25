@@ -131,7 +131,10 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 - `search.env` — real `BRAIN_SEARCH_URL/USER/PASS` from `~/.config/ops/npm-bot.env`
 - `db-profiles.yml` — real `onlyoffice` profile (SSH tunnel `127.0.0.1:5433`,
-  user `onlyoffice`, db `onlyoffice`, `password_env_file`) + example profiles.
+  user `onlyoffice`, db `onlyoffice`, `network: host`,
+  `password_env_file: ~/.config/ops/onlyoffice.env`) + example profiles.
+  `~/.config/ops/onlyoffice.env` is bootstrapped from the VM's
+  `/etc/onlyoffice/documentserver/local.json` (dbUser/dbPass), never committed.
 - `~/.config/brain/../` — nothing else lives in the repo.
 
 ## Tooling conventions
