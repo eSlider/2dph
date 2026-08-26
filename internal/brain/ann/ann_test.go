@@ -1,9 +1,11 @@
 package ann
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
 
@@ -285,5 +287,39 @@ func TestANNWrongDimSkipped(t *testing.T) {
 	}
 	if ix.Skipped() != 1 {
 		t.Fatalf("skipped = %d, want 1", ix.Skipped())
+	}
+}
+
+func TestANNConcurrentSearch(t *testing.T) {
+	// Searches must be safe for concurrent readers (serve/bench workers>1):
+	// run them in parallel under -race and require every result set to be
+	// non-empty and stable.
+	rows := syntheticRows(400, 8, 51)
+	ix := New(Params{RngSeed: 6})
+	if err := ix.Build(rows); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	const workers = 16
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < 20; i++ {
+				rng := rand.New(rand.NewSource(int64(w*100 + i)))
+				q := queryNear(rows, 8, w%8, rng)
+				res := ix.Search(q, 5)
+				if len(res) != 5 {
+					errs <- fmt.Errorf("worker %d: got %d results, want 5", w, len(res))
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
 	}
 }
