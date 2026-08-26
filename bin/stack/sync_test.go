@@ -67,7 +67,7 @@ func TestPlanChatsStep(t *testing.T) {
 		{"bin/chat/sync.go", "telegram"},
 		{"bin/chat/sync.go", "linkedin"},
 	}
-	steps := planSteps(true, "", "")
+	steps := planSteps(true, false, "", "")
 	var got []string
 	for i := range steps {
 		if steps[i].name != "chats" {
@@ -89,10 +89,68 @@ func TestPlanChatsStep(t *testing.T) {
 	}
 
 	// Without --with-chats the whole step is skipped, order kept for --only.
-	skipped := planSteps(false, "", "")
+	skipped := planSteps(false, false, "", "")
 	for i := range skipped {
 		if skipped[i].name == "chats" && skipped[i].skip != "--with-chats" {
 			t.Errorf("chats skip = %q, want --with-chats", skipped[i].skip)
+		}
+	}
+}
+
+// TestPlanMailIndexStep checks the mail-index step (issue #199): planned right
+// after mail-import with --with-mail, skipped (never FAIL) without it.
+func TestPlanMailIndexStep(t *testing.T) {
+	steps := planSteps(false, true, "", "")
+	idx := -1
+	importAt := -1
+	for i := range steps {
+		if steps[i].name == "mail-import" {
+			importAt = i
+		}
+		if steps[i].name == "mail-index" {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		t.Fatal("no mail-index step planned with --with-mail")
+	}
+	if importAt < 0 || idx != importAt+1 {
+		t.Errorf("mail-index at %d, want exactly after mail-import (%d)", idx, importAt)
+	}
+	if steps[idx].skip != "" {
+		t.Errorf("mail-index skip = %q, want empty with --with-mail", steps[idx].skip)
+	}
+	want := [][]string{{"bin/brain/index.go", "--skip", "--with-mail"}}
+	if !reflect.DeepEqual(steps[idx].cmds, want) {
+		t.Errorf("mail-index cmds = %v, want %v", steps[idx].cmds, want)
+	}
+
+	// Without --with-mail the step must SKIP, not FAIL (wave still green).
+	skipped := planSteps(false, false, "", "")
+	for i := range skipped {
+		if skipped[i].name == "mail-index" && skipped[i].skip != "--with-mail" {
+			t.Errorf("mail-index skip = %q, want --with-mail", skipped[i].skip)
+		}
+	}
+}
+
+// TestRunnerBrainIndexTags pins the Zig CGO build tags for bin/brain/index.go:
+// its //go:build line requires brain_index in addition to system_ladybug.
+func TestRunnerBrainIndexTags(t *testing.T) {
+	cmd, err := runner("bin/brain/index.go", []string{"--skip", "--with-mail"})
+	if err != nil {
+		t.Fatalf("runner(index): %v", err)
+	}
+	if cmd.Args[0] != "bash" {
+		t.Errorf("brain runner argv[0] = %q, want bash", cmd.Args[0])
+	}
+	joined := strings.Join(cmd.Args, " ")
+	for _, want := range []string{
+		"cgo/zig", "go run", "-tags=system_ladybug,brain_index",
+		"bin/brain/index.go", "--skip", "--with-mail",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("runner argv %q missing %q", joined, want)
 		}
 	}
 }
