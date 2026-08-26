@@ -180,6 +180,56 @@ p50 ≈ 32s на 313k leafs (линейный скан, #192); после вне
 В CI (GitHub, оффлайн): `--rebuild` корпуса → `bench --inproc --json`
 (та же схема, что и recall-gate `bin/brain/eval.go`).
 
+### ANN-кандидат (#204)
+
+Кандидат эпика #201 — инкрементальный векторный индекс **вне liblbug** (его
+собственный HNSW крашится на росте графа, #192; фикс — линейный скан).
+Алгоритм: **IVF** (k-means cells + точный косинус внутри probed-кластеров,
+чистый Go, без внешних зависимостей). `coder/hnsw` (HNSW) отброшен на
+эмпирике: на 313k реальных эмбеддингов из entry достижимы лишь 34% узлов
+(изоляция при вытеснении соседей) → recall@5 падает до 0.16; IVF держит
+recall@30 ≥ 0.93 при NList=2000/NProbe=128 (замеры probe #204). Индекс
+живёт в `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`),
+строится/апдейтится `bin/brain/ann.go` (wave-шаг `ann-upsert`), читается
+`queryVector` с fallback на скан при отсутствии/повреждении.
+
+```bash
+# полный build из БД (~30s extract + ~4min k-means + assign на 313k, NList=2000)
+KB_BUFFER_POOL=4294967296 ./bin/brain/ann.go build
+
+# инкрементальный upsert новых leafs (append WAL, НЕ rebuild; <1s на волну)
+VECTOR_ANN_ENABLED=true ./bin/brain/ann.go upsert
+
+# статистика индекса
+./bin/brain/ann.go stats
+
+# CLI-поиск через ANN (fallback на скан при отсутствии индекса)
+VECTOR_ANN_ENABLED=true ./bin/brain/ann.go --json -n 10 "query"
+
+# HTTP-сервер поиска через ANN (для bench --candidate http://127.0.0.1:8631)
+VECTOR_ANN_ENABLED=true ./bin/brain/ann.go api --port 8631
+```
+
+A/B (изолирует векторный слой: baseline = скан, кандидат = ANN, один
+процесс, одна БД):
+
+```bash
+# quiesce сначала (single-writer): docker compose stop brain
+KB_BUFFER_POOL=4294967296 ./bin/brain/bench.go --inproc --candidate inproc-ann
+# эталон: ./bin/brain/bench.go --inproc                 (baseline, ~26 min на 50 запросов)
+# через отдельный serve: ./bin/brain/bench.go --candidate http://127.0.0.1:8631
+```
+
+Конфиг (`etc/brain/config.yml`, секция `vector.ann`): `enabled`, `index`,
+`dim` (256), `nlist` (2000 — k-means cells, ~150 векторов на ячейку при
+313k), `nprobe` (2000 дефолт — полный probe: порядок кандидатов совпадает
+с точным сканом (recall@5 vs baseline = 1.0), p50 ~0.4s; уменьшение probe
+ускоряет поиск ценой recall — например 256 ячеек дают recall@5 ~0.9 при
+p50 ~0.28s). Идемпотентность: повторный `upsert` не
+дублирует (idCell — map), повторный `build` из той же БД даёт ту же
+мощность. Инкрементальность доказана: +100 leafs → upsert <1s без rebuild
+(#204, A/B-отчёт в issue).
+
 ## Disk mail/contacts import (#79)
 
 Sources on `/mnt/8TB` (TB mbox, .eml, VCF/MAB) → corpus pipeline; see

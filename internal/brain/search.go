@@ -188,6 +188,17 @@ func queryFTS(text string, limit int) ([]Hit, error) {
 }
 
 func queryVector(emb []float64, limit int) ([]Hit, error) {
+	// ANN path (issue #204): top-k from the incremental HNSW index, then
+	// metadata via point lookups. Falls back to the brute-force scan when
+	// the index is absent/corrupt/disabled — search never fails because of
+	// ANN.
+	if annEnabled() {
+		if hits, err := annQueryVector(emb, limit); err != nil {
+			fmt.Fprintf(os.Stderr, "ann: %v\n", err)
+		} else if len(hits) > 0 {
+			return hits, nil
+		}
+	}
 	brainMu.RLock()
 	defer brainMu.RUnlock()
 	stmt, err := conn.Prepare(vecScanStmt)
@@ -227,7 +238,15 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 			ValidTo: nullStr(vals[6]), Score: sim,
 		}, sim: sim})
 	}
-	sort.Slice(all, func(i, j int) bool { return all[i].sim > all[j].sim })
+	// Deterministic ranking: descending similarity, ties broken by id so the
+	// RRF merge with FTS is stable across runs and vector backends (#204:
+	// equal-cosine hits reordered by the unstable sort and broke A/B recall).
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].sim != all[j].sim {
+			return all[i].sim > all[j].sim
+		}
+		return all[i].hit.ID < all[j].hit.ID
+	})
 	if len(all) > limit {
 		all = all[:limit]
 	}

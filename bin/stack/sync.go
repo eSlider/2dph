@@ -12,11 +12,12 @@
 //  1. mail-sync      bin/mail/sync.go        (skipped without creds)
 //  2. mail-import    bin/mail/import.go
 //  3. mail-index     bin/brain/index.go --skip --with-mail  (--with-mail)
-//  4. chats          chat/sync telegram+linkedin   (--with-chats; each platform
+//  4. ann-upsert     bin/brain/ann.go upsert (SKIPs when vector.ann disabled)
+//  5. chats          chat/sync telegram+linkedin   (--with-chats; each platform
 //     SKIPs on exit code 3 when its creds/session are missing)
-//  5. contact-brain  brain/import-contact.go       (--contacts PATH)
-//  6. git-brain      brain/import-git.go           (--git-root DIR)
-//  7. contact-crm    onlyoffice/import-contact.go  (--contacts PATH)
+//  6. contact-brain  brain/import-contact.go       (--contacts PATH)
+//  7. git-brain      brain/import-git.go           (--git-root DIR)
+//  8. contact-crm    onlyoffice/import-contact.go  (--contacts PATH)
 //
 // Idempotent by construction: every step is a reconcile/upsert. Bulk rebuild
 // is deliberately NOT part of the wave (expensive) — use brain/index.go.
@@ -50,7 +51,7 @@ func run(args []string) int {
 	)
 	p := cliparse.New("stack-sync")
 	p.Description = "deterministic sync wave: mail/chats/contacts/git → brain + OO CRM"
-	p.String(&only, "", "only", "comma-separated subset: mail,mail-import,mail-index,chats,contacts,git,crm")
+	p.String(&only, "", "only", "comma-separated subset: mail,mail-import,mail-index,ann-upsert,chats,contacts,git,crm")
 	p.String(&contacts, "", "contacts", "address-book file/dir for brain+CRM reconcile")
 	p.String(&gitRoot, "", "git-root", "dir of git repos to import into the brain")
 	p.Bool(&withChats, "", "with-chats", "include telegram/linkedin chat sync")
@@ -167,6 +168,9 @@ func planSteps(withChats, withMail bool, contacts, gitRoot string) []step {
 		{name: "mail", cmds: [][]string{{"bin/mail/sync.go"}}},
 		{name: "mail-import", cmds: [][]string{{"bin/mail/import.go", "--from-raw", "var/corpus/mail"}}},
 		{name: "mail-index", cmds: [][]string{{"bin/brain/index.go", "--skip", "--with-mail"}}, skip: skipUnless(withMail, "--with-mail")},
+		// ANN vector index (#204): incremental upsert of new leafs, WAL
+		// append — never a rebuild. SKIPs when vector.ann.enabled=false.
+		{name: "ann-upsert", cmds: [][]string{{"bin/brain/ann.go", "upsert"}}},
 		{name: "chats", cmds: [][]string{{"bin/chat/sync.go", "telegram"}, {"bin/chat/sync.go", "linkedin"}}, skip: skipUnless(withChats, "--with-chats")},
 		{name: "contact-brain", cmds: [][]string{contactStep("bin/brain/import-contact.go", contacts)}, skip: skipUnless(contacts != "", "--contacts")},
 		{name: "git-brain", cmds: [][]string{gitStep(gitRoot)}, skip: skipUnless(gitRoot != "", "--git-root")},
@@ -229,6 +233,8 @@ func brainTags(tool string) string {
 	switch tool {
 	case "bin/brain/index.go":
 		return "system_ladybug,brain_index"
+	case "bin/brain/ann.go":
+		return "system_ladybug,brain_ann"
 	default:
 		return "system_ladybug"
 	}

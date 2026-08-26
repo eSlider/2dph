@@ -74,6 +74,28 @@ type Config struct {
 	// .eml → the mailconv pipeline. Paths of the source .pst files are machine
 	// inventory (see #79) and belong in config.local.yml, never in code.
 	PST PSTConfig `mapstructure:"pst"`
+
+	// Vector ANN index (issue #204): approximate-nearest-neighbor search
+	// outside liblbug (whose HNSW crashes, #192). Enabled serves the query
+	// vector path from the index; disabled/missing index falls back to the
+	// linear scan.
+	Vector VectorConfig `mapstructure:"vector"`
+}
+
+// VectorConfig configures the vector search layer (issue #204).
+type VectorConfig struct {
+	ANN ANNConfig `mapstructure:"ann"`
+}
+
+// ANNConfig is the IVF index (internal/brain/ann). Empty paths default to
+// <root>/var/state/vector.ann (+ ".wal"); NList/NProbe defaults come from the
+// ann package (Defaults()): NList=2000, NProbe=128.
+type ANNConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Index   string `mapstructure:"index"`
+	Dim     int    `mapstructure:"dim"`
+	NList   int    `mapstructure:"nlist"`
+	NProbe  int    `mapstructure:"nprobe"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.

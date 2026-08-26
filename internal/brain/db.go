@@ -80,6 +80,13 @@ func openBrain() error {
 	return openWithSandboxLocked(brainCfg().Eps)
 }
 
+// brainOpen reports whether the package-global read handle is open.
+func brainOpen() bool {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
+	return conn != nil
+}
+
 // openWithSandbox opens the long-lived serve read connection (write path
 // excluded). Callers outside the write window take brainMu.Lock.
 func openWithSandbox(epsv string) error {

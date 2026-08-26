@@ -37,6 +37,25 @@ func MainBench(args []string) int {
 		return 1
 	}
 	Configure(cfg)
+	// --candidate inproc-ann: same process, same DB handle, vector path
+	// forced through the ANN index — the A/B isolates the vector layer
+	// (baseline = force-off linear scan, candidate = force-on ANN). Pairs
+	// with --inproc (quiesced DB); opens the local handle if the baseline
+	// ran against a remote brain instead.
+	bench.CandInprocOpener = func(_ context.Context, dbPath string) (bench.Searcher, error) {
+		if dbPath != "" {
+			prev := dbPathFn
+			dbPathFn = func() string { return dbPath }
+			defer func() { dbPathFn = prev }()
+		}
+		if !brainOpen() {
+			if err := openBrain(); err != nil {
+				return nil, fmt.Errorf("open brain: %w", err)
+			}
+		}
+		setAnnMode(annForceOn)
+		return &inprocSearcher{}, nil
+	}
 	return bench.Main(args, func(_ context.Context, dbPath string) (bench.Searcher, error) {
 		if dbPath != "" {
 			prev := dbPathFn
@@ -46,6 +65,8 @@ func MainBench(args []string) int {
 		if err := openBrain(); err != nil {
 			return nil, fmt.Errorf("open brain: %w", err)
 		}
+		// Baseline must be the linear scan even when the config enables ANN.
+		setAnnMode(annForceOff)
 		return &inprocSearcher{}, nil
 	})
 }
