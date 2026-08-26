@@ -148,12 +148,15 @@ Bulk rebuild is NOT part of the wave (use `bin/brain/index.go --rebuild`).
 go run ./bin/stack/sync.go --dry-run                     # print the wave
 go run ./bin/stack/sync.go                               # default wave
 go run ./bin/stack/sync.go --only mail,mail-import       # subset, order kept
+go run ./bin/stack/sync.go --with-mail --only mail,mail-import,mail-index  # mail → brain index (#199)
 go run ./bin/stack/sync.go --with-chats --contacts <vcf> # + chats, contacts
 go run ./bin/stack/sync.go --with-chats --git-root <dir> # + chats, git history
 ```
 
 `--only` takes actual step names (fixed order): `mail`, `mail-import`,
-`chats`, `contact-brain`, `git-brain`, `contact-crm`.
+`mail-index`, `chats`, `contact-brain`, `git-brain`, `contact-crm`.
+`--with-mail` включает шаг `mail-index` (mail leafs обоих корпусов → brain,
+#199); без флага шаг SKIP, не FAIL.
 
 ### chats step (--with-chats, #195)
 

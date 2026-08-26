@@ -691,3 +691,24 @@ Verification: `bin/cgo/zig go test -tags system_ladybug -skip TestModelDir
 ./internal/brain/` ok; `go test ./internal/brain/rank/` ok. Пре-существующие
 падения `TestModelDir*` (HF-модель уже локально в models/, окружение) — не
 связаны с этим изменением. Branch `fix/hnsw-cosine-scan#192`.
+
+## 2026-08-26 — весь mail-корпус в brain (gitea #199)
+
+Goal: оба корпуса — live `var/corpus/mail` и legacy `var/mail` (#184) — в
+brain; шаг волны `mail-index`. Решение B: `LoadMailLeafs` расширен на
+несколько root-ов, дедуп по sha256 content-address (одинаковое письмо в
+обоих корпусах → один leaf), без копирования данных.
+
+| Step | Status |
+|------|--------|
+| `internal/brain/mail_corpus.go`: `MailRoots` + `LoadMailLeafs` multi-root + dedup; вынесен из `corpus.go` (cgo-free) | done |
+| `bin/brain/index.go --with-mail` → `brain.MailRoots(root)` | done |
+| `bin/stack/sync.go`: шаг `mail-index` (после mail-import, `--with-mail`), brain runner с Zig CGO-тегами `brain_index` | done |
+| TDD: `mail_corpus_test.go` (multi-root, dedup, since, limit, attachment) + `sync_test.go` (mail-index план, runner-теги) | done — `go test -race ./internal/brain/... ./bin/stack/... ./internal/mailconv/...` green |
+| Полный индекс `index.go --skip --with-mail` в существующую kb.lbug | done — 304 544 leafs, +7 712 новых (прошлый индекс был частичным после corrupt-199); итог info 313 786 |
+| Идемпотентность (повтор `--skip --with-mail`) | done — 0 новых |
+| Search реальных писем (e2e-outbound, PST-тема) | done — count ≥ 1 |
+| docs: AGENTS.md / runbook `--only` список + `--with-mail` | done |
+| Известное ограничение: векторный поиск — линейный скан (#192), ~32s при 313k leafs | open — отдельный issue на оптимизацию |
+
+Branch `feat/mail-corpus-brain#199`, PR #200 → release/v1.
