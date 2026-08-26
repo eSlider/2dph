@@ -126,6 +126,60 @@ write never commits, so the on-disk DB is the last successful state. A full
 rebuild is only needed after a deliberate `--rebuild` or a corrupt DB, not
 after a restart.
 
+## Бенчмарки поиска (#202)
+
+A/B-харнесс `bin/brain/bench.go` гоняет фиксированный golden-set запросов
+(`internal/brain/testdata/golden-set.json`, ~50, рус+англ, темы
+facts/mail/docs/git/ssh) через поиск и печатает latency p50/p95/mean,
+recall@5/@10 и CPU/RSS. **Никакой кандидат не принимается без замера**
+(эпик #201): baseline — текущий линейный скан.
+
+```bash
+# baseline против живого brain (HTTP MCP :8630, read-only; контейнер можно не трогать)
+./bin/brain/bench.go
+
+# machine-отчёт (для issue/CI)
+./bin/brain/bench.go --json
+
+# кандидат: исполняемый бинарь с CLI bin/brain/search.go --json -n N --no-web "q"
+./bin/brain/bench.go --candidate /path/to/candidate
+
+# кандидат: другой serve (:8631) — A/B recall vs baseline + latency ratio
+./bin/brain/bench.go --candidate http://127.0.0.1:8631
+
+# локально, без сервера: открыть var/kb.lbug read-only в процессе
+# (сначала quiesce: docker compose stop brain — single-writer!)
+./bin/brain/bench.go --inproc
+
+# локально против отдельной копии БД (напр. свежий --rebuild --db /tmp/kb.lbug)
+./bin/brain/bench.go --inproc --db /tmp/kb.lbug
+
+# ресурсы сервера: семплировать PID brain-контейнера вместо собственного
+./bin/brain/bench.go --pid $(docker inspect -f '{{.State.Pid}}' 2dph-brain-1)
+```
+
+Метрики и гейты:
+
+| Метрика | Смысл | Гейт |
+|---------|-------|------|
+| latency p50/p95/mean, ms | распределение длительности поиска на запрос | кандидат p50 ≤ baseline p50 × 1.5 |
+| recall@5/@10 (fragment) | доля запросов, у которых ожидаемый фрагмент (из корпуса) в top-k | baseline recall@5 ≥ 0.95 |
+| recall@5/@10 (vs baseline) | кандидат не теряет известные baseline-хиты (top-k IDs) | кандидат ≥ 0.95 |
+| CPU/RSS | user+sys jiffies, RSS до/после, пик (VmHWM) из /proc | для сравнения при «тех же ресурсах» |
+
+Exit codes: `0` — гейты прошли, `2` — recall/ratio FAIL, `1` — ошибка
+(нет golden-set, не поднялся searcher, и т.п.).
+
+Чтение: p50/p95 по per-query latency при `--workers 1` (по умолчанию) —
+чистый одиночный запрос; `--workers N` меряет сервер под нагрузкой.
+Повторяемость: два прогона подряд, разброс p50 < 10 % (линейный скан
+детерминирован; разброс даёт только фоновая нагрузка). Baseline-эталон:
+p50 ≈ 32s на 313k leafs (линейный скан, #192); после внедрения кандидата
+цель эпика p50 < 500ms, p95 < 2s.
+
+В CI (GitHub, оффлайн): `--rebuild` корпуса → `bench --inproc --json`
+(та же схема, что и recall-gate `bin/brain/eval.go`).
+
 ## Disk mail/contacts import (#79)
 
 Sources on `/mnt/8TB` (TB mbox, .eml, VCF/MAB) → corpus pipeline; see

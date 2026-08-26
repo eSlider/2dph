@@ -83,13 +83,14 @@ jobs:
       - name: facts/audit self (lexicon consistency, no network)
         run: ./bin/facts/audit.go self
 
-      - name: CGO via Zig (compile brain/search + index + add + eval)
+      - name: CGO via Zig (compile brain/search + index + add + eval + bench)
         run: |
           chmod +x bin/cgo/zig bin/cgo/zcc bin/cgo/zc++
           bin/cgo/zig go build -tags system_ladybug -o /tmp/brain-search ./bin/brain/search.go
           bin/cgo/zig go build -tags 'system_ladybug,brain_index' -o /tmp/brain-index ./bin/brain/index.go
           bin/cgo/zig go build -tags 'system_ladybug,brain_add' -o /tmp/brain-add ./bin/brain/add.go
           bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_bench' -o /tmp/brain-bench ./bin/brain/bench.go
 
       - name: Go write-path tests (Zig CGO ladybug, in-process)
         if: github.server_url == 'https://github.com'
@@ -107,6 +108,14 @@ jobs:
           go run ./bin/brain/model.go
           /tmp/brain-index --rebuild --json
           KB_ROOT="$PWD" /tmp/brain-eval --json
+
+      - name: search bench gate (golden-set recall@5 >= 0.95, offline)
+        if: github.server_url == 'https://github.com'
+        run: |
+          # Same schema as eval.go: corpus rebuilt above, DB quiescent →
+          # --inproc opens it read-only; the /embed daemon spawns from the
+          # bench binary itself. Exits 2 when the recall gate fails.
+          KB_ROOT="$PWD" /tmp/brain-bench --inproc --json
 
   secret-scan:
     name: Secret scan (gitleaks)
