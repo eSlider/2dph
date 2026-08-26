@@ -20,10 +20,17 @@ import (
 	"strings"
 )
 
-// reSkipFolder matches Thunderbird folders the import policy excludes (#79):
-// drafts, templates, trash, junk/spam and the unsent queue. The ".sbd"
-// (Thunderbird subfolder marker) suffix is folded in.
-var reSkipFolder = regexp.MustCompile(`(?i)^(drafts?|templates?|trash|junk|spam(assassin)?|unsent( messages)?)(\.sbd)?$`)
+// reSkipFolder matches mail folders the import policy excludes (#79): drafts,
+// templates, trash, junk/spam and the unsent queue, plus the German Outlook
+// folder names readpst emits (Entwürfe=Drafts, Vorlagen=Templates,
+// Gelöschte Objekte=Deleted Items, Junk-E-Mail, Postausgang=Outbox/Unsent).
+// The ".sbd" (Thunderbird subfolder marker) suffix is folded in.
+var reSkipFolder = regexp.MustCompile(`(?i)^(drafts?|templates?|trash|junk|spam(assassin)?|unsent( messages)?|entwürfe|vorlagen|gelöschte objekte|junk-e-mail|postausgang)(\.sbd)?$`)
+
+// SkipFolder reports whether the import policy excludes a mail folder (#79).
+// It is the single implementation of the folder exclusion policy: the mbox
+// splitter and the PST source adapter both consult it.
+func SkipFolder(name string) bool { return reSkipFolder.MatchString(name) }
 
 // reEnvelope matches the sender + ctime-date tail of a real mbox separator.
 var reEnvelope = regexp.MustCompile(`^\S+ [A-Z][a-z]{2} [A-Z][a-z]{2} `)
@@ -144,7 +151,7 @@ func SplitMboxDir(root, out, source string, dryRun bool) (written, skipped int, 
 		}
 		rel, _ := filepath.Rel(root, p)
 		for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
-			if reSkipFolder.MatchString(seg) {
+			if SkipFolder(seg) {
 				return nil
 			}
 		}
@@ -182,10 +189,10 @@ func splitMboxToDir(p, out, source, rel string, dryRun bool) (written, skipped i
 			source = rel
 		}
 	}
-	base := []string{out, sanitize(source)}
+	base := []string{out, SanitizeSegment(source)}
 	for _, seg := range strings.Split(filepath.ToSlash(filepath.Dir(rel)), "/") {
 		if seg != "" && seg != "." {
-			base = append(base, sanitize(seg))
+			base = append(base, SanitizeSegment(seg))
 		}
 	}
 	baseDir := filepath.Join(base...)
@@ -213,8 +220,10 @@ func splitMboxToDir(p, out, source, rel string, dryRun bool) (written, skipped i
 	return written, skipped, nil
 }
 
-// sanitize makes a path segment filesystem-safe for corpus output dirs.
-func sanitize(s string) string {
+// SanitizeSegment makes a path segment filesystem-safe for corpus output dirs
+// (single implementation: mbox splitter and the PST source adapter both use
+// it, so corpus layouts stay consistent).
+func SanitizeSegment(s string) string {
 	r := strings.NewReplacer("/", "_", "\\", "_", ":", "_", "*", "_", "?", "_", "\"", "_",
 		"<", "_", ">", "_", "|", "_", " ", "_", "[", "", "]", "", ".", "_")
 	return r.Replace(s)

@@ -261,6 +261,48 @@ func TestMergeMaps_RecurseAndLastWriteWins(t *testing.T) {
 	}
 }
 
+// TestLoad_PSTSection checks the pst.* section round-trips: the sources list
+// (label+path pairs), the readpst binary override and the out/state path
+// overrides. Fixture paths are synthetic and relative (no host paths).
+func TestLoad_PSTSection(t *testing.T) {
+	isolateEnv(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "etc", "brain")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yml := `root: "` + filepath.ToSlash(dir) + `"
+pst:
+  sources:
+    - label: pst-andriy
+      path: fixtures/andriy.pst
+    - label: pst-backup-vorlagen
+      path: fixtures/backup-vorlagen.pst
+  readpst: var/dist/readpst/usr/bin/readpst
+  out: var/corpus/mail/pst
+  state: var/state/pst.json
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yml"), []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTest(t, dir)
+	if len(cfg.PST.Sources) != 2 {
+		t.Fatalf("pst.sources = %d entries, want 2", len(cfg.PST.Sources))
+	}
+	if cfg.PST.Sources[0].Label != "pst-andriy" || cfg.PST.Sources[0].Path != "fixtures/andriy.pst" {
+		t.Errorf("pst.sources[0] = %+v", cfg.PST.Sources[0])
+	}
+	if cfg.PST.Sources[1].Label != "pst-backup-vorlagen" {
+		t.Errorf("pst.sources[1].label = %q", cfg.PST.Sources[1].Label)
+	}
+	if cfg.PST.ReadPST != "var/dist/readpst/usr/bin/readpst" {
+		t.Errorf("pst.readpst = %q", cfg.PST.ReadPST)
+	}
+	if cfg.PST.Out != "var/corpus/mail/pst" || cfg.PST.State != "var/state/pst.json" {
+		t.Errorf("pst out/state = %q/%q", cfg.PST.Out, cfg.PST.State)
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	isolateEnv(t)
 	d := Defaults()
