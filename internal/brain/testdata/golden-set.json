@@ -1,0 +1,306 @@
+{
+  "version": 1,
+  "source": "Обобщённые темы боевых запросов (MCP-сессии pc-agent, docs/, PLAN.md, типовые где/кто/как), рус+англ. PII отсутствует; фрагменты — из корпуса README/PLAN/AGENTS/docs/skills (воспроизводимо в CI после --rebuild).",
+  "queries": [
+    {
+      "q": "hybrid search fts and vector",
+      "topic": "docs",
+      "lang": "en",
+      "fragment": "BM25"
+    },
+    {
+      "q": "eslider devops engineer",
+      "topic": "docs",
+      "lang": "en",
+      "fragment": "DevOps"
+    },
+    {
+      "q": "ladybugdb graph engine storage",
+      "topic": "docs",
+      "lang": "en",
+      "fragment": "LadybugDB"
+    },
+    {
+      "q": "почему сломан HNSW индекс",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "HNSW"
+    },
+    {
+      "q": "как пересобрать rebuild индекс brain",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "rebuild"
+    },
+    {
+      "q": "где лежит config.yml конфиг brain",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "config.yml"
+    },
+    {
+      "q": "семвер semver версии релиза",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "SemVer"
+    },
+    {
+      "q": "healthcheck как проверить что brain жив",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "healthcheck"
+    },
+    {
+      "q": "что такое D24 интервалы фактов",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "D24"
+    },
+    {
+      "q": "mcp openapi описание tools",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "MCP"
+    },
+    {
+      "q": "recall gate оценка качества поиска",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "recall"
+    },
+    {
+      "q": "как добавить факт bin add.go",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "add.go"
+    },
+    {
+      "q": "голосовой ассистент picoclaw",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "PicoClaw"
+    },
+    {
+      "q": "tesseract ocr pdf из писем",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "tesseract"
+    },
+    {
+      "q": "ghostscript нормализация pdf",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "ghostscript"
+    },
+    {
+      "q": "cgo zig тулчейн сборка",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "zig"
+    },
+    {
+      "q": "как фиксируются факты evidence",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "evidence"
+    },
+    {
+      "q": "что значит not confirmed",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "not confirmed"
+    },
+    {
+      "q": "detective method independent sources",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "independent sources"
+    },
+    {
+      "q": "confirmed как отличить подтверждённый факт",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "confirmed"
+    },
+    {
+      "q": "лексикон lexicon путь факта",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "lexicon"
+    },
+    {
+      "q": "promote факта в уверенный",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "promote"
+    },
+    {
+      "q": "evidence first методология",
+      "topic": "facts",
+      "lang": "en",
+      "fragment": "Evidence"
+    },
+    {
+      "q": "audit аудит фактов confidence",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "audit"
+    },
+    {
+      "q": "импорт писем outlook pst readpst",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "readpst"
+    },
+    {
+      "q": "почтовый корпус mail-index в brain",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "mail-index"
+    },
+    {
+      "q": "mail corpus message.md leafs",
+      "topic": "mail",
+      "lang": "en",
+      "fragment": "message.md"
+    },
+    {
+      "q": "как синкать почту gmail",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "gmail"
+    },
+    {
+      "q": "история заметки history note onlyoffice",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "history note"
+    },
+    {
+      "q": "reconcile почта контакты",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "reconcile"
+    },
+    {
+      "q": "import-interaction заметка",
+      "topic": "mail",
+      "lang": "en",
+      "fragment": "import-interaction"
+    },
+    {
+      "q": "как выгрузить pst архив",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "PST"
+    },
+    {
+      "q": "git-brain импорт шаг волны",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "git-brain"
+    },
+    {
+      "q": "кто author автор коммита",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "author"
+    },
+    {
+      "q": "hop глубина от листа",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "hop"
+    },
+    {
+      "q": "semver release/v1 теги из conventional commits",
+      "topic": "git",
+      "lang": "en",
+      "fragment": "release/v1"
+    },
+    {
+      "q": "bin stack sync.go волна",
+      "topic": "git",
+      "lang": "en",
+      "fragment": "sync.go"
+    },
+    {
+      "q": "git HAS_VERSION commit файл лист связь",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "HAS_VERSION"
+    },
+    {
+      "q": "roadmap фазы проекта",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "roadmap"
+    },
+    {
+      "q": "ssh config docker ps хосты сопоставление",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "ssh/config"
+    },
+    {
+      "q": "ssh tunnel onlyoffice postgres",
+      "topic": "ssh",
+      "lang": "en",
+      "fragment": "tunnel"
+    },
+    {
+      "q": "доступ к edelweiss серверу",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "edelweiss"
+    },
+    {
+      "q": "правило no sudo",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "sudo"
+    },
+    {
+      "q": "ssh-config сопоставление хостов docker compose",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "ssh/config"
+    },
+    {
+      "q": "как работает sync волна stack",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "stack"
+    },
+    {
+      "q": "обновить runbook документацию",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "runbook"
+    },
+    {
+      "q": "что такое corpus brain",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "corpus"
+    },
+    {
+      "q": "matrix synapse архитектура",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "Synapse"
+    },
+    {
+      "q": "как импортировать telegram чаты",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "telegram"
+    },
+    {
+      "q": "docker compose.yaml сервисы brain",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "compose.yaml"
+    }
+  ]
+}
