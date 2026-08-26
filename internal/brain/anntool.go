@@ -118,6 +118,9 @@ func runAnnBuild(args []string) int {
 	}
 	t0 := time.Now()
 	rows, err := extractRows(f.limit)
+	// Release the DB read handle before the (long) graph build so other
+	// processes can open kb.lbug while we index (single-writer rule).
+	closeBrain()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brain/ann build: extract: %v\n", err)
 		return 1
@@ -187,6 +190,7 @@ func runAnnUpsert(args []string) int {
 	}
 	t0 := time.Now()
 	rows, err := extractRows(f.limit)
+	closeBrain() // release kb.lbug before graph ops (single-writer rule)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brain/ann upsert: extract: %v\n", err)
 		return 1
