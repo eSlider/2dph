@@ -180,6 +180,51 @@ p50 ≈ 32s на 313k leafs (линейный скан, #192); после вне
 В CI (GitHub, оффлайн): `--rebuild` корпуса → `bench --inproc --json`
 (та же схема, что и recall-gate `bin/brain/eval.go`).
 
+### ANN-кандидат (#204)
+
+Кандидат эпика #201 — инкрементальный HNSW-индекс **вне liblbug** (его
+собственный HNSW крашится на росте графа, #192; фикс — линейный скан).
+Библиотека: `github.com/coder/hnsw` (чистый Go, CC0; `DataDog/hnswlib`
+удалён с GitHub, usearch требует внешней C++-библиотеки — CGO-ад). Индекс
+живёт в `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`),
+строится/апдейтится `bin/brain/ann.go` (wave-шаг `ann-upsert`), читается
+`queryVector` с fallback на скан при отсутствии/повреждении.
+
+```bash
+# полный build из БД (одноразово; ~30s extract + ~40min build на 313k, M=32)
+KB_BUFFER_POOL=4294967296 ./bin/brain/ann.go build
+
+# инкрементальный upsert новых leafs (append WAL, НЕ rebuild; <1s на волну)
+VECTOR_ANN_ENABLED=true ./bin/brain/ann.go upsert
+
+# статистика индекса
+./bin/brain/ann.go stats
+
+# CLI-поиск через ANN (fallback на скан при отсутствии индекса)
+VECTOR_ANN_ENABLED=true ./bin/brain/ann.go --json -n 10 "query"
+
+# HTTP-сервер поиска через ANN (для bench --candidate http://127.0.0.1:8631)
+VECTOR_ANN_ENABLED=true ./bin/brain/ann.go api --port 8631
+```
+
+A/B (изолирует векторный слой: baseline = скан, кандидат = ANN, один
+процесс, одна БД):
+
+```bash
+# quiesce сначала (single-writer): docker compose stop brain
+KB_BUFFER_POOL=4294967296 ./bin/brain/bench.go --inproc --candidate inproc-ann
+# эталон: ./bin/brain/bench.go --inproc                 (baseline, ~26 min на 50 запросов)
+# через отдельный serve: ./bin/brain/bench.go --candidate http://127.0.0.1:8631
+```
+
+Конфиг (`etc/brain/config.yml`, секция `vector.ann`): `enabled`, `index`,
+`dim` (256), `m` (32 — при 16 recall ~0.8, при 32 ~1.0), `ml` (0.25),
+`efconstruction` (200), `efsearch` (400; coder/hnsw держит один ef для
+build и query — берётся максимум). Идемпотентность: повторный `upsert` не
+дублирует (ключи HNSW — map), повторный `build` из той же БД даёт ту же
+мощность. Инкрементальность доказана: +100 leafs → upsert <1s без rebuild
+(#204, A/B-отчёт в issue).
+
 ## Disk mail/contacts import (#79)
 
 Sources on `/mnt/8TB` (TB mbox, .eml, VCF/MAB) → corpus pipeline; see

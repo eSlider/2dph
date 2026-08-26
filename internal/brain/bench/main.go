@@ -27,6 +27,12 @@ const (
 // --db flag (empty = the default var/kb.lbug).
 type InprocOpener func(ctx context.Context, dbPath string) (Searcher, error)
 
+// CandInprocOpener opens the in-process ANN candidate for --candidate
+// inproc-ann (issue #204): same DB handle, vector path forced through the
+// ANN index so the A/B isolates the vector layer. Wired by the cgo brain
+// package; nil = mode unsupported.
+var CandInprocOpener InprocOpener
+
 type options struct {
 	baseline  bool
 	candidate string
@@ -99,7 +105,19 @@ func Main(args []string, openInproc InprocOpener) int {
 	}
 
 	if opt.candidate != "" {
-		cand, err := newCandidate(opt.candidate)
+		var (
+			cand Searcher
+			err  error
+		)
+		if opt.candidate == "inproc-ann" {
+			if CandInprocOpener == nil {
+				fmt.Fprintf(os.Stderr, "brain/bench: --candidate inproc-ann needs the ladybug build (bin/cgo/zig go run -tags=system_ladybug,brain_bench)\n")
+				return 1
+			}
+			cand, err = CandInprocOpener(context.Background(), opt.dbPath)
+		} else {
+			cand, err = newCandidate(opt.candidate)
+		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "brain/bench: %v\n", err)
 			return 1
@@ -175,7 +193,7 @@ func parse(args []string) (options, error) {
 	p := cli.New("brain-bench")
 	p.Description = "A/B benchmark of brain search (golden-set latency/recall/resources)"
 	p.Bool(&opt.baseline, "", "baseline", "run the current scan (default mode)")
-	p.String(&opt.candidate, "", "candidate", "candidate searcher: http(s) URL or executable path")
+	p.String(&opt.candidate, "", "candidate", "candidate searcher: http(s) URL, executable path, or inproc-ann (same-process ANN)")
 	p.String(&opt.golden, "", "golden", "golden-set file (default internal/brain/testdata/golden-set.json)")
 	p.Bool(&opt.jsonOut, "", "json", "JSON output")
 	p.Int(&opt.workers, "", "workers", "parallel queries (default 1)")

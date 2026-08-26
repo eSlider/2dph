@@ -28,9 +28,13 @@ replace (
 )
 
 require (
+	github.com/coder/hnsw v0.6.2-0.20260622133054-36cab6028fed // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
+	github.com/google/renameio v1.0.1 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
+	github.com/viterin/partial v1.1.0 // indirect
+	github.com/viterin/vek v0.4.2 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
