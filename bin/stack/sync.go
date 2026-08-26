@@ -11,11 +11,12 @@
 // Steps (fixed order):
 //  1. mail-sync      bin/mail/sync.go        (skipped without creds)
 //  2. mail-import    bin/mail/import.go
-//  3. chats          chat/sync telegram+linkedin   (--with-chats; each platform
+//  3. mail-index     bin/brain/index.go --skip --with-mail  (--with-mail)
+//  4. chats          chat/sync telegram+linkedin   (--with-chats; each platform
 //     SKIPs on exit code 3 when its creds/session are missing)
-//  4. contact-brain  brain/import-contact.go       (--contacts PATH)
-//  5. git-brain      brain/import-git.go           (--git-root DIR)
-//  6. contact-crm    onlyoffice/import-contact.go  (--contacts PATH)
+//  5. contact-brain  brain/import-contact.go       (--contacts PATH)
+//  6. git-brain      brain/import-git.go           (--git-root DIR)
+//  7. contact-crm    onlyoffice/import-contact.go  (--contacts PATH)
 //
 // Idempotent by construction: every step is a reconcile/upsert. Bulk rebuild
 // is deliberately NOT part of the wave (expensive) — use brain/index.go.
@@ -44,14 +45,16 @@ func run(args []string) int {
 		contacts  string
 		gitRoot   string
 		withChats bool
+		withMail  bool
 		dryRun    bool
 	)
 	p := cliparse.New("stack-sync")
 	p.Description = "deterministic sync wave: mail/chats/contacts/git → brain + OO CRM"
-	p.String(&only, "", "only", "comma-separated subset: mail,chats,contacts,git,crm")
+	p.String(&only, "", "only", "comma-separated subset: mail,mail-import,mail-index,chats,contacts,git,crm")
 	p.String(&contacts, "", "contacts", "address-book file/dir for brain+CRM reconcile")
 	p.String(&gitRoot, "", "git-root", "dir of git repos to import into the brain")
 	p.Bool(&withChats, "", "with-chats", "include telegram/linkedin chat sync")
+	p.Bool(&withMail, "", "with-mail", "index mail leafs into the brain after mail-import")
 	p.Bool(&dryRun, "", "dry-run", "print the wave without executing")
 	if err := cliparse.Parse(p, args); err != nil {
 		return cliparse.Fail(err)
@@ -65,7 +68,7 @@ func run(args []string) int {
 	}
 	included := func(name string) bool { return len(want) == 0 || want[name] }
 
-	steps := planSteps(withChats, contacts, gitRoot)
+	steps := planSteps(withChats, withMail, contacts, gitRoot)
 
 	var failed int
 	fmt.Fprintln(os.Stderr, "stack-sync: wave start")
@@ -73,7 +76,7 @@ func run(args []string) int {
 	// Ladybug allows a single writer: local brain-serve/brain-search processes
 	// and the compose brain container (D25) all hold the same host kb.lbug.
 	// Quiesce them around write steps, restart after the wave.
-	writeSteps := map[string]bool{"contact-brain": true, "git-brain": true}
+	writeSteps := map[string]bool{"contact-brain": true, "git-brain": true, "mail-index": true}
 	needWrite := false
 	for _, st := range steps {
 		if writeSteps[st.name] && included(st.name) && st.skip == "" && !dryRun {
@@ -159,10 +162,11 @@ type step struct {
 
 // planSteps builds the fixed-order wave. Step names are the public --only
 // vocabulary; cmds are the actual tool invocations.
-func planSteps(withChats bool, contacts, gitRoot string) []step {
+func planSteps(withChats, withMail bool, contacts, gitRoot string) []step {
 	return []step{
 		{name: "mail", cmds: [][]string{{"bin/mail/sync.go"}}},
 		{name: "mail-import", cmds: [][]string{{"bin/mail/import.go", "--from-raw", "var/corpus/mail"}}},
+		{name: "mail-index", cmds: [][]string{{"bin/brain/index.go", "--skip", "--with-mail"}}, skip: skipUnless(withMail, "--with-mail")},
 		{name: "chats", cmds: [][]string{{"bin/chat/sync.go", "telegram"}, {"bin/chat/sync.go", "linkedin"}}, skip: skipUnless(withChats, "--with-chats")},
 		{name: "contact-brain", cmds: [][]string{contactStep("bin/brain/import-contact.go", contacts)}, skip: skipUnless(contacts != "", "--contacts")},
 		{name: "git-brain", cmds: [][]string{gitStep(gitRoot)}, skip: skipUnless(gitRoot != "", "--git-root")},
@@ -191,7 +195,7 @@ func runner(tool string, args []string) (*exec.Cmd, error) {
 		dir = tool[:i]
 	}
 	if strings.HasPrefix(tool, "bin/brain/") {
-		script := fmt.Sprintf(`exec "%s/../cgo/zig" go run -tags=system_ladybug %q "$@"`, dir, tool)
+		script := fmt.Sprintf(`exec "%s/../cgo/zig" go run -tags=%s %q "$@"`, dir, brainTags(tool), tool)
 		argv := append([]string{"-c", script, "--"}, args...)
 		return exec.Command("bash", argv...), nil
 	}
@@ -215,6 +219,19 @@ func toolTags(tool string) string {
 		return "onlyoffice_" + strings.ReplaceAll(strings.TrimSuffix(filepath.Base(tool), ".go"), "-", "_")
 	}
 	return ""
+}
+
+// brainTags maps a brain wave tool to its Zig CGO build tags. Most brain
+// tools need only system_ladybug; bin/brain/index.go additionally declares
+// brain_index in its //go:build line, so the runner must pass it or
+// `go run` finds no files for the tool.
+func brainTags(tool string) string {
+	switch tool {
+	case "bin/brain/index.go":
+		return "system_ladybug,brain_index"
+	default:
+		return "system_ladybug"
+	}
 }
 
 // buildArgv returns the `go build` argv for tool with tags ("" = none).

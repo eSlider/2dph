@@ -4,7 +4,6 @@ package brain
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -153,86 +152,6 @@ func leafsFromMarkdownFiles(files []string, repo, how string) ([]CorpusLeaf, err
 		}
 	}
 	return out, nil
-}
-
-// LoadMailLeafs indexes var/corpus/mail/**/message.md (+ attachment .md).
-func LoadMailLeafs(root, since string, limit int) ([]CorpusLeaf, error) {
-	if st, err := os.Stat(root); err != nil || !st.IsDir() {
-		return nil, nil
-	}
-	var mds []string
-	_ = filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-		if filepath.Base(p) == "message.md" {
-			mds = append(mds, p)
-		}
-		return nil
-	})
-	if since != "" {
-		filtered := mds[:0]
-		for _, md := range mds {
-			if msgDate(md) >= since {
-				filtered = append(filtered, md)
-			}
-		}
-		mds = filtered
-	}
-	if limit > 0 && len(mds) > limit {
-		mds = mds[:limit]
-	}
-	var out []CorpusLeaf
-	for _, md := range mds {
-		date := ""
-		if raw, err := os.ReadFile(md); err == nil {
-			if fm, _ := markdown.ExtractFrontmatter(string(raw)); len(fm["date"]) >= 10 {
-				date = fm["date"][:10]
-			}
-		}
-		files := []string{md}
-		att := filepath.Join(filepath.Dir(md), "attachments")
-		if entries, err := os.ReadDir(att); err == nil {
-			for _, e := range entries {
-				if strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
-					files = append(files, filepath.Join(att, e.Name()))
-				}
-			}
-		}
-		for _, f := range files {
-			raw, err := os.ReadFile(f)
-			if err != nil {
-				continue
-			}
-			id := filepath.Base(filepath.Dir(md))
-			for _, lf := range markdown.ToAll(string(raw), f, "ooMail") {
-				src := fmt.Sprintf("ooMail:%s:%s", id, filepath.Base(f))
-				out = append(out, CorpusLeaf{
-					Source: src, Repo: "ooMail", Heading: lf.Heading,
-					Text: lf.Text, Type: lf.Type, How: "mail/import", Date: date,
-				})
-			}
-		}
-	}
-	return out, nil
-}
-
-func msgDate(md string) string {
-	j := filepath.Join(filepath.Dir(md), "message.json")
-	raw, err := os.ReadFile(j)
-	if err != nil {
-		return ""
-	}
-	var d map[string]any
-	if json.Unmarshal(raw, &d) != nil {
-		return ""
-	}
-	for _, k := range []string{"receivedDate", "receivedAt"} {
-		if s, ok := d[k].(string); ok && len(s) >= 10 {
-			return s[:10]
-		}
-	}
-	return ""
 }
 
 // WriteOptions controls corpus writing (worker concurrency, batch size, resume).
