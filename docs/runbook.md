@@ -182,16 +182,19 @@ p50 ≈ 32s на 313k leafs (линейный скан, #192); после вне
 
 ### ANN-кандидат (#204)
 
-Кандидат эпика #201 — инкрементальный HNSW-индекс **вне liblbug** (его
+Кандидат эпика #201 — инкрементальный векторный индекс **вне liblbug** (его
 собственный HNSW крашится на росте графа, #192; фикс — линейный скан).
-Библиотека: `github.com/coder/hnsw` (чистый Go, CC0; `DataDog/hnswlib`
-удалён с GitHub, usearch требует внешней C++-библиотеки — CGO-ад). Индекс
+Алгоритм: **IVF** (k-means cells + точный косинус внутри probed-кластеров,
+чистый Go, без внешних зависимостей). `coder/hnsw` (HNSW) отброшен на
+эмпирике: на 313k реальных эмбеддингов из entry достижимы лишь 34% узлов
+(изоляция при вытеснении соседей) → recall@5 падает до 0.16; IVF держит
+recall@30 ≥ 0.93 при NList=2000/NProbe=128 (замеры probe #204). Индекс
 живёт в `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`),
 строится/апдейтится `bin/brain/ann.go` (wave-шаг `ann-upsert`), читается
 `queryVector` с fallback на скан при отсутствии/повреждении.
 
 ```bash
-# полный build из БД (одноразово; ~30s extract + ~40min build на 313k, M=32)
+# полный build из БД (~30s extract + ~4min k-means + assign на 313k, NList=2000)
 KB_BUFFER_POOL=4294967296 ./bin/brain/ann.go build
 
 # инкрементальный upsert новых leafs (append WAL, НЕ rebuild; <1s на волну)
@@ -218,10 +221,12 @@ KB_BUFFER_POOL=4294967296 ./bin/brain/bench.go --inproc --candidate inproc-ann
 ```
 
 Конфиг (`etc/brain/config.yml`, секция `vector.ann`): `enabled`, `index`,
-`dim` (256), `m` (32 — при 16 recall ~0.8, при 32 ~1.0), `ml` (0.25),
-`efconstruction` (200), `efsearch` (400; coder/hnsw держит один ef для
-build и query — берётся максимум). Идемпотентность: повторный `upsert` не
-дублирует (ключи HNSW — map), повторный `build` из той же БД даёт ту же
+`dim` (256), `nlist` (2000 — k-means cells, ~150 векторов на ячейку при
+313k), `nprobe` (2000 дефолт — полный probe: порядок кандидатов совпадает
+с точным сканом (recall@5 vs baseline = 1.0), p50 ~0.4s; уменьшение probe
+ускоряет поиск ценой recall — например 256 ячеек дают recall@5 ~0.9 при
+p50 ~0.28s). Идемпотентность: повторный `upsert` не
+дублирует (idCell — map), повторный `build` из той же БД даёт ту же
 мощность. Инкрементальность доказана: +100 leafs → upsert <1s без rebuild
 (#204, A/B-отчёт в issue).
 

@@ -104,7 +104,7 @@ func annIndex() (*ann.Index, error) {
 	annStats.Loaded = true
 	annStats.Len = idx.Len()
 	annStats.Skipped = idx.Skipped()
-	annStats.Params = fmt.Sprintf("dim=%d m=%d ml=%g efC=%d efS=%d", p.Dim, p.M, p.Ml, p.EfConstruction, p.EfSearch)
+	annStats.Params = fmt.Sprintf("dim=%d nlist=%d nprobe=%d", p.Dim, p.NList, p.NProbe)
 	log.Printf("brain/ann: index %s loaded (%d vectors, %s)", path, idx.Len(), annStats.Params)
 	return idx, nil
 }
@@ -117,9 +117,7 @@ func annQueryVector(emb []float64, limit int) ([]Hit, error) {
 	if err != nil || idx == nil || idx.Len() == 0 {
 		return nil, nil
 	}
-	p := annParams()
-	vec := toFloat32(emb, p.Dim)
-	res := idx.Search(vec, limit)
+	res := idx.Search64(emb, limit)
 	if len(res) == 0 {
 		return nil, nil
 	}
@@ -178,8 +176,7 @@ func leafHitByID(id string, score float64) (Hit, error) {
 func annParams() ann.Params {
 	cfg := brainCfg().Vector.ANN
 	p := ann.Params{
-		Dim: cfg.Dim, M: cfg.M, Ml: cfg.Ml,
-		EfConstruction: cfg.EfConstruction, EfSearch: cfg.EfSearch,
+		Dim: cfg.Dim, NList: cfg.NList, NProbe: cfg.NProbe,
 	}
 	return p.WithDefaults()
 }

@@ -87,17 +87,15 @@ type VectorConfig struct {
 	ANN ANNConfig `mapstructure:"ann"`
 }
 
-// ANNConfig is the HNSW index (internal/brain/ann, coder/hnsw). Empty paths
-// default to <root>/var/state/vector.ann (+ ".wal"); M/ef defaults come from
-// the ann package (Defaults()) — M=32, efConstruction=200, efSearch=400.
+// ANNConfig is the IVF index (internal/brain/ann). Empty paths default to
+// <root>/var/state/vector.ann (+ ".wal"); NList/NProbe defaults come from the
+// ann package (Defaults()): NList=2000, NProbe=128.
 type ANNConfig struct {
-	Enabled        bool    `mapstructure:"enabled"`
-	Index          string  `mapstructure:"index"`
-	Dim            int     `mapstructure:"dim"`
-	M              int     `mapstructure:"m"`
-	Ml             float64 `mapstructure:"ml"`
-	EfConstruction int     `mapstructure:"efconstruction"`
-	EfSearch       int     `mapstructure:"efsearch"`
+	Enabled bool   `mapstructure:"enabled"`
+	Index   string `mapstructure:"index"`
+	Dim     int    `mapstructure:"dim"`
+	NList   int    `mapstructure:"nlist"`
+	NProbe  int    `mapstructure:"nprobe"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.

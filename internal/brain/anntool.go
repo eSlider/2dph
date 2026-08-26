@@ -134,6 +134,14 @@ func runAnnBuild(args []string) int {
 	if path == "" {
 		path = filepath.Join(repoRoot(), "var", "state", "vector.ann")
 	}
+	// A build is a full replacement: drop any previous snapshot (possibly
+	// an older format) and its WAL before opening a fresh index.
+	for _, p := range []string{path, path + ".wal"} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "brain/ann build: remove %s: %v\n", p, err)
+			return 1
+		}
+	}
 	idx, err := annOpenForBuild(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brain/ann build: %v\n", err)

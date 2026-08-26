@@ -77,7 +77,5 @@ vector:
     enabled: false          # serve/CLI search via ANN (bench --candidate inproc-ann forces it)
     index: ""               # default <root>/var/state/vector.ann (+ .wal)
     dim: 256                # embedding dimension (model2vec/potion-multilingual-128M)
-    m: 32                   # HNSW max neighbors per node (16 → recall ~0.8, 32 → ~1.0)
-    ml: 0.25                # layer probability factor
-    efconstruction: 200     # ef while adding (build quality)
-    efsearch: 400           # ef while searching (>= efconstruction, one field in coder/hnsw)
+    nlist: 2000             # IVF k-means cells (~150 vectors per cell at 313k)
+    nprobe: 2000            # cells probed per search (full: exact order, recall@5=1.0; lower = faster, less recall)

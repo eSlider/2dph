@@ -2,13 +2,16 @@ package ann
 
 import (
 	"bufio"
+	"encoding/binary"
+	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
-
-	"github.com/coder/hnsw"
+	"time"
 )
 
 // Row is one leaf vector to index, keyed by the brain leaf id (string).
@@ -24,24 +27,22 @@ type Result struct {
 	Score float32
 }
 
-// Params are HNSW construction/query parameters (mirror of config
-// vector.ann). Zero fields fall back to sane defaults for text embeddings.
+// Params are IVF parameters (mirror of config vector.ann). Zero fields fall
+// back to sane defaults for text embeddings.
 type Params struct {
-	Dim            int     // vector dimension (256 for the brain model)
-	M              int     // max neighbors per node (16)
-	Ml             float64 // layer probability factor (0.25)
-	EfConstruction int     // ef used while adding (build quality, 200)
-	EfSearch       int     // ef used while searching (query quality, 200)
-	RngSeed        int64   // deterministic builds for tests (0 = time-seeded)
+	Dim     int // vector dimension (256 for the brain model)
+	NList   int // k-means cells (default 2000 for ~300k vectors)
+	NProbe  int // cells scanned per search (default 128: 6.4% of NList)
+	RngSeed int64
 }
 
-// Defaults returns Params with the brain defaults. M=32 (not 16): the
-// empirical gate tests (offline recall@5 >= 0.95 on synthetic data, issue
-// #204) only pass from M=32 up with this HNSW implementation; M=16 caps
-// recall around 0.8. efSearch >= efConstruction because coder/hnsw keeps a
-// single ef for build and query.
+// Defaults returns Params with the brain defaults. NList=2000 (cells of
+// ~150 vectors at 313k), NProbe=128: measured recall@30 >= 0.93 on the real
+// corpus at ~100ms/search (probe #204). coder/hnsw (HNSW) was dropped here:
+// on 313k real embeddings only 34% of nodes stay reachable from the entry
+// (isolated nodes, naive neighbor eviction) — recall@5 collapsed to 0.16.
 func Defaults() Params {
-	return Params{Dim: 256, M: 32, Ml: 0.25, EfConstruction: 200, EfSearch: 400}
+	return Params{Dim: 256, NList: 2000, NProbe: 128}
 }
 
 func (p Params) withDefaults() Params {
@@ -49,22 +50,11 @@ func (p Params) withDefaults() Params {
 	if p.Dim <= 0 {
 		p.Dim = d.Dim
 	}
-	if p.M <= 0 {
-		p.M = d.M
+	if p.NList <= 0 {
+		p.NList = d.NList
 	}
-	if p.Ml <= 0 {
-		p.Ml = d.Ml
-	}
-	if p.EfConstruction <= 0 {
-		p.EfConstruction = d.EfConstruction
-	}
-	if p.EfSearch <= 0 {
-		p.EfSearch = d.EfSearch
-	}
-	// coder/hnsw uses a single ef for construction and search; keep the
-	// higher of the two so build quality and query recall both hold.
-	if p.EfSearch < p.EfConstruction {
-		p.EfSearch = p.EfConstruction
+	if p.NProbe <= 0 {
+		p.NProbe = d.NProbe
 	}
 	return p
 }
@@ -74,7 +64,7 @@ func (p Params) withDefaults() Params {
 func (p Params) WithDefaults() Params { return p.withDefaults() }
 
 // zeroNorm reports whether the vector is all zeros (a degenerate embedding).
-// Cosine of a zero vector is NaN and must never enter the graph.
+// Cosine of a zero vector is NaN and must never enter the index.
 func zeroNorm(v []float32) bool {
 	for _, f := range v {
 		if f != 0 {
@@ -84,29 +74,32 @@ func zeroNorm(v []float32) bool {
 	return true
 }
 
-// Index is an in-memory HNSW graph over leaf embeddings with optional file
+// Index is an in-memory IVF (inverted file) over leaf embeddings with file
 // persistence: a base snapshot (path) plus an append-only WAL (path+".wal")
 // of upserts since the snapshot. Load replays the WAL; Upsert appends to it
-// and mutates the graph; Save writes a fresh snapshot and resets the WAL.
+// and mutates the lists; Save writes a fresh snapshot and resets the WAL.
 //
-// The graph lives entirely outside liblbug (#204): building and searching it
+// The index lives entirely outside liblbug (#204): building and searching it
 // never touches kb.lbug, so a liblbug crash cannot take the index down.
+// Search is exact-cosine within the NProbe probed cells — the k-means cells
+// only restrict the candidate set, never re-rank it.
 //
 // Searches are safe for concurrent readers; Upsert/Build/Save take the write
 // lock (single-writer, same rule as the brain DB).
 type Index struct {
-	graph *hnsw.Graph[string]
+	params Params
+
+	centroids [][]float32 // NList x Dim, L2-normalized k-means means
+	lists     [][]Row     // vectors per cell
+	idCell    map[string]int
+
 	path  string
 	wal   string
-
-	params Params
-	mu     sync.RWMutex
+	mu    sync.RWMutex
 
 	walFile *os.File
-	// dirty counts WAL entries appended since the last snapshot (stats).
-	dirty int
-	// skipped counts rows refused at build/upsert (zero-norm / wrong dim).
-	skipped int
+	dirty   int // WAL entries since the last snapshot
+	skipped int // rows refused at build/upsert (zero-norm / wrong dim)
 }
 
 // New returns an in-memory index (no persistence).
@@ -131,68 +124,10 @@ func Open(path string, p Params) (*Index, error) {
 
 func newIndex(path string, p Params) *Index {
 	p = p.withDefaults()
-	g := hnsw.NewGraph[string]()
-	g.M = p.M
-	g.Ml = p.Ml
-	g.EfSearch = p.EfSearch
-	g.Distance = hnsw.CosineDistance
-	if p.RngSeed != 0 {
-		g.Rng = rand.New(rand.NewSource(p.RngSeed))
-	}
-	wal := path + ".wal"
-	return &Index{graph: g, path: path, wal: wal, params: p}
+	return &Index{params: p, path: path, wal: path + ".wal", idCell: map[string]int{}}
 }
 
-// loadSnapshot imports the base graph from path (empty graph when absent).
-func (ix *Index) loadSnapshot() error {
-	f, err := os.Open(ix.path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-	g := hnsw.NewGraph[string]()
-	g.M = ix.params.M
-	g.Ml = ix.params.Ml
-	g.EfSearch = ix.params.EfSearch
-	g.Distance = hnsw.CosineDistance
-	// Import needs an io.ByteReader (varint keys); os.File is not one.
-	if err := g.Import(bufio.NewReader(f)); err != nil {
-		return err
-	}
-	ix.graph = g
-	return nil
-}
-
-// replayWAL appends every WAL entry to the in-memory graph. A torn tail
-// (crash mid-append) is tolerated: entries up to the first bad line stick.
-func (ix *Index) replayWAL() error {
-	f, err := os.Open(ix.wal)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer f.Close()
-	dec := newWALDecoder(f)
-	for {
-		row, err := dec.Next()
-		if err != nil {
-			return nil // EOF or torn tail: keep the valid prefix
-		}
-		if ix.rowEligible(row) {
-			ix.graph.Add(hnsw.MakeNode(row.ID, row.Vec))
-			ix.dirty++
-		} else {
-			ix.skipped++
-		}
-	}
-}
-
-// rowEligible checks dim and non-zero norm without touching the graph.
+// rowEligible checks dim and non-zero norm without touching the index.
 func (ix *Index) rowEligible(r Row) bool {
 	if len(r.Vec) != ix.params.Dim {
 		return false
@@ -200,21 +135,50 @@ func (ix *Index) rowEligible(r Row) bool {
 	return !zeroNorm(r.Vec)
 }
 
-// Build replaces the graph with rows and, when path is set, writes a fresh
-// snapshot and truncates the WAL. Duplicate ids collapse (HNSW keys are a
-// map): re-building the same corpus is idempotent.
+// Build replaces the index with rows and, when path is set, writes a fresh
+// snapshot and truncates the WAL. Duplicate ids collapse (idCell is a map):
+// re-building the same corpus is idempotent.
+//
+// The k-means sample is shuffled and capped at 50k so a clustered corpus
+// (import waves) cannot skew the cells (see probe #204). Deterministic with
+// a RngSeed, time-seeded otherwise.
 func (ix *Index) Build(rows []Row) error {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
-	ix.graph = newGraph(ix.params)
+	ix.centroids, ix.lists, ix.idCell = nil, nil, map[string]int{}
 	ix.skipped = 0
+
+	eligible := make([]Row, 0, len(rows))
 	for _, r := range rows {
 		if !ix.rowEligible(r) {
 			ix.skipped++
 			continue
 		}
-		ix.graph.Add(hnsw.MakeNode(r.ID, r.Vec))
+		eligible = append(eligible, r)
 	}
+	if len(eligible) == 0 {
+		ix.dirty = 0
+		if ix.path != "" {
+			if err := ix.saveSnapshot(); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	sample := ix.sample(eligible, 50000)
+	// Cap cells for small corpora: k-means with k ~ n is slow and pointless
+	// (cells of ~1-4 vectors). At 313k the cap never fires.
+	nl := ix.params.NList
+	if cap := len(eligible) / 4; cap < nl {
+		if cap < 32 {
+			cap = 32
+		}
+		nl = cap
+	}
+	ix.centroids = kmeans(sample, nl, 10, ix.params.RngSeed)
+	ix.assign(eligible)
+
 	ix.dirty = 0
 	if ix.path != "" {
 		if err := ix.saveSnapshot(); err != nil {
@@ -224,16 +188,64 @@ func (ix *Index) Build(rows []Row) error {
 	return nil
 }
 
-func newGraph(p Params) *hnsw.Graph[string] {
-	g := hnsw.NewGraph[string]()
-	g.M = p.M
-	g.Ml = p.Ml
-	g.EfSearch = p.EfSearch
-	g.Distance = hnsw.CosineDistance
-	if p.RngSeed != 0 {
-		g.Rng = rand.New(rand.NewSource(p.RngSeed))
+// sample returns a shuffled copy of rows capped at maxN (k-means input).
+func (ix *Index) sample(rows []Row, maxN int) []Row {
+	out := make([]Row, len(rows))
+	copy(out, rows)
+	seed := ix.params.RngSeed
+	if seed == 0 {
+		seed = time.Now().UnixNano()
 	}
-	return g
+	rand.New(rand.NewSource(seed)).Shuffle(len(out), func(i, j int) { out[i], out[j] = out[j], out[i] })
+	if len(out) > maxN {
+		out = out[:maxN]
+	}
+	return out
+}
+
+// assign puts every eligible row into the nearest cell and fills idCell.
+func (ix *Index) assign(rows []Row) {
+	nl := len(ix.centroids)
+	cells := make([][]Row, nl)
+	// bounded workers: cosine to NList centroids per row, parallel.
+	workers := 8
+	if len(rows) < workers {
+		workers = len(rows)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	type job struct {
+		idx int
+		r   Row
+	}
+	jobs := make(chan job)
+	var wg sync.WaitGroup
+	var cellsMu sync.Mutex
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				c := nearestCell(j.r.Vec, ix.centroids)
+				cellsMu.Lock()
+				cells[c] = append(cells[c], j.r)
+				cellsMu.Unlock()
+			}
+		}()
+	}
+	for i, r := range rows {
+		jobs <- job{idx: i, r: r}
+	}
+	close(jobs)
+	wg.Wait()
+	ix.lists = cells
+	ix.idCell = make(map[string]int, len(rows))
+	for c, cell := range cells {
+		for _, r := range cell {
+			ix.idCell[r.ID] = c
+		}
+	}
 }
 
 // Upsert adds only rows whose id is not already indexed (incremental wave:
@@ -263,10 +275,17 @@ func (ix *Index) upsertLocked(rows []Row) error {
 			ix.skipped++
 			continue
 		}
-		if _, exists := ix.graph.Lookup(r.ID); exists {
+		if _, exists := ix.idCell[r.ID]; exists {
 			continue // idempotent: already indexed
 		}
-		ix.graph.Add(hnsw.MakeNode(r.ID, r.Vec))
+		if len(ix.centroids) == 0 {
+			// Index built empty (no eligible rows): bootstrap a single cell.
+			ix.centroids = [][]float32{r.Vec}
+			ix.lists = make([][]Row, 1)
+		}
+		c := nearestCell(r.Vec, ix.centroids)
+		ix.lists[c] = append(ix.lists[c], r)
+		ix.idCell[r.ID] = c
 		ix.dirty++
 		added++
 		if enc != nil {
@@ -278,28 +297,79 @@ func (ix *Index) upsertLocked(rows []Row) error {
 	return nil
 }
 
-// Search returns the k nearest cosine neighbors (descending similarity).
-// A zero query vector or an empty index yields no hits (the caller falls
-// back to a linear scan / FTS-only ranking).
+// Search returns the k nearest cosine neighbors (descending similarity)
+// among the vectors of the NProbe cells whose centroids are closest to the
+// query. A zero query vector or an empty index yields no hits (the caller
+// falls back to a linear scan / FTS-only ranking).
 func (ix *Index) Search(vec []float32, k int) []Result {
+	return ix.search(float64Vec(vec), k)
+}
+
+// Search64 is Search for the float64 query vector the embedding daemon
+// returns. The cosine is accumulated in float64 over the float32 stored
+// values — bit-identical to the baseline linear scan's cosineToQuery — so
+// the candidate order matches the scan exactly when the probed cells cover
+// the true neighbors (probe #204: float32 query rounding reordered dense
+// top-30 and broke recall@5 vs baseline).
+func (ix *Index) Search64(q []float64, k int) []Result {
+	return ix.search(q, k)
+}
+
+func (ix *Index) search(q []float64, k int) []Result {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
-	if k <= 0 || ix.graph.Len() == 0 || zeroNorm(vec) || len(vec) != ix.params.Dim {
+	if k <= 0 || len(ix.centroids) == 0 || zeroNorm64(q) {
 		return nil
 	}
-	res := ix.graph.Search(vec, k)
-	out := make([]Result, 0, len(res))
-	for _, n := range res {
-		out = append(out, Result{ID: n.Key, Score: cosine(vec, n.Value)})
+	// Score the cells (exact cosine to NList centroids).
+	type cs struct {
+		idx int
+		sim float64
 	}
-	return out
+	cells := make([]cs, len(ix.centroids))
+	for i, c := range ix.centroids {
+		cells[i] = cs{idx: i, sim: cosine64(q, c)}
+	}
+	sort.Slice(cells, func(i, j int) bool { return cells[i].sim > cells[j].sim })
+	nprobe := ix.params.NProbe
+	if nprobe > len(cells) {
+		nprobe = len(cells)
+	}
+	// Collect candidates from the probed cells and rank by exact cosine.
+	type cand struct {
+		r   Row
+		sim float64
+	}
+	var out []cand
+	for p := 0; p < nprobe; p++ {
+		for _, r := range ix.lists[cells[p].idx] {
+			out = append(out, cand{r: r, sim: cosine64(q, r.Vec)})
+		}
+	}
+	// Deterministic ranking: descending similarity, ties broken by id —
+	// identical to the baseline scan's queryVector tie-break, so the RRF
+	// merge yields the same top-k when the candidate sets match (#204).
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].sim != out[j].sim {
+			return out[i].sim > out[j].sim
+		}
+		return out[i].r.ID < out[j].r.ID
+	})
+	if len(out) > k {
+		out = out[:k]
+	}
+	res := make([]Result, len(out))
+	for i, c := range out {
+		res[i] = Result{ID: c.r.ID, Score: float32(c.sim)}
+	}
+	return res
 }
 
 // Lookup reports whether id is already indexed (used for idempotent upsert).
 func (ix *Index) Lookup(id string) bool {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
-	_, ok := ix.graph.Lookup(id)
+	_, ok := ix.idCell[id]
 	return ok
 }
 
@@ -307,7 +377,7 @@ func (ix *Index) Lookup(id string) bool {
 func (ix *Index) Len() int {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
-	return ix.graph.Len()
+	return len(ix.idCell)
 }
 
 // Dirty is the number of WAL entries since the last snapshot.
@@ -324,7 +394,7 @@ func (ix *Index) Skipped() int {
 	return ix.skipped
 }
 
-// Save writes the current graph as the new snapshot and truncates the WAL
+// Save writes the current index as the new snapshot and truncates the WAL
 // (compaction). No-op for in-memory indexes.
 func (ix *Index) Save() error {
 	ix.mu.Lock()
@@ -338,7 +408,7 @@ func (ix *Index) Save() error {
 	return ix.resetWAL()
 }
 
-// SaveTo persists the current graph as a fresh snapshot at path and switches
+// SaveTo persists the current index as a fresh snapshot at path and switches
 // this index's persistence target there (subsequent Upserts append to
 // path+".wal"). Used by the build tool to land a new index.
 func (ix *Index) SaveTo(path string) error {
@@ -352,6 +422,14 @@ func (ix *Index) SaveTo(path string) error {
 	return ix.resetWAL()
 }
 
+// snapshot format (little-endian, fixed layout so 320MB loads fast):
+//
+//	magic "2DPHANN1" (8 bytes)
+//	dim int32, nlist int32, nprobe int32
+//	centroids: nlist * (dim * float32)
+//	cells: nlist * { count int32, count * (idLen int32, id, dim * float32) }
+const snapshotMagic = "2DPHANN1"
+
 func (ix *Index) saveSnapshot() error {
 	if err := os.MkdirAll(filepath.Dir(ix.path), 0o755); err != nil {
 		return err
@@ -361,7 +439,13 @@ func (ix *Index) saveSnapshot() error {
 	if err != nil {
 		return err
 	}
-	if err := ix.graph.Export(f); err != nil {
+	bw := bufio.NewWriterSize(f, 1<<20)
+	if err := ix.writeSnapshot(bw); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := bw.Flush(); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return err
@@ -376,6 +460,155 @@ func (ix *Index) saveSnapshot() error {
 		return err
 	}
 	return os.Rename(tmp, ix.path)
+}
+
+func (ix *Index) writeSnapshot(w io.Writer) error {
+	if _, err := w.Write([]byte(snapshotMagic)); err != nil {
+		return err
+	}
+	p := ix.params
+	hdr := [3]int32{int32(p.Dim), int32(len(ix.centroids)), int32(p.NProbe)}
+	if err := binary.Write(w, binary.LittleEndian, &hdr); err != nil {
+		return err
+	}
+	for _, c := range ix.centroids {
+		for _, v := range c {
+			if err := binary.Write(w, binary.LittleEndian, v); err != nil {
+				return err
+			}
+		}
+	}
+	for _, cell := range ix.lists {
+		if err := binary.Write(w, binary.LittleEndian, int32(len(cell))); err != nil {
+			return err
+		}
+		for _, r := range cell {
+			if err := binary.Write(w, binary.LittleEndian, int32(len(r.ID))); err != nil {
+				return err
+			}
+			if _, err := w.Write([]byte(r.ID)); err != nil {
+				return err
+			}
+			for _, v := range r.Vec {
+				if err := binary.Write(w, binary.LittleEndian, v); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// loadSnapshot imports the index from path (empty index when absent).
+func (ix *Index) loadSnapshot() error {
+	f, err := os.Open(ix.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	br := bufio.NewReaderSize(f, 1<<20)
+	return ix.readSnapshot(br)
+}
+
+func (ix *Index) readSnapshot(r io.Reader) error {
+	magic := make([]byte, len(snapshotMagic))
+	if _, err := io.ReadFull(r, magic); err != nil {
+		return fmt.Errorf("ann snapshot: %w", err)
+	}
+	if string(magic) != snapshotMagic {
+		return fmt.Errorf("ann snapshot: bad magic %q", magic)
+	}
+	var hdr [3]int32
+	if err := binary.Read(r, binary.LittleEndian, &hdr); err != nil {
+		return err
+	}
+	dim, nlist := int(hdr[0]), int(hdr[1])
+	if dim != ix.params.Dim {
+		return fmt.Errorf("ann snapshot: dim %d != params dim %d", dim, ix.params.Dim)
+	}
+	if nlist <= 0 || nlist > 1<<20 {
+		return fmt.Errorf("ann snapshot: bad nlist %d", nlist)
+	}
+	centroids := make([][]float32, nlist)
+	for i := range centroids {
+		c := make([]float32, dim)
+		if err := binary.Read(r, binary.LittleEndian, c); err != nil {
+			return err
+		}
+		centroids[i] = c
+	}
+	ix.centroids = centroids
+	ix.lists = make([][]Row, nlist)
+	ix.idCell = make(map[string]int, 1<<20)
+	var cnt int32
+	for c := 0; c < nlist; c++ {
+		if err := binary.Read(r, binary.LittleEndian, &cnt); err != nil {
+			return err
+		}
+		if cnt < 0 || cnt > 1<<26 {
+			return fmt.Errorf("ann snapshot: bad cell count %d", cnt)
+		}
+		cell := make([]Row, 0, cnt)
+		for j := 0; j < int(cnt); j++ {
+			var idLen int32
+			if err := binary.Read(r, binary.LittleEndian, &idLen); err != nil {
+				return err
+			}
+			if idLen < 0 || idLen > 1<<16 {
+				return fmt.Errorf("ann snapshot: bad id len %d", idLen)
+			}
+			id := make([]byte, idLen)
+			if _, err := io.ReadFull(r, id); err != nil {
+				return err
+			}
+			vec := make([]float32, dim)
+			if err := binary.Read(r, binary.LittleEndian, vec); err != nil {
+				return err
+			}
+			cell = append(cell, Row{ID: string(id), Vec: vec})
+			ix.idCell[string(id)] = c
+		}
+		ix.lists[c] = cell
+	}
+	return nil
+}
+
+// replayWAL appends every WAL entry to the in-memory index. A torn tail
+// (crash mid-append) is tolerated: entries up to the first bad line stick.
+func (ix *Index) replayWAL() error {
+	f, err := os.Open(ix.wal)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+	dec := newWALDecoder(f)
+	for {
+		row, err := dec.Next()
+		if err != nil {
+			return nil // EOF or torn tail: keep the valid prefix
+		}
+		if ix.rowEligible(row) {
+			if _, exists := ix.idCell[row.ID]; exists {
+				continue
+			}
+			if len(ix.centroids) == 0 {
+				ix.centroids = [][]float32{row.Vec}
+				ix.lists = make([][]Row, 1)
+			}
+			c := nearestCell(row.Vec, ix.centroids)
+			ix.lists[c] = append(ix.lists[c], row)
+			ix.idCell[row.ID] = c
+			ix.dirty++
+		} else {
+			ix.skipped++
+		}
+	}
 }
 
 func (ix *Index) ensureWAL() error {
@@ -432,7 +665,7 @@ func ExactRank(q []float32, rows []Row, k int) []Result {
 		if len(r.Vec) != len(q) || zeroNorm(r.Vec) {
 			continue
 		}
-		all = append(all, scored{r: r, cos: cosine(q, r.Vec)})
+		all = append(all, scored{r: r, cos: float32(cosine(q, r.Vec))})
 	}
 	// insertion sort on small result sets, stable enough for tests
 	for i := 1; i < len(all); i++ {
@@ -450,7 +683,90 @@ func ExactRank(q []float32, rows []Row, k int) []Result {
 	return out
 }
 
-func cosine(a, b []float32) float32 {
+// nearestCell returns the index of the centroid closest (cosine) to v.
+func nearestCell(v []float32, centroids [][]float32) int {
+	best, bestSim := 0, -2.0
+	for i, c := range centroids {
+		s := cosine(v, c)
+		if s > bestSim {
+			bestSim = s
+			best = i
+		}
+	}
+	return best
+}
+
+// kmeans runs Lloyd's algorithm on sample with k centroids and iters rounds,
+// seeded for determinism. Centers are initialized from random sample rows.
+func kmeans(rows []Row, k, iters int, seed int64) [][]float32 {
+	if k > len(rows) {
+		k = len(rows)
+	}
+	rng := rand.New(rand.NewSource(seed))
+	dim := len(rows[0].Vec)
+	cent := make([][]float32, k)
+	for i := range cent {
+		c := rows[rng.Intn(len(rows))].Vec
+		cent[i] = make([]float32, dim)
+		copy(cent[i], c)
+	}
+	assign := make([]int, len(rows))
+	workers := 8
+	if len(rows) < workers {
+		workers = len(rows)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+	for it := 0; it < iters; it++ {
+		// assignment pass (parallel)
+		{
+			var wg sync.WaitGroup
+			jobs := make(chan int)
+			wg.Add(workers)
+			for w := 0; w < workers; w++ {
+				go func() {
+					defer wg.Done()
+					for i := range jobs {
+						assign[i] = nearestCell(rows[i].Vec, cent)
+					}
+				}()
+			}
+			for i := range rows {
+				jobs <- i
+			}
+			close(jobs)
+			wg.Wait()
+		}
+		// mean recompute
+		sum := make([][]float64, k)
+		cnt := make([]int, k)
+		for i := range sum {
+			sum[i] = make([]float64, dim)
+		}
+		for i, r := range rows {
+			c := assign[i]
+			cnt[c]++
+			for j, v := range r.Vec {
+				sum[c][j] += float64(v)
+			}
+		}
+		for c := 0; c < k; c++ {
+			if cnt[c] == 0 {
+				continue
+			}
+			for j := 0; j < dim; j++ {
+				cent[c][j] = float32(sum[c][j] / float64(cnt[c]))
+			}
+		}
+	}
+	return cent
+}
+
+// cosine computes cosine similarity (float64 accumulation; float32 inputs
+// match the stored embeddings exactly, and the baseline scan uses the same
+// values — so candidate order is identical when the candidate set matches).
+func cosine(a, b []float32) float64 {
 	var dot, na, nb float64
 	for i := range a {
 		dot += float64(a[i]) * float64(b[i])
@@ -460,5 +776,41 @@ func cosine(a, b []float32) float32 {
 	if na == 0 || nb == 0 {
 		return 0
 	}
-	return float32(dot / (math.Sqrt(na) * math.Sqrt(nb)))
+	return dot / (math.Sqrt(na) * math.Sqrt(nb))
+}
+
+// cosine64 is the exact scan's cosine: float64 query vs float32 stored
+// values, accumulated in float64 (mirror of brain.cosineToQuery).
+func cosine64(q []float64, v []float32) float64 {
+	n := len(q)
+	if len(v) < n {
+		n = len(v)
+	}
+	var dot, nq, nv float64
+	for i := 0; i < n; i++ {
+		dot += q[i] * float64(v[i])
+		nq += q[i] * q[i]
+		nv += float64(v[i]) * float64(v[i])
+	}
+	if nq == 0 || nv == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(nq) * math.Sqrt(nv))
+}
+
+func zeroNorm64(q []float64) bool {
+	for _, f := range q {
+		if f != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func float64Vec(v []float32) []float64 {
+	out := make([]float64, len(v))
+	for i, f := range v {
+		out[i] = float64(f)
+	}
+	return out
 }
