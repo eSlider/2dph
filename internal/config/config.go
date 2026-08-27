@@ -89,7 +89,8 @@ type VectorConfig struct {
 
 // ANNConfig is the IVF index (internal/brain/ann). Empty paths default to
 // <root>/var/state/vector.ann (+ ".wal"); NList/NProbe defaults come from the
-// ann package (Defaults()): NList=2000, NProbe=128.
+// ann package (Defaults()): NList=2000, NProbe=128. Production config
+// (etc/brain/config.yml) pins nprobe=2000 (full probe: recall@5=1.0, #206).
 type ANNConfig struct {
 	Enabled bool   `mapstructure:"enabled"`
 	Index   string `mapstructure:"index"`
@@ -162,6 +163,12 @@ func Defaults() Config {
 		Synapse: SynapseConfig{
 			Host: "127.0.0.1",
 			Port: 8632,
+		},
+		// ANN vector search is on by default (issue #206): serve and CLI
+		// search through the index, falling back to the linear scan when the
+		// index is missing or corrupt. The wave's ann-build step maintains it.
+		Vector: VectorConfig{
+			ANN: ANNConfig{Enabled: true},
 		},
 	}
 }

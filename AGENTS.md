@@ -217,10 +217,13 @@ go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.g
 ```
 
 `--only` takes actual step names (fixed order): `mail`, `mail-import`,
-`mail-index`, `chats`, `contact-brain`, `git-brain`, `contact-crm` (subsets
-keep the wave order; logical group names like `mail,crm` are NOT accepted).
+`mail-index`, `ann-build`, `chats`, `contact-brain`, `git-brain`,
+`contact-crm` (subsets keep the wave order; logical group names like
+`mail,crm` are NOT accepted).
 `--with-mail` adds the `mail-index` step (mail leafs → brain, both corpora);
-without it the step is SKIPped, never FAIL (#199).
+without it the step is SKIPped, never FAIL (#199). `ann-build` maintains the
+ANN vector index (`bin/brain/ann.go ensure`: full build only when the index
+is missing/stale, else incremental WAL-upsert — #206).
 
 OnlyOffice tools need `ONLYOFFICE_URL`/`ONLYOFFICE_USER`/`ONLYOFFICE_PASS` in
 the environment (see go-onlyoffice `GetEnvironmentCredentials`).

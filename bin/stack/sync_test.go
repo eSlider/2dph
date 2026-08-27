@@ -134,6 +134,50 @@ func TestPlanMailIndexStep(t *testing.T) {
 	}
 }
 
+// TestPlanAnnBuildStep checks the ann-build step (issue #206): planned right
+// after mail-index as `bin/brain/ann.go ensure` (build when the index is
+// missing/stale, incremental WAL-upsert otherwise) and always included — the
+// wave must maintain the ANN index on every run, never a full rebuild per wave.
+func TestPlanAnnBuildStep(t *testing.T) {
+	steps := planSteps(false, true, "", "")
+	idx, annAt := -1, -1
+	for i := range steps {
+		if steps[i].name == "mail-index" {
+			idx = i
+		}
+		if steps[i].name == "ann-build" {
+			annAt = i
+		}
+	}
+	if annAt < 0 {
+		t.Fatal("no ann-build step planned")
+	}
+	if idx < 0 || annAt != idx+1 {
+		t.Errorf("ann-build at %d, want exactly after mail-index (%d)", annAt, idx)
+	}
+	if steps[annAt].skip != "" {
+		t.Errorf("ann-build skip = %q, want empty (always maintain the index)", steps[annAt].skip)
+	}
+	want := [][]string{{"bin/brain/ann.go", "ensure"}}
+	if !reflect.DeepEqual(steps[annAt].cmds, want) {
+		t.Errorf("ann-build cmds = %v, want %v", steps[annAt].cmds, want)
+	}
+	// ann-build opens kb.lbug (extract), which Ladybug holds exclusively —
+	// the brain must be quiesced around it like the other DB-touching steps.
+	if !dbSteps["ann-build"] {
+		t.Error("ann-build must be in dbSteps (quiesce: it opens kb.lbug)")
+	}
+
+	// The step is planned even without --with-mail (index maintenance is
+	// independent of the mail wave).
+	plain := planSteps(false, false, "", "")
+	for i := range plain {
+		if plain[i].name == "ann-build" && plain[i].skip != "" {
+			t.Errorf("ann-build skip = %q without --with-mail, want empty", plain[i].skip)
+		}
+	}
+}
+
 // TestRunnerBrainIndexTags pins the Zig CGO build tags for bin/brain/index.go:
 // its //go:build line requires brain_index in addition to system_ladybug.
 func TestRunnerBrainIndexTags(t *testing.T) {

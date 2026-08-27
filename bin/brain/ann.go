@@ -6,6 +6,7 @@
 //
 //	./bin/brain/ann.go build                     # full snapshot from the DB
 //	./bin/brain/ann.go upsert                    # incremental: new leafs only (WAL append, no rebuild)
+//	./bin/brain/ann.go ensure                    # wave ann-build step: build when missing/stale, else upsert
 //	./bin/brain/ann.go stats                     # index stats
 //	./bin/brain/ann.go api --port 8631           # HTTP search server (bench --candidate http://…)
 //	./bin/brain/ann.go --json -n 10 "query"      # CLI search, ANN forced on (bench --candidate <bin>)

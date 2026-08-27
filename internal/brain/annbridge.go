@@ -43,7 +43,7 @@ var (
 )
 
 type annInfo struct {
-	Loaded  bool   `json:"loaded"`
+	Loaded  bool   `json:"loaded"` // true when a non-empty index is serving (Len > 0)
 	Len     int    `json:"len"`
 	Path    string `json:"path"`
 	Params  string `json:"params,omitempty"`
@@ -101,12 +101,28 @@ func annIndex() (*ann.Index, error) {
 		log.Printf("brain/ann: open %s: %v (fallback: linear scan)", path, err)
 		return nil, err
 	}
-	annStats.Loaded = true
+	annStats.Loaded = idx.Len() > 0
 	annStats.Len = idx.Len()
 	annStats.Skipped = idx.Skipped()
 	annStats.Params = fmt.Sprintf("dim=%d nlist=%d nprobe=%d", p.Dim, p.NList, p.NProbe)
 	log.Printf("brain/ann: index %s loaded (%d vectors, %s)", path, idx.Len(), annStats.Params)
 	return idx, nil
+}
+
+// WarmANN eagerly opens the ANN index at serve startup (issue #206): the
+// ~320MB snapshot loads once instead of on the first query, so the first
+// search is already fast. Missing/empty/corrupt/disabled are non-fatal — the
+// search path falls back to the linear scan, and the wave's ann-build step
+// builds the index (serve never rebuilds: single-writer rule, #204).
+func WarmANN() {
+	idx, err := annIndex()
+	if err != nil {
+		log.Printf("brain/ann: warm start: %v (search falls back to the linear scan)", err)
+		return
+	}
+	if idx != nil && idx.Len() == 0 {
+		log.Printf("brain/ann: warm start: index empty — search falls back to the linear scan until the wave's ann-build step builds it")
+	}
 }
 
 // annQueryVector ranks the top-k vector hits through the ANN index and loads
@@ -234,6 +250,8 @@ func MainANN(args []string) int {
 			return runAnnBuild(args[1:])
 		case "upsert":
 			return runAnnUpsert(args[1:])
+		case "ensure":
+			return runAnnEnsure(args[1:])
 		case "stats":
 			return runAnnStats(args[1:])
 		case "api":
