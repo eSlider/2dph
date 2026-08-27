@@ -370,3 +370,26 @@ REASONER_BASE_URL=http://127.0.0.1:11435/v1 ./bin/reasoner/bench.go --json
 ```
 
 See [reasoner.md](reasoner.md).
+
+## GitHub mirror sync (#194)
+
+Gitea is the canonical home; GitHub is a publish-only mirror (`#190`). After
+each merge into `release/v1` on Gitea, sync the mirror so SHA stay identical:
+
+```bash
+git fetch origin --tags --force
+git push github main:main release/v1:release/v1 --force-with-lease
+git push github --tags --force
+```
+
+Verify zero drift (both sides equal):
+
+```bash
+git rev-list --count origin/release/v1..github/release/v1   # 0
+git rev-list --count github/release/v1..origin/release/v1   # 0
+```
+
+Content guard (`#190`): before pushing to GitHub, confirm the diff is project
+content only — no internal paths/hosts/ports, no secrets. Precedent #142/#194:
+leaks are purged from GitHub history with `git filter-repo`; Gitea stays the
+canonical home and is never rewritten for the mirror.
