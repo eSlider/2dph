@@ -24,6 +24,8 @@ func isolateEnv(t *testing.T) {
 		"OO_CLI", "BRAIN_SEARCH_URL", "BRAIN_SEARCH_USER",
 		"BRAIN_SEARCH_PASS", "BRAIN_SEARCH_CACHE", "BRAIN_SEARCH_ENV",
 		"REASONER_BASE_URL", "REASONER_MODEL", "REASONER_DEVICE",
+		"VECTOR_ANN_ENABLED", "VECTOR_ANN_INDEX", "VECTOR_ANN_DIM",
+		"VECTOR_ANN_NLIST", "VECTOR_ANN_NPROBE",
 	}
 	prev := map[string]string{}
 	for _, k := range vars {
@@ -261,6 +263,48 @@ func TestMergeMaps_RecurseAndLastWriteWins(t *testing.T) {
 	}
 }
 
+// TestLoad_PSTSection checks the pst.* section round-trips: the sources list
+// (label+path pairs), the readpst binary override and the out/state path
+// overrides. Fixture paths are synthetic and relative (no host paths).
+func TestLoad_PSTSection(t *testing.T) {
+	isolateEnv(t)
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "etc", "brain")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	yml := `root: "` + filepath.ToSlash(dir) + `"
+pst:
+  sources:
+    - label: pst-andriy
+      path: fixtures/andriy.pst
+    - label: pst-backup-vorlagen
+      path: fixtures/backup-vorlagen.pst
+  readpst: var/dist/readpst/usr/bin/readpst
+  out: var/corpus/mail/pst
+  state: var/state/pst.json
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yml"), []byte(yml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := loadTest(t, dir)
+	if len(cfg.PST.Sources) != 2 {
+		t.Fatalf("pst.sources = %d entries, want 2", len(cfg.PST.Sources))
+	}
+	if cfg.PST.Sources[0].Label != "pst-andriy" || cfg.PST.Sources[0].Path != "fixtures/andriy.pst" {
+		t.Errorf("pst.sources[0] = %+v", cfg.PST.Sources[0])
+	}
+	if cfg.PST.Sources[1].Label != "pst-backup-vorlagen" {
+		t.Errorf("pst.sources[1].label = %q", cfg.PST.Sources[1].Label)
+	}
+	if cfg.PST.ReadPST != "var/dist/readpst/usr/bin/readpst" {
+		t.Errorf("pst.readpst = %q", cfg.PST.ReadPST)
+	}
+	if cfg.PST.Out != "var/corpus/mail/pst" || cfg.PST.State != "var/state/pst.json" {
+		t.Errorf("pst out/state = %q/%q", cfg.PST.Out, cfg.PST.State)
+	}
+}
+
 func TestDefaults(t *testing.T) {
 	isolateEnv(t)
 	d := Defaults()
@@ -271,5 +315,29 @@ func TestDefaults(t *testing.T) {
 	if d.Reasoner.BaseURL != "http://127.0.0.1:11435/v1" ||
 		d.Reasoner.Model != "qwen3.5:9b" || d.Reasoner.Device != "cpu" {
 		t.Fatalf("unexpected reasoner defaults: %+v", d.Reasoner)
+	}
+	// ANN is on by default (issue #206): serve/CLI search via the index,
+	// falling back to the linear scan when the index is missing/corrupt.
+	if !d.Vector.ANN.Enabled {
+		t.Fatal("vector.ann.enabled must default to true (#206)")
+	}
+}
+
+// TestLoad_VectorANNEnv maps the vector.ann env names (underscore-split into
+// nested keys) onto the typed ANN config: enabled/nprobe overrides and the
+// defaults for the fields the env does not touch.
+func TestLoad_VectorANNEnv(t *testing.T) {
+	isolateEnv(t)
+	t.Setenv("VECTOR_ANN_ENABLED", "true")
+	t.Setenv("VECTOR_ANN_NPROBE", "256")
+	cfg := loadTest(t, t.TempDir()) // no files: defaults + env
+	if !cfg.Vector.ANN.Enabled {
+		t.Fatal("vector.ann.enabled = false, want true from env")
+	}
+	if cfg.Vector.ANN.NProbe != 256 {
+		t.Fatalf("vector.ann.nprobe = %d, want 256 from env", cfg.Vector.ANN.NProbe)
+	}
+	if cfg.Vector.ANN.Dim != 0 {
+		t.Fatalf("vector.ann.dim = %d, want 0 (untouched default)", cfg.Vector.ANN.Dim)
 	}
 }

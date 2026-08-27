@@ -23,6 +23,10 @@ const (
 	PathStats   = "/stats"
 	PathAudit   = "/audit"
 	PathIngest  = "/ingest"
+	PathLeafs   = "/leafs"
+	PathEdges   = "/edges"
+	PathAddEdge = "/addedge"
+	PathPath    = "/path"
 	PathOpenAPI = "/openapi.json"
 	PathMCP     = "/mcp"
 )
@@ -59,6 +63,42 @@ var Ops = []Op{
 			{Name: "source", In: "query", Type: "string", Description: "evidence pointer; facts need two sources"},
 			{Name: "valid_from", In: "query", Type: "string", Description: "fact interval start YYYY-MM-DD (D24)"},
 			{Name: "valid_to", In: "query", Type: "string", Description: "fact interval end YYYY-MM-DD inclusive (D24)"},
+		},
+	},
+	{
+		Path: PathLeafs, Method: "get", ID: "leafs", Summary: "query leafs by root/type/source/text",
+		MCP: true,
+		Params: []Param{
+			{Name: "root", In: "query", Type: "string", Description: "facts or info"},
+			{Name: "type", In: "query", Type: "string", Description: "leaf type (fact/reference/...)  exact match"},
+			{Name: "source", In: "query", Type: "string", Description: "evidence pointer exact match, e.g. pc-agent"},
+			{Name: "q", In: "query", Type: "string", Description: "full-text search over leaf text"},
+			{Name: "n", In: "query", Type: "integer", Description: "limit 1..100 (default 10)"},
+		},
+	},
+	{
+		Path: PathEdges, Method: "get", ID: "edges", Summary: "adjacency: synapses of one leaf",
+		MCP: true,
+		Params: []Param{
+			{Name: "id", In: "query", Type: "string", Description: "leaf id (sha256[:16])", Required: true},
+		},
+	},
+	{
+		Path: PathAddEdge, Method: "post", ID: "addedge", Summary: "add a synapse (leaf A → leaf B)",
+		MCP: true,
+		Params: []Param{
+			{Name: "from", In: "body", Type: "string", Description: "source leaf id", Required: true},
+			{Name: "to", In: "body", Type: "string", Description: "target leaf id", Required: true},
+			{Name: "type", In: "body", Type: "string", Description: "edge label, default synapse"},
+		},
+	},
+	{
+		Path: PathPath, Method: "get", ID: "path", Summary: "shortest path between two leafs",
+		MCP: true,
+		Params: []Param{
+			{Name: "from", In: "query", Type: "string", Description: "source leaf id", Required: true},
+			{Name: "to", In: "query", Type: "string", Description: "target leaf id", Required: true},
+			{Name: "max", In: "query", Type: "integer", Description: "max path length (default 6, max 10)"},
 		},
 	},
 	{Path: PathOpenAPI, Method: "get", ID: "openapi", Summary: "OpenAPI 3 document for this server"},

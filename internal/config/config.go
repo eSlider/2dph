@@ -39,7 +39,7 @@ type Config struct {
 	Pprof   string `mapstructure:"pprof"`
 
 	// Search backend / embedding daemon (internal/brain).
-	SearchCmd        string `mapstructure:"searchcmd"` // Legacy: KB_SEARCH_CMD.
+	SearchCmd        string `mapstructure:"searchcmd"`        // Legacy: KB_SEARCH_CMD.
 	SearchDaemonPort int    `mapstructure:"searchdaemonport"` // Legacy: KBSEARCH_PORT.
 	SearchNoDaemon   bool   `mapstructure:"searchnodaemon"`   // Legacy: KBSEARCH_NO_DAEMON.
 	Model            string `mapstructure:"model"`            // Legacy: KBSEARCH_MODEL.
@@ -65,6 +65,38 @@ type Config struct {
 
 	// Reasoner (internal/reasoner client). Legacy: REASONER_*.
 	Reasoner ReasonerConfig `mapstructure:"reasoner"`
+
+	// Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): brain
+	// leafs+edges exposed for pc-agent. Legacy: KB_SYNAPSE_*.
+	Synapse SynapseConfig `mapstructure:"synapse"`
+
+	// PST Outlook import (bin/mail/import-pst.go, issue #185): readpst -e →
+	// .eml → the mailconv pipeline. Paths of the source .pst files are machine
+	// inventory (see #79) and belong in config.local.yml, never in code.
+	PST PSTConfig `mapstructure:"pst"`
+
+	// Vector ANN index (issue #204): approximate-nearest-neighbor search
+	// outside liblbug (whose HNSW crashes, #192). Enabled serves the query
+	// vector path from the index; disabled/missing index falls back to the
+	// linear scan.
+	Vector VectorConfig `mapstructure:"vector"`
+}
+
+// VectorConfig configures the vector search layer (issue #204).
+type VectorConfig struct {
+	ANN ANNConfig `mapstructure:"ann"`
+}
+
+// ANNConfig is the IVF index (internal/brain/ann). Empty paths default to
+// <root>/var/state/vector.ann (+ ".wal"); NList/NProbe defaults come from the
+// ann package (Defaults()): NList=2000, NProbe=128. Production config
+// (etc/brain/config.yml) pins nprobe=2000 (full probe: recall@5=1.0, #206).
+type ANNConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Index   string `mapstructure:"index"`
+	Dim     int    `mapstructure:"dim"`
+	NList   int    `mapstructure:"nlist"`
+	NProbe  int    `mapstructure:"nprobe"`
 }
 
 // SearchConfig mirrors BRAIN_SEARCH_* (SearXNG) settings.
@@ -83,6 +115,36 @@ type ReasonerConfig struct {
 	Device  string `mapstructure:"device"`  // Legacy: REASONER_DEVICE.
 }
 
+// SynapseConfig mirrors KB_SYNAPSE_* (Synapse Matrix service) settings.
+type SynapseConfig struct {
+	Host  string `mapstructure:"host"`  // Legacy: KB_SYNAPSE_HOST.
+	Port  int    `mapstructure:"port"`  // Legacy: KB_SYNAPSE_PORT.
+	Token string `mapstructure:"token"` // Legacy: KB_SYNAPSE_TOKEN. Empty = loopback only.
+}
+
+// PSTConfig configures the Outlook PST import (#185). All paths are external
+// values loaded from config (D28): the .pst inventory lives in the source map
+// (#79), the readpst binary may be machine-local.
+type PSTConfig struct {
+	// Sources are the .pst files to import: label (corpus subdir) + path
+	// (absolute, see #79). Empty = the import tool fails with a config error.
+	Sources []PSTSource `mapstructure:"sources"`
+	// ReadPST overrides the readpst binary path; empty = PATH lookup, then
+	// the repo-local var/dist toolchain dir, then an explicit config error.
+	ReadPST string `mapstructure:"readpst"`
+	// Out is the corpus root for extracted mail; empty = <root>/var/corpus/mail/pst.
+	Out string `mapstructure:"out"`
+	// State is the source checkpoint; empty = <root>/var/state/pst.json.
+	State string `mapstructure:"state"`
+}
+
+// PSTSource is one .pst archive to import: Label names the corpus subdir and
+// the message source tag; Path is the absolute .pst path (see #79).
+type PSTSource struct {
+	Label string `mapstructure:"label"`
+	Path  string `mapstructure:"path"`
+}
+
 // Defaults returns a Config with the built-in defaults. Load() applies the
 // stack on top of these, so fields absent from every layer keep a sane value.
 func Defaults() Config {
@@ -97,6 +159,16 @@ func Defaults() Config {
 			BaseURL: "http://127.0.0.1:11435/v1",
 			Model:   "qwen3.5:9b",
 			Device:  "cpu",
+		},
+		Synapse: SynapseConfig{
+			Host: "127.0.0.1",
+			Port: 8632,
+		},
+		// ANN vector search is on by default (issue #206): serve and CLI
+		// search through the index, falling back to the linear scan when the
+		// index is missing or corrupt. The wave's ann-build step maintains it.
+		Vector: VectorConfig{
+			ANN: ANNConfig{Enabled: true},
 		},
 	}
 }

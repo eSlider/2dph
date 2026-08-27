@@ -16,12 +16,15 @@
 #     port: 5433
 #     user: onlyoffice
 #     db: onlyoffice
-#     password_env_file: $HOME/.config/brain/onlyoffice.env
+#     password_env_file: $HOME/.config/ops/onlyoffice.env
+#     network: host
 #
 # The onlyoffice Postgres listens inside the QEMU VM (host port 32, SSH only).
 # Credentials come from /etc/onlyoffice/documentserver/local.json inside the
 # VM (dbUser/dbPass), read via scripts/db/ssh-tunnel, never committed.
 # scripts/db/ssh-tunnel opens 127.0.0.1:5433 -> vm:5432 before querying.
+# network: host is required: the docker psql client must share the host loopback
+# to reach the tunnel (a bridged container sees only its own loopback).
 #
 # Read-only guard: any DML or DDL keyword is rejected, whatever the profile.
 set -euo pipefail

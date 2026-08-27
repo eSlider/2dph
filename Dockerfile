@@ -26,9 +26,11 @@ RUN eval "$(./bin/cgo/zig env)" \
     && go build -tags system_ladybug -o /out/brain-search ./bin/brain/search.go \
     && go build -tags system_ladybug,brain_index -o /out/brain-index ./bin/brain/index.go \
     && go build -tags system_ladybug,brain_add -o /out/brain-add ./bin/brain/add.go \
+    && go build -tags system_ladybug -o /out/seed-ext ./bin/brain/seed-ext.go \
     && CGO_ENABLED=0 go build -tags brain_watch -o /out/brain-watch ./bin/brain/watch.go \
     && CGO_ENABLED=0 go build -tags mail_import -o /out/mail-import ./bin/mail/import.go \
-    && CGO_ENABLED=0 go build -o /out/mail-sync ./bin/mail/sync.go
+    && CGO_ENABLED=0 go build -o /out/mail-sync ./bin/mail/sync.go \
+    && CGO_ENABLED=0 go build -o /out/runner ./bin/runner/run.go
 
 FROM debian:bookworm-slim AS api
 RUN apt-get update \
@@ -40,14 +42,20 @@ COPY --from=api-build /out/brain-search /usr/local/bin/brain-search
 COPY --from=api-build /out/brain-watch /usr/local/bin/brain-watch
 COPY --from=api-build /out/brain-index /usr/local/bin/brain-index
 COPY --from=api-build /out/brain-add /usr/local/bin/brain-add
+COPY --from=api-build /out/seed-ext /usr/local/bin/seed-ext
 COPY --from=api-build /out/mail-import /usr/local/bin/mail-import
 COPY --from=api-build /out/mail-sync /usr/local/bin/mail-sync
+COPY --from=api-build /out/runner /usr/local/bin/runner
 COPY --from=api-build /src/lib-ladybug/liblbug.so.0.19.1 /usr/local/lib/liblbug.so.0.19.1
 COPY scripts/docker-entrypoint /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint \
     && ln -s liblbug.so.0.19.1 /usr/local/lib/liblbug.so.0 \
     && ln -s liblbug.so.0 /usr/local/lib/liblbug.so \
     && ldconfig
+RUN mkdir -p /data \
+    && HOME=/data /usr/local/bin/seed-ext \
+    && HOME=/home/2dph /usr/local/bin/seed-ext \
+    && rm /usr/local/bin/seed-ext
 USER 2dph
 ENV KB_ROOT=/data \
     KB_PORT=8630 \

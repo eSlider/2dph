@@ -1,0 +1,12 @@
+{
+  "source": "djinni",
+  "page": "https://djinni.co/my/dashboard/",
+  "recommended_jobs": [
+    {"title": "Senior Go Engineer", "company": "Example GmbH", "salary": "$$$$", "location": "Full Remote · EU", "experience": "5 years", "english": "B2", "summary": "Build Go services."}
+  ],
+  "statistics_30d": {
+    "propositions_received": 1,
+    "applications_sent": 1,
+    "profile_views": 3
+  }
+}

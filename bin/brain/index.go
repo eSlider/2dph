@@ -65,7 +65,7 @@ func run(args []string) int {
 	p.String(&v.db, "", "db", "path to kb.lbug")
 	p.Bool(&v.rebuild, "", "rebuild", "fresh db + indexes")
 	p.Bool(&v.noDefaults, "", "no-defaults", "skip README/docs/skills")
-	p.Bool(&v.withMail, "", "with-mail", "include var/corpus/mail message.md leafs")
+	p.Bool(&v.withMail, "", "with-mail", "include var/corpus/mail + legacy var/mail message.md leafs")
 	p.Bool(&v.withFacts, "", "with-facts", "facts/extract --json --dry-run")
 	p.String(&v.factsJSON, "", "facts-json", "JSON facts file")
 	p.String(&v.withChats, "", "with-chats", "chat markdown dir (empty=off; bare flag via const path)")
@@ -126,7 +126,11 @@ func run(args []string) int {
 	}
 	mailN := 0
 	if v.withMail {
-		mail, err := brain.LoadMailLeafs(filepath.Join(root, "var", "corpus", "mail"), v.since, 0)
+		// Both corpora share the <id>/message.md layout: the live corpus
+		// (var/corpus/mail) and the legacy mbox-import corpus (var/mail, #184).
+		// LoadMailLeafs dedups by content address, so a message present in
+		// both roots is indexed once (#199).
+		mail, err := brain.LoadMailLeafs(brain.MailRoots(root), v.since, 0)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "brain/index: mail: %v\n", err)
 			return 1

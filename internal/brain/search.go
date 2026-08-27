@@ -9,17 +9,20 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"syscall"
 	"time"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/config"
 	"github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -185,30 +188,122 @@ func queryFTS(text string, limit int) ([]Hit, error) {
 }
 
 func queryVector(emb []float64, limit int) ([]Hit, error) {
+	// ANN path (issue #204): top-k from the incremental HNSW index, then
+	// metadata via point lookups. Falls back to the brute-force scan when
+	// the index is absent/corrupt/disabled — search never fails because of
+	// ANN.
+	if annEnabled() {
+		if hits, err := annQueryVector(emb, limit); err != nil {
+			fmt.Fprintf(os.Stderr, "ann: %v\n", err)
+		} else if len(hits) > 0 {
+			return hits, nil
+		}
+	}
 	brainMu.RLock()
 	defer brainMu.RUnlock()
-	embList := make([]any, len(emb))
-	for i, v := range emb {
-		embList[i] = v
-	}
-	stmt, err := conn.Prepare(rank.VecStmt)
+	stmt, err := conn.Prepare(vecScanStmt)
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
-	res, err := conn.Execute(stmt, map[string]any{"q": embList, "n": limit})
+	res, err := conn.Execute(stmt, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer res.Close()
-	hits, err := rowsToHits(res)
-	if err != nil {
-		return nil, err
+
+	type scored struct {
+		hit Hit
+		sim float64
 	}
-	for i := range hits {
-		hits[i].Score = 1.0 - hits[i].Score
+	var all []scored
+	for res.HasNext() {
+		row, err := res.Next()
+		if err != nil {
+			return nil, err
+		}
+		vals, err := row.GetAsSlice()
+		if err != nil || len(vals) < 8 {
+			continue
+		}
+		e, ok := vals[7].([]any)
+		if !ok || len(e) == 0 {
+			continue
+		}
+		sim := cosineToQuery(emb, e)
+		all = append(all, scored{hit: Hit{
+			ID: fmt.Sprint(vals[0]), Text: fmt.Sprint(vals[1]),
+			Root: fmt.Sprint(vals[2]), Source: fmt.Sprint(vals[3]),
+			Confidence: fmt.Sprint(vals[4]), ValidFrom: nullStr(vals[5]),
+			ValidTo: nullStr(vals[6]), Score: sim,
+		}, sim: sim})
 	}
-	return hits, nil
+	// Deterministic ranking: descending similarity, ties broken by id so the
+	// RRF merge with FTS is stable across runs and vector backends (#204:
+	// equal-cosine hits reordered by the unstable sort and broke A/B recall).
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].sim != all[j].sim {
+			return all[i].sim > all[j].sim
+		}
+		return all[i].hit.ID < all[j].hit.ID
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	out := make([]Hit, 0, len(all))
+	for _, s := range all {
+		out = append(out, s.hit)
+	}
+	return out, nil
+}
+
+// vecScanStmt loads every leaf embedding plus the fields fused into search
+// results. It replaces the liblbug HNSW QUERY_VECTOR_INDEX (Leaf_vec), which
+// SIGSEGVs in liblbug 0.19.0 once the graph grows past ~1300 nodes
+// (simsimd_cos_f32 NULL deref during HNSW insert). A linear scan is fast at
+// our scale and crash-free.
+const vecScanStmt = "MATCH (l:Leaf) RETURN l.id, l.text, l.root, l.source, " +
+	"l.confidence, l.valid_from, l.valid_to, l.embedding"
+
+// cosineToQuery computes cosine similarity between the query embedding
+// ([]float64, from the embedding daemon) and a stored embedding ([]any of
+// float32, how liblbug surfaces FLOAT[256] columns). A zero-norm side yields
+// 0 rather than NaN.
+func cosineToQuery(q []float64, e []any) float64 {
+	n := len(q)
+	if len(e) < n {
+		n = len(e)
+	}
+	if n == 0 {
+		return 0
+	}
+	var dot, nq, ne float64
+	for i := 0; i < n; i++ {
+		f, ok := e[i].(float32)
+		if !ok {
+			fv, ok2 := e[i].(float64)
+			if !ok2 {
+				return 0
+			}
+			f = float32(fv)
+		}
+		qv := q[i]
+		dot += qv * float64(f)
+		nq += qv * qv
+		ne += float64(f) * float64(f)
+	}
+	if nq == 0 || ne == 0 {
+		return 0
+	}
+	return dot / (sqrt64(nq) * sqrt64(ne))
+}
+
+// sqrt64 is a tiny inline wrapper so the hot loop stays dependency-free.
+func sqrt64(x float64) float64 {
+	if x <= 0 {
+		return 0
+	}
+	return math.Sqrt(x)
 }
 
 func rowsToHits(res *lbug.QueryResult) ([]Hit, error) {
@@ -485,6 +580,12 @@ func ensureDaemon(port int) error {
 
 // Main is the bin/brain/search.go entry: search, serve, or --list-model.
 func Main(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/search: config: %v\n", err)
+		return 1
+	}
+	Configure(cfg)
 	if len(args) > 0 && args[0] == "serve" {
 		port := defaultPort
 		if len(args) > 1 {

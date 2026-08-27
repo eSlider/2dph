@@ -30,6 +30,10 @@ services:
       cache_from:
         - ghcr.io/eslider/2dph:cache
     command: ["serve"]
+    # Run as the host user, not the image's uid 1001, so files written into
+    # ./var match the host tools that open the same kb.lbug (#195). Override
+    # with KB_UID/KB_GID on hosts with a different account.
+    user: "${KB_UID:-1000}:${KB_GID:-1000}"
     environment: &env
       HOME: /data
       HF_HOME: /data/var/hf
@@ -40,17 +44,34 @@ services:
       KB_ROOT: /data
       KB_WORKERS: "4"
       KB_PORT: "8630"
+      # Ladybug write path needs a pool larger than the ~1.4GB DB (docs/brain/rebuild.md).
+      # Rebuild uses 10GB; the serve-side incremental pool stays at the 4GB default
+      # to avoid HNSW write stalls with a large pool.
+      KB_BUFFER_POOL: "4294967296"
+      # In-process embedding: the daemon on KBSEARCH_PORT is only started by
+      # the entrypoint when the image carries a working brain-search; embedding
+      # in-process avoids a respawn loop against a dead daemon.
+      KBSEARCH_NO_DAEMON: "1"
       KB_PPROF: "1707"
     network_mode: host
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
+      # Repo-root config stack (etc/brain/config.yml + config.local.yml):
+      # config.Load resolves it against /data (KB_ROOT, WORKDIR /data), so it
+      # must be mounted — the image carries no etc/ (#208). Secrets stay in
+      # ~/.config/brain (/secret).
+      - ./etc/brain:/data/etc/brain:ro
       - ~/.config/brain:/secret:ro
     read_only: true
     tmpfs:
       - /tmp
+    # Probe the DB read path, not the static /health: a wedged brain still
+    # answers /health "ok" while every search/get/audit hangs on the read
+    # lock. /stats runs a real MATCH over kb.lbug, so when the read handle is
+    # deadlocked it times out here and docker (restart: unless-stopped) recycles
+    # the container instead of leaving it "healthy" and unresponsive (#180).
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8630/health"]
+      test: ["CMD", "wget", "-qO-", "--timeout=3", "http://127.0.0.1:8630/stats"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -62,7 +83,7 @@ services:
     environment: *env
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
+      - ./etc/brain:/data/etc/brain:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["watch", "/corpus"]
@@ -87,7 +108,7 @@ services:
       KB_INDEX_ALLOW_LIVE: "1"
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
+      - ./etc/brain:/data/etc/brain:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["index"]
@@ -95,10 +116,11 @@ services:
     tmpfs:
       - /tmp
 
-  # mail-sync ETL: sync → import every 300s into shared var. Full brain rebuild
-  # only when MAIL_SYNC_INDEX=1 (expensive on large mail corpora). Default
-  # sources: onlyoffice,gmail. For M365 set MAIL_SYNC_SRC=m365 and put
-  # M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in ~/.config/brain/mail.env
+  # mail-sync ETL: download (existing mailsync binary) → bounded runner
+  # pipeline import (#98) every 300s into shared var, with a per-run stats YAML.
+  # Full brain rebuild only when MAIL_SYNC_INDEX=1 (expensive on large mail
+  # corpora). Default sources: onlyoffice,gmail. For M365 set MAIL_SYNC_SRC=m365
+  # and put M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in ~/.config/brain/mail.env
   # (or m365.env + MAIL_SYNC_ENV). Gmail OAuth: mount ~/.gmail-mcp.
   #   docker compose up -d mail-sync
   #   scripts/stack/start-mail-sync
@@ -108,6 +130,9 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
+    # Same host-uid alignment as brain (#195): the ETL loop writes var/corpus
+    # as the host user so host tools can read it.
+    user: "${KB_UID:-1000}:${KB_GID:-1000}"
     environment:
       HOME: /home/2dph
       HF_HOME: /data/var/hf
@@ -116,10 +141,10 @@ services:
       MAIL_SYNC_INDEX: "0"
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/home/2dph/.lbdb/extension:ro
+      - ./etc/brain:/data/etc/brain:ro
       - ~/.config/brain:/secret:ro
       - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
-    command: ["mail-sync", "300"]
+    command: ["runner", "300"]
     read_only: true
     tmpfs:
       - /tmp
@@ -149,7 +174,7 @@ services:
     environment: *env
     volumes:
       - ./var:/data/var
-      - ./var/lbdb-extension:/data/.lbdb/extension:ro
+      - ./etc/brain:/data/etc/brain:ro
       - ~/.config/brain:/secret:ro
     command: ["serve"]
     ports:

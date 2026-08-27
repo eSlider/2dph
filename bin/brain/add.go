@@ -10,14 +10,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	cliparse "github.com/eSlider/2dph/pkg/cli"
 	"github.com/eSlider/2dph/internal/brain"
+	"github.com/eSlider/2dph/internal/config"
+	cliparse "github.com/eSlider/2dph/pkg/cli"
 )
 
 func main() {
@@ -31,6 +33,13 @@ type addFlags struct {
 }
 
 func run(args []string) int {
+	cfg, err := config.Load(context.Background())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/add: config: %v\n", err)
+		return 1
+	}
+	brain.Configure(cfg)
+
 	v := addFlags{root: "info", confidence: "confirmed", sourceRev: "working-tree", how: "brain/add", typ: "reference"}
 	p := cliparse.New("brain-add")
 	p.Description = "add leafs without rebuilding the brain"

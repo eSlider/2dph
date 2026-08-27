@@ -1,0 +1,7 @@
+{
+  "source": "djinni",
+  "page": "https://djinni.co/my/dashboard/contacted/",
+  "entries": [
+    {"type": "application", "status": "You've applied", "title": "Data Engineer", "company": "Example Corp", "salary": "$$$", "location": "Full Remote · EU", "experience": "5 years", "english": "B2", "summary": "Data pipelines."}
+  ]
+}

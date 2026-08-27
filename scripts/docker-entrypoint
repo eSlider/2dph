@@ -2,8 +2,9 @@
 # scripts/docker-entrypoint - run 2dph tools inside the container.
 #
 # API image (Zig CGO binaries, Go write path):
-#   serve | search | watch | index | add | mail-sync [N]
+#   serve | search | watch | index | add | mail-sync [N] | runner [N]
 #   mail-sync [N]   ETL loop: sync -> import (Go); optional index (default 300s)
+#   runner [N]      ETL runner (#98): sync -> bounded pipeline import (default 300s)
 # All-Go: no python sidecar (the old index image is gone).
 #
 # Usage comment starts at line 2 (self-describing convention).
@@ -17,11 +18,14 @@ if [ -x /usr/local/bin/brain-serve ]; then
 		shell) exec bash ;;
 		serve)
 			# The HTTP API's embedQuery calls a search daemon on KBSEARCH_PORT
-			# (default 17830). Without it every query spawned a doomed
-			# subprocess + 10s poll before falling back to a per-query model
-			# load (~12s). Start the embed daemon, then serve the API.
-			port="${KBSEARCH_PORT:-17830}"
-			/usr/local/bin/brain-search serve "$port" &
+			# (default 17830). KBSEARCH_NO_DAEMON=1 (compose default) embeds
+			# in-process instead, so only spawn the daemon when that is off:
+			# a brain-search that dies on startup (e.g. model not found) would
+			# otherwise become an unreaped zombie under brain-serve (#180).
+			if [ "${KBSEARCH_NO_DAEMON:-0}" != "1" ]; then
+				port="${KBSEARCH_PORT:-17830}"
+				/usr/local/bin/brain-search serve "$port" &
+			fi
 			exec /usr/local/bin/brain-serve "$@" ;;
 		search) exec /usr/local/bin/brain-search "$@" ;;
 		watch) exec /usr/local/bin/brain-watch "$@" ;;
@@ -49,7 +53,28 @@ if [ -x /usr/local/bin/brain-serve ]; then
 				sleep "$interval"
 			done
 			;;
-		*) echo "unknown command: $CMD (api: serve|search|watch|index|add|mail-sync)" >&2; exit 2 ;;
+		runner)
+			# ETL runner (#98): download mail (existing mailsync binary — the
+			# onlyoffice/gmail → Source-adapter mapping is the #98 large-lift
+			# follow-up), then import via the bounded runner pipeline with a
+			# per-run stats YAML. Full brain rebuild is opt-in (MAIL_SYNC_INDEX=1).
+			interval="${1:-300}"
+			[ "$interval" -gt 0 ] 2>/dev/null || interval=300
+			: "${MAIL_SYNC_ENV:=/secret/mail.env}"
+			: "${MAIL_SYNC_SRC:=onlyoffice,gmail}"
+			: "${MAIL_SYNC_OUT:=/data/var/corpus/mail}"
+			: "${MAIL_SYNC_INDEX:=0}"
+			: "${MAIL_RUNNER_STATS:=/data/var/state/runner-mail.yml}"
+			while true; do
+				/usr/local/bin/mail-sync --source "$MAIL_SYNC_SRC" --env "$MAIL_SYNC_ENV" --out "$MAIL_SYNC_OUT" >/dev/null 2>&1 || true
+				/usr/local/bin/runner --corpus "$MAIL_SYNC_OUT" --state /data/var/state/runner-disk.json --stats "$MAIL_RUNNER_STATS" 2>&1 || true
+				if [ "$MAIL_SYNC_INDEX" = "1" ]; then
+					/usr/local/bin/brain-index --rebuild --with-mail 2>&1 | tail -1
+				fi
+				sleep "$interval"
+			done
+			;;
+		*) echo "unknown command: $CMD (api: serve|search|watch|index|add|mail-sync|runner)" >&2; exit 2 ;;
 	esac
 fi
 

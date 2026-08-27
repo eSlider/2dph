@@ -64,7 +64,13 @@ func findRepoRoot(dir string) string {
 	return ""
 }
 
-func dbPath() string {
+// dbPathFn resolves the brain DB file. A var so tests can point the whole
+// read+write stack at a temp fixture without touching the production kb.lbug.
+var dbPathFn = realDBPath
+
+func dbPath() string { return dbPathFn() }
+
+func realDBPath() string {
 	return filepath.Join(repoRoot(), "var", "kb.lbug")
 }
 
@@ -72,6 +78,13 @@ func openBrain() error {
 	brainMu.Lock()
 	defer brainMu.Unlock()
 	return openWithSandboxLocked(brainCfg().Eps)
+}
+
+// brainOpen reports whether the package-global read handle is open.
+func brainOpen() bool {
+	brainMu.RLock()
+	defer brainMu.RUnlock()
+	return conn != nil
 }
 
 // openWithSandbox opens the long-lived serve read connection (write path

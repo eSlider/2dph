@@ -113,7 +113,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 			user := pick(envVars["ONLYOFFICE_USER"], envVars["OO_USER"])
 			pass := pick(envVars["ONLYOFFICE_PASS"], envVars["OO_PASSWORD"])
 			if u == "" || user == "" || pass == "" {
-				return CLIConfig{}, 2, fmt.Errorf("onlyoffice source needs ONLYOFFICE_URL/USER/PASS in %s", v.env)
+				return CLIConfig{}, cliparse.ExitSkip, fmt.Errorf("onlyoffice source needs ONLYOFFICE_URL/USER/PASS in %s", v.env)
 			}
 			cfg.OO = &OOConfig{URL: u, User: user, Password: pass}
 		case "gmail":
@@ -128,7 +128,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 			sec := pick(envVars["M365_CLIENT_SECRET"], envVars["MS_CLIENT_SECRET"])
 			users := pick(envVars["M365_USERS"], envVars["MS_USERS"])
 			if tenant == "" || cid == "" || sec == "" || users == "" {
-				return CLIConfig{}, 2, fmt.Errorf("m365 source needs M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in %s", v.env)
+				return CLIConfig{}, cliparse.ExitSkip, fmt.Errorf("m365 source needs M365_TENANT/CLIENT_ID/CLIENT_SECRET/USERS in %s", v.env)
 			}
 			var userList []string
 			for _, u := range strings.Split(users, ",") {
@@ -149,7 +149,7 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		case "imap":
 			icfg, err := IMAPEnv(envVars)
 			if err != nil {
-				return CLIConfig{}, 2, fmt.Errorf("imap source: %w (in %s)", err, v.env)
+				return CLIConfig{}, cliparse.ExitSkip, fmt.Errorf("imap source: %w (in %s)", err, v.env)
 			}
 			cfg.IMAP = icfg
 		default:
