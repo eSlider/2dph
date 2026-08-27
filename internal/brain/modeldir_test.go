@@ -20,8 +20,14 @@ func resetConfig(t *testing.T) {
 }
 
 func TestModelDirDefaultHFHomeLayout(t *testing.T) {
+	// resetConfig + a bare Root keeps modelDir() away from dev-local
+	// models/ in the repo checkout (issue #213): otherwise repoRoot() finds
+	// models/potion-* and wins before the HF-cache step on dev machines.
 	resetConfig(t)
 	home := t.TempDir()
+	cfg := config.Defaults()
+	cfg.Root = t.TempDir()
+	Configure(&cfg)
 	t.Setenv("HOME", home)
 	snap := filepath.Join(home, ".cache", "huggingface", "hub",
 		"models--minishlab--potion-multilingual-128M", "snapshots", "abc123")
@@ -47,6 +53,7 @@ func TestModelDirExplicitHFHomeLayout(t *testing.T) {
 	base := t.TempDir()
 	cfg := config.Defaults()
 	cfg.HFHome = base
+	cfg.Root = t.TempDir()
 	Configure(&cfg)
 	snap := filepath.Join(base, "hub", "models--minishlab--potion-multilingual-128M",
 		"snapshots", "abc456")
