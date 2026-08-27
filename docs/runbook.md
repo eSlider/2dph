@@ -244,8 +244,11 @@ KB_BUFFER_POOL=4294967296 ./bin/brain/bench.go --inproc --candidate inproc-ann
 тюнинг (256/512) — отдельной задачей, если понадобится p50 < 300ms.
 Конфиг (`etc/brain/config.yml`, секция `vector.ann`): `enabled`, `index`,
 `dim` (256), `nlist` (2000 — k-means cells, ~150 векторов на ячейку при
-313k), `nprobe` (2000). Идемпотентность: повторный `upsert` не дублирует
-(idCell — map), повторный `build` из той же БД даёт ту же мощность.
+313k), `nprobe` (2000). В compose весь `etc/brain` монтируется в
+`/data/etc/brain:ro` (repo root в контейнере — `/data`, #208); без mount
+serve работает на код-default (nprobe=128). Идемпотентность: повторный
+`upsert` не дублирует (idCell — map), повторный `build` из той же БД даёт
+ту же мощность.
 A/B-отчёты: #204 (кандидат), #206 (прод, nprobe 256 vs 2000).
 
 ## Disk mail/contacts import (#79)
