@@ -56,6 +56,11 @@ services:
     network_mode: host
     volumes:
       - ./var:/data/var
+      # Repo-root config stack (etc/brain/config.yml + config.local.yml):
+      # config.Load resolves it against /data (KB_ROOT, WORKDIR /data), so it
+      # must be mounted — the image carries no etc/ (#208). Secrets stay in
+      # ~/.config/brain (/secret).
+      - ./etc/brain:/data/etc/brain:ro
       - ~/.config/brain:/secret:ro
     read_only: true
     tmpfs:
@@ -78,6 +83,7 @@ services:
     environment: *env
     volumes:
       - ./var:/data/var
+      - ./etc/brain:/data/etc/brain:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["watch", "/corpus"]
@@ -102,6 +108,7 @@ services:
       KB_INDEX_ALLOW_LIVE: "1"
     volumes:
       - ./var:/data/var
+      - ./etc/brain:/data/etc/brain:ro
       - ..:/corpus:ro
       - ~/.config/brain:/secret:ro
     command: ["index"]
@@ -134,6 +141,7 @@ services:
       MAIL_SYNC_INDEX: "0"
     volumes:
       - ./var:/data/var
+      - ./etc/brain:/data/etc/brain:ro
       - ~/.config/brain:/secret:ro
       - ~/.gmail-mcp:/home/2dph/.gmail-mcp:ro
     command: ["runner", "300"]
@@ -166,6 +174,7 @@ services:
     environment: *env
     volumes:
       - ./var:/data/var
+      - ./etc/brain:/data/etc/brain:ro
       - ~/.config/brain:/secret:ro
     command: ["serve"]
     ports:
