@@ -32,8 +32,8 @@ Standards epic: [#88](https://git.produktor.io/eSlider/2dph/issues/88).
   TDD-style against one issue each; sync happens through Gitea only.
 - Branches `type/slug#<issue>`; Conventional Commits
   `type(scope): summary (#id)` (feat|fix|refactor|chore|docs|test).
-  PR → review → CI green → merge into `release/v1`. No direct pushes to
-  `main`/`release/*`.
+  PR → review → CI green → merge into `main` (single line, `#213`). No direct
+  pushes to `main`.
 - SemVer tags on Gitea after merge: `fix:`→PATCH, `feat:`→MINOR,
   breaking (`!`)→MAJOR; next version computed by the semver tool.
 

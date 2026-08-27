@@ -374,10 +374,9 @@ See [reasoner.md](reasoner.md).
 ## GitHub mirror sync (#194)
 
 Gitea is the canonical home; GitHub is a publish-only **showcase** (`#190`,
-`#213`). Work happens on `release/v1` (Gitea); `main` is the public face.
-After each merge into `release/v1` on Gitea, advance `main` (via PR, see
-`merge(release/v1): advance release/v1 into main`), then sync **only `main`**
-(plus tags) to GitHub — `release/v1` and feature branches are NOT pushed:
+`#213`). `main` is the single working line and the public face (Gitea `#213`).
+PRs merge into `main` directly; no `release/v1` branch is kept. After each
+merge into `main`, sync **only `main`** (plus tags) to GitHub:
 
 ```bash
 git fetch origin --tags --force
@@ -392,9 +391,8 @@ git rev-list --count origin/main..github/main   # 0
 git rev-list --count github/main..origin/main   # 0
 ```
 
-Branch policy (`#213`): Gitea keeps `main` + `release/v1` only; GitHub keeps
-`main` only. Old/merged feature branches are backed up locally under
-`refs/backup/*` before deletion.
+Branch policy (`#213`): both Gitea and GitHub keep `main` only. Old/merged
+feature branches are backed up locally under `refs/backup/*` before deletion.
 
 Content guard (`#190`): before pushing to GitHub, confirm the diff is project
 content only — no internal paths/hosts/ports, no secrets. Precedent #142/#194:

@@ -11,7 +11,7 @@
 # printed: findings are emitted redacted.
 #
 # Usage:
-#   secret-scan.sh <range>            scan a git log range, e.g. origin/release/v1..HEAD
+#   secret-scan.sh <range>            scan a git log range, e.g. origin/main..HEAD
 #   secret-scan.sh --staged           scan staged (index) changes
 #   secret-scan.sh --all              scan full history (warning: not for normal use)
 #
