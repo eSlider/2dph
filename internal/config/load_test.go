@@ -24,6 +24,8 @@ func isolateEnv(t *testing.T) {
 		"OO_CLI", "BRAIN_SEARCH_URL", "BRAIN_SEARCH_USER",
 		"BRAIN_SEARCH_PASS", "BRAIN_SEARCH_CACHE", "BRAIN_SEARCH_ENV",
 		"REASONER_BASE_URL", "REASONER_MODEL", "REASONER_DEVICE",
+		"VECTOR_ANN_ENABLED", "VECTOR_ANN_INDEX", "VECTOR_ANN_DIM",
+		"VECTOR_ANN_NLIST", "VECTOR_ANN_NPROBE",
 	}
 	prev := map[string]string{}
 	for _, k := range vars {
@@ -313,5 +315,29 @@ func TestDefaults(t *testing.T) {
 	if d.Reasoner.BaseURL != "http://127.0.0.1:11435/v1" ||
 		d.Reasoner.Model != "qwen3.5:9b" || d.Reasoner.Device != "cpu" {
 		t.Fatalf("unexpected reasoner defaults: %+v", d.Reasoner)
+	}
+	// ANN is on by default (issue #206): serve/CLI search via the index,
+	// falling back to the linear scan when the index is missing/corrupt.
+	if !d.Vector.ANN.Enabled {
+		t.Fatal("vector.ann.enabled must default to true (#206)")
+	}
+}
+
+// TestLoad_VectorANNEnv maps the vector.ann env names (underscore-split into
+// nested keys) onto the typed ANN config: enabled/nprobe overrides and the
+// defaults for the fields the env does not touch.
+func TestLoad_VectorANNEnv(t *testing.T) {
+	isolateEnv(t)
+	t.Setenv("VECTOR_ANN_ENABLED", "true")
+	t.Setenv("VECTOR_ANN_NPROBE", "256")
+	cfg := loadTest(t, t.TempDir()) // no files: defaults + env
+	if !cfg.Vector.ANN.Enabled {
+		t.Fatal("vector.ann.enabled = false, want true from env")
+	}
+	if cfg.Vector.ANN.NProbe != 256 {
+		t.Fatalf("vector.ann.nprobe = %d, want 256 from env", cfg.Vector.ANN.NProbe)
+	}
+	if cfg.Vector.ANN.Dim != 0 {
+		t.Fatalf("vector.ann.dim = %d, want 0 (untouched default)", cfg.Vector.ANN.Dim)
 	}
 }

@@ -180,35 +180,51 @@ p50 ≈ 32s на 313k leafs (линейный скан, #192); после вне
 В CI (GitHub, оффлайн): `--rebuild` корпуса → `bench --inproc --json`
 (та же схема, что и recall-gate `bin/brain/eval.go`).
 
-### ANN-кандидат (#204)
+### ANN-индекс в проде (#204/#206)
 
-Кандидат эпика #201 — инкрементальный векторный индекс **вне liblbug** (его
-собственный HNSW крашится на росте графа, #192; фикс — линейный скан).
+Векторный поиск brain идёт через инкрементальный индекс **вне liblbug** (его
+собственный HNSW крашится на росте графа, #192; fallback — линейный скан).
 Алгоритм: **IVF** (k-means cells + точный косинус внутри probed-кластеров,
 чистый Go, без внешних зависимостей). `coder/hnsw` (HNSW) отброшен на
 эмпирике: на 313k реальных эмбеддингов из entry достижимы лишь 34% узлов
 (изоляция при вытеснении соседей) → recall@5 падает до 0.16; IVF держит
 recall@30 ≥ 0.93 при NList=2000/NProbe=128 (замеры probe #204). Индекс
-живёт в `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`),
-строится/апдейтится `bin/brain/ann.go` (wave-шаг `ann-upsert`), читается
-`queryVector` с fallback на скан при отсутствии/повреждении.
+живёт в `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`).
+
+**Включён по умолчанию** (#206): `vector.ann.enabled: true` — serve и CLI
+ищут через ANN; при отсутствии/повреждении индекса поиск автоматически
+падает на линейный скан (никогда не ломается). `serve` грузит индекс при
+старте (warm start, без rebuild); если индекс пуст — serve отвечает через
+скан, а волна (шаг `ann-build`) строит его.
 
 ```bash
 # полный build из БД (~30s extract + ~4min k-means + assign на 313k, NList=2000)
 KB_BUFFER_POOL=4294967296 ./bin/brain/ann.go build
 
-# инкрементальный upsert новых leafs (append WAL, НЕ rebuild; <1s на волну)
-VECTOR_ANN_ENABLED=true ./bin/brain/ann.go upsert
+# волна/ручной режим: build если индекса нет или он устарел (>10% отставания
+# по счётчику leafs), иначе инкрементальный WAL-upsert новых leafs (<1s, НЕ rebuild)
+./bin/brain/ann.go ensure
+
+# инкрементальный upsert новых leafs (append WAL, НЕ rebuild) — для ручных прогонов
+./bin/brain/ann.go upsert
 
 # статистика индекса
 ./bin/brain/ann.go stats
 
 # CLI-поиск через ANN (fallback на скан при отсутствии индекса)
-VECTOR_ANN_ENABLED=true ./bin/brain/ann.go --json -n 10 "query"
+./bin/brain/ann.go --json -n 10 "query"
 
 # HTTP-сервер поиска через ANN (для bench --candidate http://127.0.0.1:8631)
-VECTOR_ANN_ENABLED=true ./bin/brain/ann.go api --port 8631
+./bin/brain/ann.go api --port 8631
 ```
+
+**Инкрементальность** (критично: волна идёт каждые N минут, полный rebuild
+на каждую волну НЕДОПУСТИМ): `ensure` сравнивает счётчик leafs в БД с
+мощностью индекса; steady-state рост (+100 писем на 313k) всегда уходит в
+WAL-upsert (<1s), полный build — только когда индекса нет или он отстал
+>10% (битый/частичный/после bulk-import). Доказано тестом
+`TestAnnEnsureIncrementalUpsertNoRebuild` (+100 leafs → rebuild=false,
+upsert <1s) и замером на проде.
 
 A/B (изолирует векторный слой: baseline = скан, кандидат = ANN, один
 процесс, одна БД):
@@ -220,15 +236,17 @@ KB_BUFFER_POOL=4294967296 ./bin/brain/bench.go --inproc --candidate inproc-ann
 # через отдельный serve: ./bin/brain/bench.go --candidate http://127.0.0.1:8631
 ```
 
+**nprobe-дефолт = 2000** (решение #206, замерено на живом корпусе 313689
+векторов, 11 запросов golden-set): полный probe даёт порядок кандидатов,
+совпадающий с точным сканом (recall@5 vs baseline = 1.0) при p50 ~470ms
+(гейт <500ms); снижение до 256 ускоряет поиск (p50 ~260ms), но recall@5
+падает до ~0.82 — теряются точные top-5. Выбор: корректность сначала,
+тюнинг (256/512) — отдельной задачей, если понадобится p50 < 300ms.
 Конфиг (`etc/brain/config.yml`, секция `vector.ann`): `enabled`, `index`,
 `dim` (256), `nlist` (2000 — k-means cells, ~150 векторов на ячейку при
-313k), `nprobe` (2000 дефолт — полный probe: порядок кандидатов совпадает
-с точным сканом (recall@5 vs baseline = 1.0), p50 ~0.4s; уменьшение probe
-ускоряет поиск ценой recall — например 256 ячеек дают recall@5 ~0.9 при
-p50 ~0.28s). Идемпотентность: повторный `upsert` не
-дублирует (idCell — map), повторный `build` из той же БД даёт ту же
-мощность. Инкрементальность доказана: +100 leafs → upsert <1s без rebuild
-(#204, A/B-отчёт в issue).
+313k), `nprobe` (2000). Идемпотентность: повторный `upsert` не дублирует
+(idCell — map), повторный `build` из той же БД даёт ту же мощность.
+A/B-отчёты: #204 (кандидат), #206 (прод, nprobe 256 vs 2000).
 
 ## Disk mail/contacts import (#79)
 

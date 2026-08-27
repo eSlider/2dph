@@ -12,7 +12,9 @@
 //  1. mail-sync      bin/mail/sync.go        (skipped without creds)
 //  2. mail-import    bin/mail/import.go
 //  3. mail-index     bin/brain/index.go --skip --with-mail  (--with-mail)
-//  4. ann-upsert     bin/brain/ann.go upsert (SKIPs when vector.ann disabled)
+//  4. ann-build      bin/brain/ann.go ensure (maintains the ANN index: full
+//     build only when missing/stale, else incremental WAL-upsert; SKIPs when
+//     vector.ann disabled)
 //  5. chats          chat/sync telegram+linkedin   (--with-chats; each platform
 //     SKIPs on exit code 3 when its creds/session are missing)
 //  6. contact-brain  brain/import-contact.go       (--contacts PATH)
@@ -51,7 +53,7 @@ func run(args []string) int {
 	)
 	p := cliparse.New("stack-sync")
 	p.Description = "deterministic sync wave: mail/chats/contacts/git → brain + OO CRM"
-	p.String(&only, "", "only", "comma-separated subset: mail,mail-import,mail-index,ann-upsert,chats,contacts,git,crm")
+	p.String(&only, "", "only", "comma-separated subset: mail,mail-import,mail-index,ann-build,chats,contacts,git,crm")
 	p.String(&contacts, "", "contacts", "address-book file/dir for brain+CRM reconcile")
 	p.String(&gitRoot, "", "git-root", "dir of git repos to import into the brain")
 	p.Bool(&withChats, "", "with-chats", "include telegram/linkedin chat sync")
@@ -74,13 +76,13 @@ func run(args []string) int {
 	var failed int
 	fmt.Fprintln(os.Stderr, "stack-sync: wave start")
 
-	// Ladybug allows a single writer: local brain-serve/brain-search processes
-	// and the compose brain container (D25) all hold the same host kb.lbug.
-	// Quiesce them around write steps, restart after the wave.
-	writeSteps := map[string]bool{"contact-brain": true, "git-brain": true, "mail-index": true}
+	// Ladybug opens the DB exclusively: local brain-serve/brain-search
+	// processes and the compose brain container (D25) all hold the same host
+	// kb.lbug, and no second process can open it while they run. Quiesce them
+	// around every step that touches the DB (dbSteps), restart after the wave.
 	needWrite := false
 	for _, st := range steps {
-		if writeSteps[st.name] && included(st.name) && st.skip == "" && !dryRun {
+		if dbSteps[st.name] && included(st.name) && st.skip == "" && !dryRun {
 			needWrite = true
 		}
 	}
@@ -161,6 +163,12 @@ type step struct {
 	skip string
 }
 
+// dbSteps are the steps that open kb.lbug (write or read). Ladybug opens the
+// DB exclusively, so the brain serve/container must be quiesced around them
+// (see run): mail-index writes leafs, contact-brain/git-brain import leafs,
+// ann-build extracts embeddings for the ANN index.
+var dbSteps = map[string]bool{"contact-brain": true, "git-brain": true, "mail-index": true, "ann-build": true}
+
 // planSteps builds the fixed-order wave. Step names are the public --only
 // vocabulary; cmds are the actual tool invocations.
 func planSteps(withChats, withMail bool, contacts, gitRoot string) []step {
@@ -168,9 +176,11 @@ func planSteps(withChats, withMail bool, contacts, gitRoot string) []step {
 		{name: "mail", cmds: [][]string{{"bin/mail/sync.go"}}},
 		{name: "mail-import", cmds: [][]string{{"bin/mail/import.go", "--from-raw", "var/corpus/mail"}}},
 		{name: "mail-index", cmds: [][]string{{"bin/brain/index.go", "--skip", "--with-mail"}}, skip: skipUnless(withMail, "--with-mail")},
-		// ANN vector index (#204): incremental upsert of new leafs, WAL
-		// append — never a rebuild. SKIPs when vector.ann.enabled=false.
-		{name: "ann-upsert", cmds: [][]string{{"bin/brain/ann.go", "upsert"}}},
+		// ANN vector index (#204/#206): ensure = full build only when the
+		// index is missing or stale (>10% behind the DB leaf count), else
+		// incremental WAL-upsert of new leafs — never a rebuild per wave.
+		// SKIPs when vector.ann.enabled=false.
+		{name: "ann-build", cmds: [][]string{{"bin/brain/ann.go", "ensure"}}},
 		{name: "chats", cmds: [][]string{{"bin/chat/sync.go", "telegram"}, {"bin/chat/sync.go", "linkedin"}}, skip: skipUnless(withChats, "--with-chats")},
 		{name: "contact-brain", cmds: [][]string{contactStep("bin/brain/import-contact.go", contacts)}, skip: skipUnless(contacts != "", "--contacts")},
 		{name: "git-brain", cmds: [][]string{gitStep(gitRoot)}, skip: skipUnless(gitRoot != "", "--git-root")},

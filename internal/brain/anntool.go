@@ -16,7 +16,10 @@ import (
 
 // ANN index tooling (issue #204): build a fresh snapshot from the whole DB,
 // upsert only new leafs (incremental, append-only WAL — never a rebuild),
-// stats, and the HTTP search server used as bench --candidate.
+// ensure (the wave's ann-build step: build when missing/stale, upsert
+// otherwise), stats, and the HTTP search server used as bench --candidate.
+// Issue #206 rolls the index into production: enabled by default, the wave
+// maintains it incrementally, serve loads it at startup (warm start).
 
 type annFlags struct {
 	index, db string
@@ -228,6 +231,189 @@ func runAnnUpsert(args []string) int {
 	} else {
 		fmt.Printf("brain/ann: upsert added %d (index %d, WAL %d) extract %s + upsert %s — no rebuild\n",
 			added, idx.Len(), idx.Dirty(), extractDur.Round(time.Millisecond), upsertDur.Round(time.Millisecond))
+	}
+	return 0
+}
+
+// walCompactThreshold: WAL lines accumulated since the last snapshot before
+// the incremental path also rewrites the snapshot and truncates the WAL. The
+// WAL grows one line per upserted vector; without compaction the serve warm
+// start would replay an unbounded WAL. A compaction is a Save (snapshot
+// rewrite), never a rebuild — no k-means, cells stay as they are. Var so
+// tests can lower it without building a 90k-row fixture.
+var walCompactThreshold = 10000
+
+// annEnsurePlan decides what the wave's ann-build step must do: a full build
+// when there is no index or it is stale (missing >10% of the DB vectors —
+// e.g. built from a partial export or before a bulk import), otherwise the
+// incremental WAL-upsert. Steady-state growth (a few hundred new leafs on
+// 313k) stays incremental — the wave never rebuilds per wave.
+func annEnsurePlan(idxLen, rowsLen int) (build bool, reason string) {
+	if rowsLen <= 0 {
+		return false, "nothing to index"
+	}
+	if idxLen <= 0 {
+		return true, "no index"
+	}
+	if idxLen*10 < rowsLen*9 {
+		return true, fmt.Sprintf("index stale (%d vectors vs %d in DB)", idxLen, rowsLen)
+	}
+	return false, "incremental"
+}
+
+// runAnnEnsure is the wave's ann-build step (issue #206): maintain the ANN
+// index so it covers the DB — full build only when the index is missing or
+// stale, otherwise a WAL-upsert of new leafs (<1s per wave, never a rebuild).
+// SKIPs (exit 3) when vector.ann.enabled=false.
+func runAnnEnsure(args []string) int {
+	f, err := parseAnnFlags("ensure", args)
+	if err != nil {
+		return cli.Fail(err)
+	}
+	if !brainCfg().Vector.ANN.Enabled {
+		fmt.Fprintln(os.Stderr, "brain/ann ensure: vector.ann.enabled=false, index disabled (skip)")
+		return cli.ExitSkip
+	}
+	path := f.index
+	if path == "" {
+		path = filepath.Join(repoRoot(), "var", "state", "vector.ann")
+	}
+	idx, err := annOpenForBuild(path)
+	if err != nil {
+		// Corrupt snapshot: drop it and rebuild from scratch — the wave must
+		// never fail on a damaged index.
+		fmt.Fprintf(os.Stderr, "brain/ann ensure: open %s: %v (full rebuild)\n", path, err)
+		for _, p := range []string{path, path + ".wal"} {
+			if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "brain/ann ensure: remove %s: %v\n", p, err)
+				return 1
+			}
+		}
+		idx = ann.New(annParams())
+	}
+	if _, statErr := os.Stat(path); os.IsNotExist(statErr) && idx.Len() > 0 {
+		// WAL-only index (snapshot removed while the WAL survived): no durable
+		// base, replay grows forever — rebuild to restore the snapshot.
+		fmt.Fprintf(os.Stderr, "brain/ann ensure: snapshot %s missing, %d vectors WAL-only — full rebuild\n", path, idx.Len())
+		if err := os.Remove(path + ".wal"); err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "brain/ann ensure: remove %s: %v\n", path+".wal", err)
+			return 1
+		}
+		idx = ann.New(annParams())
+	}
+	defer idx.Close()
+
+	if err := openAnnToolDB(f.db); err != nil {
+		fmt.Fprintf(os.Stderr, "brain/ann ensure: %v\n", err)
+		return 1
+	}
+	t0 := time.Now()
+	rows, err := extractRows(f.limit)
+	closeBrain() // release kb.lbug before graph ops (single-writer rule)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/ann ensure: extract: %v\n", err)
+		return 1
+	}
+	extractDur := time.Since(t0)
+	if len(rows) == 0 {
+		fmt.Fprintln(os.Stderr, "brain/ann ensure: no leafs with embeddings to index")
+		return 0
+	}
+
+	build, reason := annEnsurePlan(idx.Len(), len(rows))
+	if build {
+		t1 := time.Now()
+		if err := idx.Build(rows); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/ann ensure: build: %v\n", err)
+			return 1
+		}
+		if err := idx.SaveTo(path); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/ann ensure: save: %v\n", err)
+			return 1
+		}
+		buildDur := time.Since(t1)
+		if f.jsonOut {
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"action": "build", "reason": reason, "indexed": idx.Len(),
+				"skipped": idx.Skipped(), "rebuild": true, "index": path,
+				"extract_s": extractDur.Seconds(), "build_s": buildDur.Seconds(),
+			})
+		} else {
+			fmt.Printf("brain/ann: ensure built %d vectors -> %s (%s) extract %s + build %s\n",
+				idx.Len(), path, reason, extractDur.Round(time.Millisecond), buildDur.Round(time.Millisecond))
+		}
+		return 0
+	}
+
+	// Incremental path: WAL-upsert only the genuinely new ids.
+	before := idx.Len()
+	newRows := rows[:0]
+	for _, r := range rows {
+		if !idx.Lookup(r.ID) {
+			newRows = append(newRows, r)
+		}
+	}
+	if len(newRows) == 0 {
+		if f.jsonOut {
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"action": "uptodate", "reason": reason, "indexed": idx.Len(),
+				"added": 0, "rebuild": false, "index": path,
+			})
+		} else {
+			fmt.Printf("brain/ann: ensure index up to date (%d vectors)\n", idx.Len())
+		}
+		return 0
+	}
+	t1 := time.Now()
+	if err := idx.Upsert(newRows); err != nil {
+		fmt.Fprintf(os.Stderr, "brain/ann ensure: upsert: %v\n", err)
+		return 1
+	}
+	upsertDur := time.Since(t1)
+	added := idx.Len() - before
+	if added == 0 {
+		// Only degenerate rows (zero-norm / short embeddings — unindexable by
+		// design, the scan skips them too) were "new": the WAL is untouched,
+		// the index covers everything addable — report up-to-date.
+		if f.jsonOut {
+			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"action": "uptodate", "reason": reason, "indexed": idx.Len(),
+				"added": 0, "skipped": idx.Skipped(), "rebuild": false, "index": path,
+			})
+		} else {
+			fmt.Printf("brain/ann: ensure index up to date (%d vectors, %d degenerate skipped)\n",
+				idx.Len(), idx.Skipped())
+		}
+		return 0
+	}
+	compacted := false
+	var saveDur time.Duration
+	if idx.Dirty() > walCompactThreshold {
+		// WAL got large: rewrite the snapshot and truncate the WAL so the
+		// serve warm start never replays an unbounded WAL. Not a rebuild.
+		t2 := time.Now()
+		if err := idx.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/ann ensure: compact save: %v\n", err)
+			return 1
+		}
+		saveDur = time.Since(t2)
+		compacted = true
+	}
+	if f.jsonOut {
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"action": "upsert", "reason": reason, "indexed": idx.Len(),
+			"added": added, "skipped": idx.Skipped(), "dirty_wal": idx.Dirty(),
+			"rebuild": false, "compacted": compacted, "index": path,
+			"extract_s": extractDur.Seconds(), "upsert_s": upsertDur.Seconds(),
+			"save_s": saveDur.Seconds(),
+		})
+	} else {
+		comp := ""
+		if compacted {
+			comp = fmt.Sprintf(" + compact %s", saveDur.Round(time.Millisecond))
+		}
+		fmt.Printf("brain/ann: ensure upsert added %d (index %d, WAL %d) extract %s + upsert %s%s — no rebuild\n",
+			added, idx.Len(), idx.Dirty(), extractDur.Round(time.Millisecond), upsertDur.Round(time.Millisecond), comp)
 	}
 	return 0
 }
