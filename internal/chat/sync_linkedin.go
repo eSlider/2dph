@@ -48,16 +48,11 @@ func RunSyncLinkedIn(args []string) int {
 		}
 	}
 
-	// Check session files first (no browser launch).
-	loginNeeded, err := checkLinkedInSession(userDataDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "chats: linkedin status check: %v\n", err)
-	}
-	if loginNeeded {
-		fmt.Fprintf(os.Stderr, "chats: LinkedIn session missing. Run:\n")
-		fmt.Fprintf(os.Stderr, "  chats sync linkedin --refresh\n")
-		fmt.Fprintf(os.Stderr, "or point LINKEDIN_USER_DATA_DIR at a valid session\n")
-		return 1
+	// Check session files first (no browser launch). A missing session is a
+	// SKIP for the wave (exit 3), not a failure.
+	if _, err := checkLinkedInSession(userDataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "chats: SKIP linkedin: %v (set LINKEDIN_USER_DATA_DIR or run `bin/chat/sync.go linkedin --refresh`)\n", err)
+		return cliparse.ExitSkip
 	}
 
 	src := NewLinkedInMCPSource(userDataDir)

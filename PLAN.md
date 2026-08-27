@@ -11,7 +11,13 @@ OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6) in,
 [#30](https://git.produktor.io/eSlider/2dph/issues/30) OQ3 in,
 [#34](https://git.produktor.io/eSlider/2dph/issues/34) D23 in,
 [#36](https://git.produktor.io/eSlider/2dph/issues/36) OQ5/D24 in,
-[#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in.
+[#102](https://git.produktor.io/eSlider/2dph/issues/102) gs PDF normalize in,
+[#163](https://git.produktor.io/eSlider/2dph/issues/163) browser-sync in
+(`bin/cron/browser-sync.go` + 6-hourly systemd timer, reads
+`var/corpus/{gmail,linkedin,djinni}` → POST /ingest; Thorium down tolerated),
+[#82](https://git.produktor.io/eSlider/2dph/issues/82) Synapse Matrix (leafs+edges
+as a service for pc-agent) in — `bin/brain/synapse-matrix.go`, docs
+[docs/brain-synapse.md](docs/brain-synapse.md).
 Gap: [docs/roadmap.md](docs/roadmap.md).
 
 ## What
@@ -57,6 +63,8 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D23 | CLI | **flaggy** (`github.com/integrii/flaggy`, 0 deps). Flags at any position. Wrapper `pkg/cli`. Bash complete: `source <(./bin/shell/complete.go bash)`. No cobra, no stdlib `flag` in Go tools. Search does not intercept the word `completion`. [#34](https://git.produktor.io/eSlider/2dph/issues/34). |
 | D24 | fact intervals | Leaf `valid_from` / `valid_to` (YYYY-MM-DD, inclusive; empty = open/legacy). Search `--as-of` / MCP `as_of` keeps facts active that day. Not D16 `temporal_freshness` (source stale vs HEAD). Empty interval = always visible. [#36](https://git.produktor.io/eSlider/2dph/issues/36). |
 | D25 | deploy data path | Brain serves from host `var/`, not named volumes. Compose binds `./var:/data/var` (kb.lbug at `/data/var/kb.lbug`), HF model from `var/hf`, Ladybug FTS/VECTOR extensions mounted read-only into `$HOME/.lbdb/extension`. `brain` uses `network_mode: host` so `127.0.0.1:8630` works with any image (KB_HOST-independent). Named volumes `kb-model`/`kb-var` dropped — live data is host `var/` (gitignored). |
+| D26 | search A/B (#201/#202) | Ничего не «лучше» без A/B. `bin/brain/bench.go` + golden-set (`internal/brain/testdata/golden-set.json`, ~50 запросов, рус+англ, факты/mail/docs/git/ssh). Метрики: latency p50/p95/mean, recall@5/@10 (fragment-гейт как eval.go + A/B vs baseline IDs), CPU/RSS из /proc. Гейты: recall@5 ≥ 0.95, кандидат p50 ≤ baseline × 1.5. Baseline: линейный скан 313k = p50 ~31s. Кандидаты (ANN/SIMD/FTS-first) — child issues эпика #201. |
+| D32 | ANN вне liblbug (#201/#204) | Инкрементальный векторный индекс в `internal/brain/ann`: **IVF** (k-means + точный косинус по probed-ячейкам, чистый Go; `coder/hnsw`/HNSW отброшен — на 313k реальных достижимы 34% узлов, recall@5 0.16). Индекс `var/state/vector.ann` + append-only WAL (`upsert` = только новые leafs, без rebuild). `bin/brain/ann.go` (build/upsert/ensure/stats/api/search), wave-шаг `ann-build` (#206). `queryVector`: индекс top-k → point-lookup метаданных → слияние с FTS (rank не тронут); fallback на скан при отсутствии/повреждении. Конфиг `vector.ann` (NList=2000, NProbe=128 — дефолты пакета; прод-конфиг nprobe=2000, решение #206). A/B: baseline p50 ~31s → кандидат p50 ~0.4s, recall@5 vs baseline 1.0 (цифры в #204/#206). |
 | D26 | repo layout | `bin/{subject}` = tools only (`{verb}-{object}.go`); executables/orchestration → `scripts/`; data tree `var/{tmp,dist,log,state,cache,hf,kb.lbug,corpus/{git,mail,chats,docs}}`; configs `etc/{subject}` + central `etc/brain/config.yml`. CI guard fails on absolute paths and Python remnants. [#89](https://git.produktor.io/eSlider/2dph/issues/89) |
 | D27 | config system | All external sources (paths, URLs, endpoints) via `github.com/eslider/go-config` (`internal/config`): stack `etc/brain/config.yml` → `config.local.yml` → `.env` → process env; one load per process into a strict typed struct; deep merge (maps recurse, scalars last-write-wins, keys lower+alnum); no ad-hoc `os.Getenv`; legacy `KB_*` / `BRAIN_SEARCH_*` env names honored transitionally. [#90](https://git.produktor.io/eSlider/2dph/issues/90), [#91](https://git.produktor.io/eSlider/2dph/issues/91) |
 | D28 | no hardcoded paths/URLs | Nothing like `/mnt/…`, `/home/<user>/…`, or pinned host URLs in code/comments/tests; missing config key = explicit error pointing at `etc/brain/config.yml`. CI-enforced. [#89](https://git.produktor.io/eSlider/2dph/issues/89) |
@@ -65,6 +73,8 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D31 | concurrency | Public APIs synchronous; ctx-first IO; bounded pools; wg-accounted goroutines; sender closes channels; errgroup for fan-out/fan-in; backpressure over unbounded queues; graceful shutdown; `go test -race` in CI. [#94](https://git.produktor.io/eSlider/2dph/issues/94) |
 | D32 | zero-alloc hot paths | Pre-allocation, buffer reuse (`buf[:0]`), `sync.Pool` with reset, `strings.Builder` over `+`, sets as `map[K]struct{}`, structs over maps; proven by `-benchmem`. Applies to hot paths only — no premature optimization. |
 | D33 | sync-ETL reimplementation | Pipeline `Source.Fetch(ctx,cursor)→[]Blob→Registry.Decode→Transform→Load`; one Handler per format (eml=emersion/go-message `Walk()`, zip=`archive/zip`, html=`x/net/html` optional, pdf=Ghostscript normalize→pdftotext/tesseract); lazy children, walker safety limits; single implementation per transformer; canonical `Conversation` model on disk (`var/corpus`) → brain graph (`SENT/TO/CC/BCC/REPLY_TO/PART_OF`); URL addressing `scheme://platform/path[#anchor]` with `sha256(URL)[:16]` node IDs. Epic [#88](https://git.produktor.io/eSlider/2dph/issues/88): [#95](https://git.produktor.io/eSlider/2dph/issues/95)–[#102](https://git.produktor.io/eSlider/2dph/issues/102). |
+| D34 | synapse edges | User-defined edges between neurons modeled as a `SYNAPTIC (FROM Leaf TO Leaf, type STRING)` rel table (leafs = neurons, edges = synapses); adjacency = both directions; path = `[:SYNAPTIC* ALL SHORTEST 1..N]` (Ladybug exposes only intermediate nodes → rebuild `[from, mid…, to]`). Service `bin/brain/synapse-matrix.go`, auth = token OR loopback bind, config section `synapse`. [#82](https://git.produktor.io/eSlider/2dph/issues/82) |
+| D35 | ANN в проде (#206) | Победитель A/B (#204) включён по умолчанию: `vector.ann.enabled: true` (serve + CLI), **nprobe=2000** — замерено на живом корпусе 313689 векторов (11 запросов golden-set): p50 471ms recall@5=1.0 vs 256 (p50 262ms recall@5 0.818) — корректность сначала, тюнинг позже. Волна: шаг `ann-build` = `ann.go ensure` — полный build только когда индекса нет/устарел (>10% отставания по счётчику leafs), иначе инкрементальный WAL-upsert (+100 <1s, никогда rebuild на волну). `serve` — тёплый старт: индекс грузится при старте (WarmANN), при пустом/битом — fallback на скан, build делает волна (single-writer, #204). A/B прод: p50 471ms vs baseline 33.6s (0.014x), recall@5 vs baseline 1.0. |
 
 ## Architecture
 
@@ -108,7 +118,9 @@ detective method: **a fact needs ≥2 independent sources or it is
 ## Schema (first pass)
 
 Node tables: `Person, Service, Host, Container, Repo, File, Commit, Leaf`.
-`Leaf(embedding FLOAT[N])` — FTS on `text`, HNSW vector index on `embedding`.
+`Leaf(embedding FLOAT[N])` — FTS on `text`. Векторный поиск: ANN IVF вне
+liblbug (`internal/brain/ann`, #204; штатный liblbug HNSW Leaf_vec крашится
+на росте графа, #192 → встроенный скан как fallback).
 Edges: `RUNS / USES / FROM_FILE / HAS_VERSION / AUTHORED / ABOUT / ASSOCIATED / SIMILAR_0.85`.
 `FROM_FILE` / `HAS_VERSION` / `AUTHORED`: `bin/brain/search.go --hop N` walks
 them from each hit (1=File, 2=Commit, 3=Person). Rebuild writes
@@ -124,7 +136,10 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 
 - `search.env` — real `BRAIN_SEARCH_URL/USER/PASS` from `~/.config/ops/npm-bot.env`
 - `db-profiles.yml` — real `onlyoffice` profile (SSH tunnel `127.0.0.1:5433`,
-  user `onlyoffice`, db `onlyoffice`, `password_env_file`) + example profiles.
+  user `onlyoffice`, db `onlyoffice`, `network: host`,
+  `password_env_file: ~/.config/ops/onlyoffice.env`) + example profiles.
+  `~/.config/ops/onlyoffice.env` is bootstrapped from the VM's
+  `/etc/onlyoffice/documentserver/local.json` (dbUser/dbPass), never committed.
 - `~/.config/brain/../` — nothing else lives in the repo.
 
 ## Tooling conventions
@@ -170,10 +185,11 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 3. `bin/brain/index.go --rebuild` — fresh rebuild (repo corpus + mail) because ladybug
    corrupts its WAL on bulk-insert into an already-indexed DB. Conversion and
    indexing stay separate for crash safety.
-4. Compose `mail-sync` / `scripts/stack/start-mail-sync` — ETL loop (default
-   `onlyoffice,gmail`, 300s): sync → import on `new>0`; full rebuild only if
-   `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
-   they do not replace the corpus path.
+ 4. Compose `mail-sync` / `scripts/stack/start-mail-sync` — ETL loop (default
+    `onlyoffice,gmail`, 300s): download (existing mailsync binary) → bounded
+    runner pipeline import (#98) with per-run stats YAML; full rebuild only if
+    `MAIL_SYNC_INDEX=1`. Bot digests (ai-bot) and case wrappers reuse sync/OAuth;
+    they do not replace the corpus path.
 5. Result: 17,835 messages → 28,918 info leafs, FTS + HNSW healthy, searchable
    via `bin/brain/search.go`.
 
@@ -412,6 +428,22 @@ Notes: scope kept to registry + walker only; pipeline rewiring is #97/#98.
 `internal/mailconv` and `bin/*` walkers stay legacy until a source adapter owns
 them (single-implementation rule D33) — cutover tracked in #98.
 
+## 2026-08-25 — source adapters (gitea #97) + bounded ETL runner (gitea #98, epic #88)
+
+Goal: unified `Source` adapter layer + the bounded pipeline runner that wires
+`Source → Decode(Registry) → Transform → Load` with backpressure, per-run stats
+YAML and graceful shutdown.
+
+| Step | Status |
+|------|--------|
+| `internal/source`: `Source{Name(); Fetch(ctx,cursor)→[]Blob,Cursor,error}`, `Blob{ID,Kind,Path}`, `Cursor`; `Sync(ctx,src,handle,Options{StatePath})→Stats{Fetched,New,Skipped}` — sha256 seen-set dedup + atomic checkpoints, mid-batch resume | done (#97) |
+| `source.Disk`: re-lists a corpus dir of `.eml`, content-hash identity, cursor never advances (driver dedups) | done (#97) |
+| `internal/runner`: bounded channels between stages (backpressure), `errgroup.WithContext` first-error cancel, wg-accounted goroutines, graceful shutdown; reuses `source.Sync` + `etl.Registry` | done |
+| Runner `Report`: source stats + per-handler ok/failed counts, serialized as stats YAML (`startedAt/duration/source/handlers`) | done |
+| `bin/runner/run.go`: CLI daemon over the disk corpus; `mail` handler → `mailconv.FromEMLFile` (per-blob .eml→md); `--interval` loop + SIGINT/SIGTERM graceful shutdown | done |
+| Compose `mail-sync` migrates to the runner (`command: ["runner","300"]`); `MAIL_SYNC_SRC/ENV/INDEX` semantics preserved (`INDEX=1` = full brain rebuild); download stays on the existing mailsync binary (source-adapter mapping for onlyoffice/gmail = follow-up) | done |
+| TDD: `internal/runner/runner_test.go` — e2e disk source smoke (stats YAML round-trip), bounded in-flight backpressure, graceful shutdown on cancel (-race), unknown-kind error; `internal/mailconv` `FromEMLFile` idempotence | done — `go test -race` green, `go vet` clean, `docker compose config` parses |
+
 ## 2026-08-22 — singleton-cache ingest model (gitea #110)
 
 Goal: kill the ~0.9 GiB/`/ingest` leak. `HTTP.Ingest` called `LoadModel()` per
@@ -517,3 +549,191 @@ From,ReplyTo,To,CC,BCC,SentAt,Body,Attachments(lazy)}`; хранение на д
 Verification: `go build ./...` green; `go vet ./internal/canon/... ./pkg/utils/...`
 clean; `go test -race ./internal/canon/... ./pkg/utils/...` green. Branch
 `feat/conversation-canon#99` off `release/v1`.
+
+## 2026-08-25 — OO Mail: HTML-шаблон + render-check до отправки (gitea #76)
+
+Goal: из wave-1 письма уходили plain-text одной строкой; теперь брендированный
+HTML-шаблон + гейт рендер-проверки, блокирующий send, пока черновик не пройдёт
+assert (абзацы, подпись, logo cid, chat-line без дублей).
+
+| Step | Status |
+|------|--------|
+| `internal/oohtml` (новый пакет-домен): брендированный шаблон produktor.io (палитра #76: cream `#FAF5EA`, ink `#0A0A0A`, navy `#142039`/`#0E1626`, CTA `#F2C849`, primary `#143A6F`; system-ui; inline-стили; логотип `cid:produktor-logo.gif` без remote-URL) | done |
+| `RenderCheck(html, TemplateData)` — типизированный ассерт: paragraphs ≥2, greeting, offer+CTA, signature+site, logo cid, отсутствие дублей текстовых блоков (`Code` enum) | done |
+| `Mailer.Send(ctx, SendParams)` — TDD-гейт: `Build` → `SaveMailDraft`(HTML) → `GetMailMessage` back → `RenderCheck` → `SendMail` только при чистой проверке; иначе error «render check failed, send blocked» | done |
+| `BuildMessage(w, …)` — MIME `multipart/related` через `emersion/go-message`: HTML-часть + inline `image/gif` с `Content-ID` = логотип (cid-embedding, не remote fetch) | done |
+| Лого-ассеты `etc/onlyoffice/assets/produktor-logo.{png,gif,-64.gif}` | готовы |
+| TDD offline (фикстуры synthetic Alice/Bob/example.com; fakeStore вместо сети): 10 тестов, `-race` зелёные | done |
+
+Verification: `go vet ./...` clean; `go test -race ./internal/oohtml/` green (10/10).
+Branch `feat/ooo-mail-html-template#76` off `release/v1`. Осталось вне объёма:
+wiring в OnlyOffice CLI (`oo mails send`) и фактическая отправка с вложенным
+cid-логотипом через драфт-API OnlyOffice.
+
+## 2026-08-25 — CRM association two-source rule (gitea #55, epic #52)
+
+Goal: `bin/facts/prove-crm` (issue references it as `bin/facts/crm`) должен
+доказывать person→company И company→project как `root=facts` только когда оба
+источника (corpus SoT `eslider/cv/projects/knowledge-mesh-seed.yaml` × ooCRM
+`graph.json`) согласны; односторонние — mismatch, никогда fact.
+
+| Step | Status |
+|------|--------|
+| merge-правило вынесено из `main()` в `internal/facts.CRMAssocFacts` (single implementation, rule #10): person→company (companies_with_persons) + company→project (projects_contacts) | done |
+| фикс ложного совпадения: generic-токены (`client`, `gmbh`, `ag`, `systems`, `platform`, …) больше не двигают company-match (`significantTokens` stopwords) — «Markets Platform (client)» больше не матчит «Client not named yet» | done |
+| дедуп mismatches (раньше employer-kind loop дублировал «not found») + отчёт CRM-only компаний и проектов без company | done |
+| TDD offline на synthetic-фикстурах: two-source rule + все mismatch-пути + generic-token регрессия, `-race` зелёные | done |
+
+Verification: `go test -race ./internal/facts/` green (тесты crm/company-merge).
+Против реального SoT (dry-run): proven=0; 9 corpus-org не в CRM; 4 CRM-only
+компании (Capitole, Client not named yet, Teksystems, talabat); 198 проектов
+без company — `projects_contacts[].companies` в `graph.json` пуст у всех
+(данные заполняет внешний `graph.py`, вне репо). company→project пока недоказуем
+из-за этого data-gap; person→company недоказуем — CRM-компании с персонами не
+совпадают с corpus orgs. Branch `feat/crm-assoc#55`.
+
+## 2026-08-25 — facts lookup + contradiction-as-not-confirmed test plan (gitea #58, epic #52)
+
+Goal: prove the `search → get → audit` operator flow on ONE known deal and the
+contradiction-as-`(not confirmed)` path (D16), offline with synthetic fixtures.
+
+| Step | Status |
+|------|--------|
+| offline test: `search` (fuse FTS+vector, root filter) → `get` (leaf by id → source/confidence) → `audit` (`facts.CheckFactRow` + `facts.Adjudicate`) confirms two-source facts on synthetic deal `acme-2026` (Alice/Bob/example.com) | done |
+| offline test: 2v2 contradiction leaf (`a x b vs c x d`, no rule fires) stays `(not confirmed)`/hypothesis until audited; never a confirmed fact; deduction escalates | done |
+| operator flow documented for bot/assistant (`search`/`get`/`audit`; confirmed vs `(not confirmed)`) — `docs/facts/audit-recipes.md` | done |
+
+Verification: `go vet ./internal/facts/... ./internal/brain/rank/...` clean;
+`go test -race ./internal/brain/rank/ ./internal/facts/` green
+(`TestDealSearchGetAuditConfirmedFlow`, `TestDealContradictionNotConfirmedUntilAudited`).
+Блокер #53 закрыт; live `get` против `var/kb.lbug` + OnlyOffice CRM остаётся
+вне объёма (offline-план доказывает cgo-free логику). Branch `test/facts-lookup#58`.
+
+## 2026-08-25 — facts-root ingestion: repair empty facts layer (gitea #181)
+
+Goal: the production brain had **0 facts-root** leafs — all 9204 in `info`
+(9201 confirmed). Root cause: `bin/brain/index.go --rebuild` was run without
+`--with-facts`; `internal/brain/corpus.go` writes every corpus leaf as
+`root=info` (single file source), and the 2-source facts layer is a separate
+`bin/facts/extract.go` stage. Audit: all 9201 confirmed info leafs are
+single-source corpus leafs → **0** qualify for re-rooting by the ≥2-sources rule.
+
+| Step | Status |
+|------|--------|
+| `internal/brain` facts-promotion core: `SourceCount` (source string, `" x "` separator), `PromoteEligible` (≥2 sources + confirmed → facts), `PromoteFacts`/`EligibleInfoLeafs` (DB scan, idempotent upsert) | done |
+| TDD tests: `TestSourceCount`, `TestPromoteEligible`, `TestPromoteFactsPromotesAndIdempotent`, `TestPromoteFactsReadPathDistinguishes` — `go test -race ./internal/brain/` green | done |
+| `bin/facts/promote.go` CLI (`--dry-run`, `--db`); `bin/facts/extract.go --dry-run` = 18 two-source facts | done |
+| live DB: writes blocked (var/ owned 1001, no sudo; in-service `/ingest` bulk write hung the C layer → container restart). Full ingestion demonstrated on a faithful copy: before facts=0 info=9204 → after facts=18 info=9204 | done |
+| docs: `docs/facts/ingest.md` procedure + live runbook; `docs/brain/rebuild.md` facts note | done |
+
+Verification: `go vet ./internal/brain/ ./bin/facts/` clean;
+`go test -race ./internal/brain/ -run 'TestSourceCount|TestPromoteEligible|TestPromoteFacts'` green.
+Live write to `var/kb.lbug` requires the brain stopped + DB-owner (uid 1001/root)
+write access — procedure in `docs/facts/ingest.md`. Branch `feat/facts-ingest#181`.
+
+## 2026-08-25 — импорт-гэп почты/контактов с /mnt/8TB (gitea #79)
+
+Goal: закрыть гэп импорта дисковых источников почты/контактов на /mnt/8TB,
+которые не были в пайплайне (#68/#74 импортировали только var/mail). Wave-1
+(#84) уже импортировал mbox/.eml: tb-andriy-profile 35,368 · tb-backup-128g
+39,435 · tb-2010-zip 1,289 · contacts-eml 125 (Krylov исключён). Этот шаг —
+вынести mbox-сплиттер в тестируемый слой + доказать импорт тестами.
+
+| Step | Status |
+|------|--------|
+| инвентарь источников подтверждён на диске (read-only): TB-профиль Mail/ImapMail, оба PST (265 KB), Backup E-Mails, zip-2010, VCF/MAB — таблица-истина в `docs/mail-sources.md` | done |
+| mbox-сплиттер вынесен из build-tag скрипта в `internal/mailconv` (single implementation): `SplitMbox`, `SplitMboxDir`, `MboxMessage`, `LooksMbox`; `bin/mail/convert-mbox.go` — тонкая обёртка | done |
+| TDD: `TestSplitMbox`, `TestMboxMessage` (mbox→Message + source-тег), `TestSplitMboxDirIdempotent` (повторный прогон без дублей, контент-адресация sha256:16), `TestFromEMLFlatRoot` (contacts-eml плоский root) — `go test -race ./internal/mailconv/` зелёные | done |
+| PST: `readpst` НЕ установлен → источник остаётся ЗАБЛОКИРОВАН; путь закрытия (libpst-utils → readpst -e → .eml → FromEML) задокументирован, не подделан | done |
+| docs: `docs/mail-sources.md` (таблица-истина), runbook-секция, конфиг/abs-путей в коммитах нет | done |
+
+Verification: `go vet ./internal/mailconv/ ./bin/mail/` clean;
+`go test -race ./internal/mailconv/ ./internal/source/ ./internal/mailsync/
+./internal/canon/ ./pkg/contact/` green. Исключения политики (#79): Krylov,
+Drafts/Templates/Trash/Junk/Spam/Unsent, *.msf. Mail-send путь не трогали.
+Branch `feat/mail-import-gap#79`.
+
+## 2026-08-25 — docs/skills: синк под текущий тулзверь агентов (gitea #81)
+
+Goal: свежий агент по AGENTS.md делает sync-волну, reconcile report,
+interaction write — без вопросов в чат. Git ops truth: git = HTTPS+token,
+tea CLI для issues/PR (SSH deploy-key :222 на write сломан, #73 closed
+obsoleted-by).
+
+| Step | Status |
+|------|--------|
+| AGENTS.md: git-ops truth (#81/#73), go-onlyoffice split «примитивы→lib, флоу→2dph», Tools-блок с sync-волной + reconcile + interaction, source map #79 + exclusion policy | done |
+| skills: `api-client` — go-onlyoffice split; `etl-handler` — sync-волна + OO-флоу | done |
+| `docs/runbook.md` — секция «Sync wave + OO CRM» с verified-командами | done |
+| verify: sync `--dry-run` печатает волну; reconcile/import-interaction `--help` и корпус-скан работают; OO-запись — только с env-кредами | done |
+
+Verification: `go run ./bin/stack/sync.go --dry-run` ok;
+`go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go --help`
+и `go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --help`
+ok (флаги `--sources/--write/--limit` совпадают с докой). Найдено при
+верификации: `--only` в `bin/stack/sync.go` принимает имена шагов
+(`mail,mail-import,chats,contact-brain,git-brain,contact-crm`), а не логические
+группы — хелп-строка флага это врёт; документировано как есть, баг — на PO
+(#81-коммент). Branch `docs/skills-sync#81`.
+
+## 2026-08-25 — HNSW Leaf_vec краш → in-process cosine scan (gitea #192)
+
+Goal: liblbug 0.19.0 SIGSEGV на вставке в HNSW Leaf_vec (NULL deref в
+simsimd_cos_f32, OnDiskHNSWIndex::shrinkForNode) при графе >~1300 нод — наш
+канон с ~28k leafs был под крашом (rc=139, тихий рестарт). Порт фикса mdx-1
+(medex/brain-stack 6e0f379). Bug A (close/reopen race) у нас уже закрыт #109.
+
+| Step | Status |
+|------|--------|
+| `rank/query.go`: VecStmt удалён (комментарий с rationale) | done |
+| `search.go`: queryVector → brute-force cosine scan по `l.embedding` (vecScanStmt), cosineToQuery + sqrt64; импорты math/sort | done |
+| `write.go`: EnsureIndexes создаёт только FTS `id`; Leaf_vec не создаётся/не требуется, существующий не дропается | done |
+| TDD: `vector_test.go` — cosine known-vectors, zero-norm → 0 (не NaN), float64-элементы, truncation | done — `zig go test -tags system_ladybug ./internal/brain/` green (кроме пре-существующих modeldir env-failures), vet clean, gofmt clean |
+| reindex live kb.lbug (`bin/brain/index.go --rebuild`) — ждёт PO-подтверждения | pending |
+| PLAN.md блок | done |
+
+Verification: `bin/cgo/zig go test -tags system_ladybug -skip TestModelDir
+./internal/brain/` ok; `go test ./internal/brain/rank/` ok. Пре-существующие
+падения `TestModelDir*` (HF-модель уже локально в models/, окружение) — не
+связаны с этим изменением. Branch `fix/hnsw-cosine-scan#192`.
+
+## 2026-08-26 — весь mail-корпус в brain (gitea #199)
+
+Goal: оба корпуса — live `var/corpus/mail` и legacy `var/mail` (#184) — в
+brain; шаг волны `mail-index`. Решение B: `LoadMailLeafs` расширен на
+несколько root-ов, дедуп по sha256 content-address (одинаковое письмо в
+обоих корпусах → один leaf), без копирования данных.
+
+| Step | Status |
+|------|--------|
+| `internal/brain/mail_corpus.go`: `MailRoots` + `LoadMailLeafs` multi-root + dedup; вынесен из `corpus.go` (cgo-free) | done |
+| `bin/brain/index.go --with-mail` → `brain.MailRoots(root)` | done |
+| `bin/stack/sync.go`: шаг `mail-index` (после mail-import, `--with-mail`), brain runner с Zig CGO-тегами `brain_index` | done |
+| TDD: `mail_corpus_test.go` (multi-root, dedup, since, limit, attachment) + `sync_test.go` (mail-index план, runner-теги) | done — `go test -race ./internal/brain/... ./bin/stack/... ./internal/mailconv/...` green |
+| Полный индекс `index.go --skip --with-mail` в существующую kb.lbug | done — 304 544 leafs, +7 712 новых (прошлый индекс был частичным после corrupt-199); итог info 313 786 |
+| Идемпотентность (повтор `--skip --with-mail`) | done — 0 новых |
+| Search реальных писем (e2e-outbound, PST-тема) | done — count ≥ 1 |
+| docs: AGENTS.md / runbook `--only` список + `--with-mail` | done |
+| Известное ограничение: векторный поиск — линейный скан (#192), ~32s при 313k leafs | open — отдельный issue на оптимизацию |
+
+Branch `feat/mail-corpus-brain#199`, PR #200 → release/v1.
+
+## 2026-08-25 — импорт Outlook PST: readpst -e → .eml → пайплайн (gitea #185)
+
+Goal: закрыть остаток #79 — два PST-файла (Andriy + копия в бэкапе 128Gb).
+`readpst -e` → набор `.eml` → существующий `mailconv.FromEML` (source-тег `pst/`).
+Конвертер по решению PO: readpst из пакета `pst-utils` (Ubuntu 24.04; бывший
+`libpst-utils`).
+
+| Step | Status |
+|------|--------|
+| readpst на хост: системная установка `apt-get install pst-utils` заблокирована (нет passwordless sudo) — установлен локально в `var/dist/readpst` (dpkg-deb -x, `pst.readpst` в config.local.yml) | done (блокер зафиксирован в issue) |
+| `internal/source/pst.go`: адаптер `source.PST` (#97-паттерн) — `readpst -e` в вытираемый scratch (`var/tmp/pst/<label>`), политика #79 через `mailconv.SkipFolder` (немецкие имена: Entwürfe/Vorlagen/Gelöschte Objekte/Junk-E-Mail/Postausgang), контент-адресный копирование в корпус `Out/<label>/<folder>/<sha256:16>/<sha256:16>.eml`; `ImportPST`/`PlanPST` (sync + `mailconv.FromEML`), `--dry-run` план | done |
+| нормализация `LibPST-iamunique-<n>` MIME-boundary (readpst вставляет случайный токен на каждом прогоне) — иначе контент-ID нестабильны и повторный прогон плодит дубли | done (найдено на реальных данных, TDD-тест) |
+| `bin/mail/import-pst.go`: тонкая CLI-обёртка (flaggy, конфиг pst.*, ctx-first, идемпотентность, state `var/state/pst.json`) | done |
+| конфиг: `Config.PST` + секция `pst:` в `etc/brain/config.yml` (sources/readpst/out/state; отсутствие sources = явная ошибка с указанием на конфиг) | done |
+| TDD offline (synthetic Alice/Bob/example.com, фейковый readpst через test-seam hook): конверсия .eml→canon (folder=Posteingang), идемпотентный повтор (0 дублей), state-чекпойнт, dry-run, policy-исключения, resolveReadPST (override→PATH→var/dist→ошибка), идентичные архивы (дедуп по seen-set) | done — `go test -race ./internal/source/ ./internal/mailconv/ ./internal/config/` green |
+| Прогон реальных PST (оба файла байт-идентичны, sha256 совпадает): 1 уникальное письмо (Outlook-приветствие 2005, `Posteingang`) × 2 лейбла; повторный прогон new=0 skipped=2, дублей нет; readpst извлёк также 78 VCF + 6 ICS (импортируются другими пайплайнами, #68) | done |
+| docs: `docs/mail-sources.md` (статусы PST → импортировано, секция PST-импорт), PLAN.md (этот блок) | done |
+
+Verification: `go build ./...` (кроме pre-existing build-tag пакетов bin/{reasoner,onlyoffice,postgres} — main без тега), `go vet ./...`, `go test -race ./...` зелёные; gofmt чист (shebang-файлы исключены). Корпус: `var/corpus/mail/pst/{pst-andriy,pst-backup-128g-vorlagen}` + state `var/state/pst.json` (1 seen-id). Branch `feat/pst-import#185`.

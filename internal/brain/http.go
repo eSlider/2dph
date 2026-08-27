@@ -128,7 +128,7 @@ func (HTTP) Stats(context.Context) ([]byte, error) {
 		byRoot[fmt.Sprint(vals[0])] = n
 		total += n
 	}
-	return json.Marshal(map[string]any{"total": total, "by_root": byRoot, "db": dbPath()})
+	return json.Marshal(map[string]any{"total": total, "by_root": byRoot, "db": dbPath(), "ann": annStatsJSON()})
 }
 
 func (HTTP) Audit(context.Context) ([]byte, error) {

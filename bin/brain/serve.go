@@ -31,5 +31,9 @@ func main() {
 	if err := brain.Ready(); err != nil {
 		log.Fatal(err)
 	}
+	// Warm start (#206): load the ANN index at startup (no rebuild) so the
+	// first query is already fast; missing/corrupt index → fallback to the
+	// linear scan until the wave's ann-build step builds it.
+	brain.WarmANN()
 	httpapi.Run(brain.HTTP{}, cfg)
 }

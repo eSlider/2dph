@@ -28,16 +28,19 @@ bin/facts/audit.go contradict                                       # adjudicate
 HTTP (`bin/brain/serve.go`, :8630): `/search?q=&as_of=&n=`, `/get?id=&body=1`,
 `/stats`, `/audit`, `/ingest`, `/openapi.json`, `/mcp`.
 
-Read-only Postgres (OnlyOffice, when the VM is up):
+Read-only Postgres (OnlyOffice, via SSH tunnel when the VM is up):
 
 ```bash
 scripts/db/ssh-tunnel                       # 127.0.0.1:5433 -> vm:5432
-scripts/db/psql-yq --profile onlyoffice -s document_asset   # columns
-scripts/db/psql-yq --profile onlyoffice -c 'SELECT ...'     # read-only query -> YAML
+scripts/db/psql-yq --profile onlyoffice -s doc_changes     # columns
+scripts/db/psql-yq --profile onlyoffice -c 'SELECT ...'    # read-only query -> YAML
 ```
 
-Profile lives in `~/.config/brain/db-profiles.yml` (secrets never in the repo).
-Blocked on #53.
+Profile lives in `~/.config/brain/db-profiles.yml` (0600, secrets never in the
+repo). Passwords come from `~/.config/ops/onlyoffice.env`, bootstrapped from the
+VM's `/etc/onlyoffice/documentserver/local.json` (dbUser/dbPass). The profile
+uses `network: host` so the docker psql client shares the host loopback and can
+reach the SSH tunnel on `127.0.0.1:5433`. (#53)
 
 ## Recipes
 
@@ -64,6 +67,11 @@ For one subject, compare `source` lists. If two facts assert the same claim with
 disjoint refs, or one contradicts the other, run `audit contradict`. A 2v2 with
 no authority/temporal rule stays `(not confirmed)`. Cross-check against the
 OnlyOffice CRM graph and the corpus SoT (`bin/facts/prove-crm --mismatches`).
+`bin/facts/prove-crm.go` proves person→company and company→project associations
+as `root=facts` only when BOTH sources agree (corpus org × ooCRM graph); every
+one-sided association is reported as a mismatch, never a fact. The merge rule
+lives in `internal/facts.CRMAssocFacts` (single implementation, covered by
+offline unit tests).
 
 ### 3. Stale status
 
@@ -94,8 +102,27 @@ support the claim are downgraded to `(not confirmed)` pending re-audit.
 
 ## Test plan (on one known deal)
 
-1. `search` a real dossier → `get` the top leaf → confirm `source` has two refs.
-2. Feed a deliberately conflicting claim pair to `audit contradict` → expect
-   `(not confirmed)` (no rule fires).
-3. Confirm the operator flow above is usable by the `cv/ai-bot` assistant (docs
-   + `/mcp`).
+Executable, offline proof in `internal/brain/rank/deal_flow_test.go` (issue #58):
+
+1. `search` → `get` → `audit` on one synthetic deal (`acme-2026`, fixture
+   Alice/Bob/example.com, no PII): `search` fuses FTS+vector and surfaces the
+   confirmed facts + info leafs; `get` resolves a leaf by id and exposes its
+   two-source `source`; `audit` (`facts.CheckFactRow` + `facts.Adjudicate`)
+   confirms the two-source facts. `TestDealSearchGetAuditConfirmedFlow`.
+2. Contradiction path: the fixture's `a x b vs c x d` leaf (2 yes × 2 no, no
+   authority/temporal rule fires) stays `(not confirmed)` until audited — never
+   reported as a confirmed fact, deduction escalates to the second source.
+   `TestDealContradictionNotConfirmedUntilAudited`.
+3. Operator flow is the same for the `cv/ai-bot` assistant: the MCP/HTTP tools
+   (`/search`, `/get`, `/audit`, `/stats`) expose exactly this
+   `search → get → audit` contract; an operator or agent reads `confirmed` only
+   from `root=facts` hits, treats `hypothesis`/`partial` as `(not confirmed)`,
+   and runs `audit contradict` to resolve a 2v2 claim (D16). Docs live here.
+
+The DB-backed `get` step (ladybug `lookupLeaf`/`HTTP.Get`) is exercised live
+against `var/kb.lbug`; the offline test stands a fixture leaf-store in for that
+fetch and runs the real cgo-free adjudication/lexicon code.
+
+```bash
+go test -race ./internal/brain/rank/ -run 'TestDeal'
+```

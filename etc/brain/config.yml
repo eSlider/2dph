@@ -50,3 +50,36 @@ reasoner:
   baseurl: "http://127.0.0.1:11435/v1"   # REASONER_BASE_URL
   model: "qwen3.5:9b"                    # REASONER_MODEL
   device: "cpu"                          # REASONER_DEVICE
+
+# Synapse Matrix service (bin/brain/synapse-matrix.go, issue #82): expose brain
+# leafs+edges for pc-agent. Legacy: KB_SYNAPSE_*.
+synapse:
+  host: "127.0.0.1"      # KB_SYNAPSE_HOST. 0.0.0.0 requires a token.
+  port: 8632             # KB_SYNAPSE_PORT.
+  token: ""              # KB_SYNAPSE_TOKEN. Empty = loopback bind only.
+
+# Outlook PST import (bin/mail/import-pst.go, issue #185): readpst -e → .eml →
+# the mailconv pipeline. The .pst file inventory is machine-local (source map
+# #79); put the real paths in config.local.yml, never in code. Missing
+# pst.sources = explicit error from the tool pointing at this file.
+pst:
+  sources: []            # e.g. [{label: pst-andriy, path: "<abs path, see #79>"}]
+  readpst: ""            # readpst binary override; empty = PATH, then var/dist/readpst
+  out: ""                # corpus root; empty = <root>/var/corpus/mail/pst
+  state: ""              # checkpoint; empty = <root>/var/state/pst.json
+
+# Vector ANN index (issues #204/#206): IVF (k-means + exact cosine over the
+# probed cells) outside liblbug (whose own HNSW crashes on grown graphs,
+# #192). Maintained by the wave's ann-build step (bin/brain/ann.go ensure:
+# full build when the index is missing/stale, incremental WAL-upsert
+# otherwise); serve/CLI search read it at startup (warm start) and fall back
+# to the linear scan when it is missing or corrupt. Params map to
+# internal/brain/ann.Defaults() when zero.
+vector:
+  ann:
+    enabled: true           # serve/CLI search via ANN (default, #206); disabled = linear scan
+    index: ""               # default <root>/var/state/vector.ann (+ .wal)
+    dim: 256                # embedding dimension (model2vec/potion-multilingual-128M)
+    nlist: 2000             # IVF k-means cells (~150 vectors per cell at 313k)
+    nprobe: 2000            # cells probed per search. Decision #206: 2000 = full probe, recall@5=1.0,
+                            # p50 ~0.4s; 256 = p50 ~0.28s but recall@5 ~0.9 — correctness first, tune later.

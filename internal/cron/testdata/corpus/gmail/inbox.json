@@ -1,0 +1,10 @@
+{
+  "source": "gmail",
+  "account": "alice@example.com",
+  "query": "from:example.com",
+  "count": 2,
+  "emails": [
+    {"sender": "bob@example.com", "subject": "Hello Alice", "thread_id": "#thread-f:111", "url": "https://mail.example.com/t/111"},
+    {"sender": "", "subject": "Weekly digest", "thread_id": "#thread-f:222", "url": "https://mail.example.com/t/222"}
+  ]
+}

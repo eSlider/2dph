@@ -1,0 +1,12 @@
+{
+  "source": "linkedin",
+  "name": "Alice Smith",
+  "headline": "Lead Go Engineer",
+  "location": "Berlin",
+  "experience": [
+    {"role": "Senior Go Engineer", "company": "Example Corp", "dates": "2020 - Present"}
+  ],
+  "education": [
+    {"institution": "Example University", "program": "Computer Science", "dates": "2010 - 2014"}
+  ]
+}

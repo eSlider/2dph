@@ -25,24 +25,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"github.com/eSlider/2dph/internal/facts"
 )
-
-type Org struct {
-	ID      string   `yaml:"id"`
-	Label   string   `yaml:"label"`
-	Kind    string   `yaml:"kind"`
-	Period  string   `yaml:"period"`
-	Aka     []string `yaml:"aka"`
-	Website string   `yaml:"website"`
-}
-
-type Mesh struct {
-	Orgs []Org `yaml:"orgs"`
-}
 
 func main() {
 	mesh := ""
@@ -78,23 +66,33 @@ func main() {
 		os.Exit(2)
 	}
 
-	raw, _ := os.ReadFile(mesh)
-	var m Mesh
-	if err := yaml.Unmarshal(raw, &m); err != nil {
-		fmt.Fprintln(os.Stderr, "mesh yaml:", err)
+	raw, err := os.ReadFile(mesh)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mesh:", err)
 		os.Exit(2)
 	}
+	orgs := facts.CorpusOrgs(string(raw))
+	ids := make([]string, 0, len(orgs))
+	for id := range orgs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
 
 	ooComps := ooList("companies")
 	ooPersons := ooList("persons")
+	compNames := make([]string, 0, len(ooComps))
+	for n := range ooComps {
+		compNames = append(compNames, n)
+	}
 
 	var cmds []string
 
 	// 1) Employer/own/client orgs -> companies (create if absent).
 	compIDs := map[string]string{}
-	for _, org := range m.Orgs {
-		if id, ok := matchCompany(org.Label, ooComps); ok {
-			compIDs[org.ID] = id
+	for _, id := range ids {
+		org := orgs[id]
+		if name, ok := facts.MatchCompanyName(org.Label, compNames); ok {
+			compIDs[id] = ooComps[lower(name)]
 			continue
 		}
 		c := "oo companies create --name " + shellq(org.Label)
@@ -102,21 +100,22 @@ func main() {
 			c += " --website " + shellq(org.Website)
 		}
 		cmds = append(cmds, c)
-		compIDs[org.ID] = "?" // filled after apply (script re-queries oo in --apply)
+		compIDs[id] = "?" // filled after apply (script re-queries oo in --apply)
 	}
 
 	// 2) Confirm each org against the brain (deterministic score gate).
 	fmt.Fprintf(os.Stderr, "# brain confirmation (score>=8 => confirmed)\n")
-	for _, org := range m.Orgs {
+	for _, id := range ids {
+		org := orgs[id]
 		sc := brainScore(brain, org.Label+" "+org.Kind)
-		fmt.Fprintf(os.Stderr, "  %-14s %-24s kind=%-14s brain=%.1f\n", org.ID, org.Label, org.Kind, sc)
+		fmt.Fprintf(os.Stderr, "  %-14s %-24s kind=%-14s brain=%.1f\n", id, org.Label, org.Kind, sc)
 	}
 
 	// 3) Andriy person -> current own org.
 	ownID := ""
-	for _, org := range m.Orgs {
-		if org.Kind == "own" {
-			ownID = org.ID
+	for _, id := range ids {
+		if orgs[id].Kind == "own" {
+			ownID = id
 			break
 		}
 	}
@@ -298,39 +297,3 @@ func runCmdOut(args ...string) string {
 }
 
 func lower(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
-
-// matchCompany returns the existing CRM company id whose name shares a
-// significant token (>=4 alpha chars) with the org label. Deterministic.
-func matchCompany(label string, ooComps map[string]string) (string, bool) {
-	toks := significantTokens(label)
-	if len(toks) == 0 {
-		return "", false
-	}
-	for name, id := range ooComps {
-		nl := lower(name)
-		for _, t := range toks {
-			if strings.Contains(nl, t) {
-				return id, true
-			}
-		}
-	}
-	return "", false
-}
-
-// significantTokens extracts words >=4 alpha chars from a label.
-func significantTokens(s string) []string {
-	var out []string
-	for _, w := range strings.Fields(s) {
-		w = strings.Trim(w, "()/.,'\"")
-		alpha := 0
-		for _, r := range w {
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				alpha++
-			}
-		}
-		if alpha >= 4 {
-			out = append(out, lower(w))
-		}
-	}
-	return out
-}

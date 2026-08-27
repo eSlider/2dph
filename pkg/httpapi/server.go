@@ -13,6 +13,7 @@ import (
 	"errors"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os/exec"
@@ -31,25 +32,57 @@ type API interface {
 	Stats(ctx context.Context) ([]byte, error)
 	Audit(ctx context.Context) ([]byte, error)
 	Ingest(ctx context.Context, body []byte) ([]byte, error)
+	// Synapse Matrix surface (issue #82): leafs + edges as a service.
+	Leafs(ctx context.Context, root, typ, source, text string, limit int) ([]byte, error)
+	Edges(ctx context.Context, id string) ([]byte, error)
+	AddEdge(ctx context.Context, body []byte) ([]byte, error)
+	Path(ctx context.Context, from, to string, max int) ([]byte, error)
 }
 
 type Server struct {
 	api       API
 	semaphore chan struct{}
+	token     string // when set, every route except /health requires Bearer auth.
 }
 
 const defaultPort = 8630
 
 var errUnimplemented = errors.New("not implemented")
 
-func NewServer(api API, workers int) http.Handler {
+func NewServer(api API, workers int) *Server {
 	return &Server{
 		api:       api,
 		semaphore: make(chan struct{}, workers),
 	}
 }
 
+// SetToken enables Bearer-token auth on every route except /health. A zero
+// token leaves the server open (safe when bound to 127.0.0.1 only).
+func (s *Server) SetToken(token string) *Server {
+	s.token = token
+	return s
+}
+
+// Auth check: when a token is configured, requests must carry
+// `Authorization: Bearer <token>`. /health stays open for orchestrators.
+func (s *Server) authorize(w http.ResponseWriter, r *http.Request) bool {
+	if s.token == "" || r.URL.Path == PathHealth {
+		return true
+	}
+	auth := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if len(auth) > len(prefix) && auth[:len(prefix)] == prefix &&
+		strings.TrimSpace(auth[len(prefix):]) == s.token {
+		return true
+	}
+	writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+	return false
+}
+
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.authorize(w, r) {
+		return
+	}
 	switch r.URL.Path {
 	case PathHealth:
 		writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
@@ -63,6 +96,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.handleJSON(w, r, s.api.Audit)
 	case PathIngest:
 		s.handleIngest(w, r)
+	case PathLeafs:
+		s.handleLeafs(w, r)
+	case PathEdges:
+		s.handleEdges(w, r)
+	case PathAddEdge:
+		s.handleAddEdge(w, r)
+	case PathPath:
+		s.handlePath(w, r)
 	case PathOpenAPI:
 		s.handleOpenAPI(w, r)
 	case PathMCP:
@@ -138,6 +179,80 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.release()
 	body, err := s.api.Ingest(r.Context(), raw)
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handleLeafs(w http.ResponseWriter, r *http.Request) {
+	root := strings.TrimSpace(r.URL.Query().Get("root"))
+	typ := strings.TrimSpace(r.URL.Query().Get("type"))
+	source := strings.TrimSpace(r.URL.Query().Get("source"))
+	text := strings.TrimSpace(r.URL.Query().Get("q"))
+	limit := 10
+	if raw := r.URL.Query().Get("n"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 100 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "n must be int 1..100"})
+			return
+		}
+		limit = n
+	}
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.Leafs(r.Context(), root, typ, source, text, limit)
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handleEdges(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id required"})
+		return
+	}
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.Edges(r.Context(), id)
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handleAddEdge(w http.ResponseWriter, r *http.Request) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body"})
+		return
+	}
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.AddEdge(r.Context(), raw)
+	writeAPI(w, body, err)
+}
+
+func (s *Server) handlePath(w http.ResponseWriter, r *http.Request) {
+	from := strings.TrimSpace(r.URL.Query().Get("from"))
+	to := strings.TrimSpace(r.URL.Query().Get("to"))
+	if from == "" || to == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "from and to required"})
+		return
+	}
+	max := 6
+	if raw := r.URL.Query().Get("max"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > 10 {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "max must be int 1..10"})
+			return
+		}
+		max = n
+	}
+	if !s.acquire(w, r) {
+		return
+	}
+	defer s.release()
+	body, err := s.api.Path(r.Context(), from, to, max)
 	writeAPI(w, body, err)
 }
 
@@ -231,6 +346,14 @@ func (ExecSearcher) Get(context.Context, string, bool) ([]byte, error) {
 }
 func (ExecSearcher) Stats(context.Context) ([]byte, error) { return nil, errUnimplemented }
 func (ExecSearcher) Audit(context.Context) ([]byte, error) { return nil, errUnimplemented }
+func (ExecSearcher) Leafs(context.Context, string, string, string, string, int) ([]byte, error) {
+	return nil, errUnimplemented
+}
+func (ExecSearcher) Edges(context.Context, string) ([]byte, error) { return nil, errUnimplemented }
+func (ExecSearcher) AddEdge(context.Context, []byte) ([]byte, error) { return nil, errUnimplemented }
+func (ExecSearcher) Path(context.Context, string, string, int) ([]byte, error) {
+	return nil, errUnimplemented
+}
 func (b ExecSearcher) Ingest(ctx context.Context, body []byte) ([]byte, error) {
 	if len(strings.TrimSpace(string(body))) == 0 {
 		return json.Marshal(map[string]any{
@@ -300,4 +423,55 @@ func Run(api API, c *config.Config) {
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// RunSynapse serves the Synapse Matrix surface (leafs/edges/path/addedge) for
+// pc-agent. Auth policy (#82): when a token is configured every route except
+// /health requires `Authorization: Bearer <token>`; without a token the server
+// refuses to bind anything but a loopback address, so the graph stays
+// machine-local unless explicitly guarded.
+func RunSynapse(api API, c *config.Config) {
+	if c == nil {
+		c = &config.Config{}
+	}
+	host := c.Synapse.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := c.Synapse.Port
+	if port <= 0 {
+		port = 8632
+	}
+	workers := c.Workers
+	if workers <= 0 {
+		workers = 4
+	}
+	token := strings.TrimSpace(c.Synapse.Token)
+	if token == "" && !isLoopbackHost(host) {
+		log.Fatalf("synapse: non-loopback bind %s requires a token (config synapse.token)", host)
+	}
+	if api == nil {
+		api = ExecSearcher{CmdPath: defaultSearchCmd(c.Root, c), Root: c.Root, Timeout: 60 * time.Second}
+	}
+	handler := NewServer(api, workers)
+	handler.SetToken(token)
+	addr := host + ":" + strconv.Itoa(port)
+	log.Printf("synapse: %s (workers=%d, auth=%v)", addr, workers, token != "")
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// isLoopbackHost reports whether host binds to a loopback interface only.
+func isLoopbackHost(host string) bool {
+	if host == "" {
+		return true
+	}
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
 }
