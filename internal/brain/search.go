@@ -30,6 +30,11 @@ const defaultPort = 17830
 const daemonPath = "/embed"
 const healthPath = "/health"
 
+// embedQueryFn is the query-embedding hook. Production always uses embedQuery;
+// offline tests stub it to stay model/daemon-free (issue #213: the ANN bench
+// gate runs on CI runners with no model in the HF cache).
+var embedQueryFn = embedQuery
+
 func runSearch(args []string) int {
 	opt, err := rank.ParseArgs(args)
 	if err != nil {
@@ -107,7 +112,7 @@ func runSearch(args []string) int {
 }
 
 func searchHits(query, root, repo string, limit int, asOf string, sortDate, sortDesc bool) ([]Hit, error) {
-	emb, err := embedQuery(query)
+	emb, err := embedQueryFn(query)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}

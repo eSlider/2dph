@@ -62,6 +62,18 @@ func annBenchLeafs(n int, queries []bench.GoldenEntry) []LeafInput {
 
 func TestBenchANNInprocCandidateGate(t *testing.T) {
 	queries := miniGolden(t, 12)
+	// Model-free: stub the query embed so the gate runs on CI runners with no
+	// model in the HF cache (write-path step precedes the HF-cache warm step).
+	// A fixed deterministic vector is enough — recall comes from FTS (leaf
+	// texts carry the query fragments); ANN parity is asserted by the vector
+	// path over the fixture index, not by real embeddings.
+	prevEmbed := embedQueryFn
+	embedQueryFn = func(_ string) ([]float64, error) {
+		vec := make([]float64, EmbedDim)
+		vec[0] = 0.5
+		return vec, nil
+	}
+	defer func() { embedQueryFn = prevEmbed }()
 	const perCluster = 50
 	n := len(queries) * perCluster
 	dbpath := annFixtureDBLeafs(t, annBenchLeafs(n, queries))
