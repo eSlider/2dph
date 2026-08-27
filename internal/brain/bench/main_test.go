@@ -106,11 +106,13 @@ func TestMainCandidatePass(t *testing.T) {
 	golden := writeGolden(t, []GoldenEntry{
 		{Query: "q", Topic: "docs", Lang: "en", Fragment: "BM25"},
 	})
-	// candidate fixture script returns the same IDs fast → recall+ratio pass.
-	// baseline gets a small real delay so the ratio is meaningful (near-zero
-	// latencies otherwise amplify process-spawn noise under -race).
-	fixture := filepath.Join("testdata", "fake-search.sh")
-	code := Main([]string{"--inproc", "--candidate", fixture, "--golden", golden}, fakeOpen(2*time.Millisecond))
+	// Candidate answers via HTTP with a small fixed delay; baseline is slower,
+	// so the p50 ratio is deterministic (candidate << baseline) and immune to
+	// process-spawn noise under -race (was: subprocess fixture flaked the
+	// 1.5x latency gate). Recall matches because both return the same IDs.
+	srv := candidateHTTPServer(t, time.Millisecond)
+	defer srv.Close()
+	code := Main([]string{"--inproc", "--candidate", srv.URL, "--golden", golden}, fakeOpen(20*time.Millisecond))
 	if code != 0 {
 		t.Fatalf("exit=%d, want 0", code)
 	}
