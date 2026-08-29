@@ -11,7 +11,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/eslider/go-config v0.4.0
-	github.com/eslider/go-onlyoffice v0.14.0
+	github.com/eslider/go-onlyoffice v0.15.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/integrii/flaggy v1.8.0
 	github.com/nyaruka/phonenumbers v1.8.1
@@ -24,7 +24,7 @@ require (
 
 replace (
 	github.com/eslider/go-config => git.produktor.io/eSlider/go-config v0.4.0
-	github.com/eslider/go-onlyoffice => git.produktor.io/eSlider/go-onlyoffice v0.14.0
+	github.com/eslider/go-onlyoffice => git.produktor.io/eSlider/go-onlyoffice v0.15.0
 )
 
 require (
