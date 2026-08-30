@@ -33,7 +33,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/ocr"
-	"gopkg.in/yaml.v3"
+	"github.com/eSlider/2dph/internal/research"
 )
 
 const (
@@ -123,89 +123,6 @@ func ValidateMetrics(m DocMetrics) error {
 		}
 	}
 	return nil
-}
-
-// ---------------------------------------------------------------------------
-// liteparse JSON -> YAML conversion
-
-// LitJSON mirrors the liteparse `lit parse --format json` envelope.
-type LitJSON struct {
-	TotalPages int       `json:"total_pages" yaml:"total_pages"`
-	Pages      []LitPage `json:"pages" yaml:"pages"`
-}
-
-// LitPage is one page: full-text dump, positional text_items and, with
-// --extract-blocks, semantic blocks.
-type LitPage struct {
-	Page      int        `json:"page" yaml:"page"`
-	Width     float64    `json:"width" yaml:"width"`
-	Height    float64    `json:"height" yaml:"height"`
-	Text      string     `json:"text" yaml:"text"`
-	TextItems []LitItem  `json:"text_items" yaml:"text_items"`
-	Blocks    []LitBlock `json:"blocks" yaml:"blocks"`
-}
-
-// LitItem is a positioned text fragment (bbox = x/y/width/height + font).
-type LitItem struct {
-	Text       string  `json:"text" yaml:"text"`
-	X          float64 `json:"x" yaml:"x"`
-	Y          float64 `json:"y" yaml:"y"`
-	Width      float64 `json:"width" yaml:"width"`
-	Height     float64 `json:"height" yaml:"height"`
-	FontName   string  `json:"font_name" yaml:"font_name"`
-	FontSize   float64 `json:"font_size" yaml:"font_size"`
-	Confidence float64 `json:"confidence" yaml:"confidence"`
-}
-
-// LitBBox is the positional box of a block. The current liteparse image
-// emits an object {x, y, width, height} (older builds used a 4-element
-// array).
-type LitBBox struct {
-	X      float64 `json:"x" yaml:"x"`
-	Y      float64 `json:"y" yaml:"y"`
-	Width  float64 `json:"width" yaml:"width"`
-	Height float64 `json:"height" yaml:"height"`
-}
-
-// LitBlock is one semantic block: heading/paragraph/table/list/...
-type LitBlock struct {
-	Kind  string   `json:"kind" yaml:"kind"`
-	Text  string   `json:"text" yaml:"text"`
-	Level *int     `json:"level,omitempty" yaml:"level,omitempty"` // heading level
-	BBox  *LitBBox `json:"bbox,omitempty" yaml:"bbox,omitempty"`
-}
-
-// JSONToYAML decodes liteparse JSON and re-encodes it as YAML.
-func JSONToYAML(src []byte) ([]byte, error) {
-	var l LitJSON
-	if err := json.Unmarshal(src, &l); err != nil {
-		return nil, fmt.Errorf("liteparse json: %w", err)
-	}
-	out, err := yaml.Marshal(&l)
-	if err != nil {
-		return nil, fmt.Errorf("yaml: %w", err)
-	}
-	return out, nil
-}
-
-// blockKinds counts blocks per kind across all pages.
-func (l LitJSON) blockKinds() map[string]int {
-	m := map[string]int{}
-	for _, p := range l.Pages {
-		for _, b := range p.Blocks {
-			m[b.Kind]++
-		}
-	}
-	return m
-}
-
-// bboxCount counts positioned text_items (structural evidence: geometry).
-func (l LitJSON) bboxCount() int {
-	n := 0
-	for _, p := range l.Pages {
-		n += len(p.TextItems)
-	}
-	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -329,19 +246,19 @@ func runOneDoc(ctx context.Context, r runner, outDir, pdfPath, samplesDir string
 		m.LitJSON = JSONResult{OK: false, Error: err.Error()}
 	} else if raw, err := os.ReadFile(jsonPath); err != nil {
 		m.LitJSON = JSONResult{OK: false, Error: err.Error()}
-	} else if y, err := JSONToYAML(raw); err != nil {
+	} else if y, err := research.JSONToYAML(raw); err != nil {
 		m.LitJSON = JSONResult{OK: false, Error: err.Error()}
 	} else if err := os.WriteFile(filepath.Join(outDir, name+".yaml"), y, 0o644); err != nil {
 		m.LitJSON = JSONResult{OK: false, Error: err.Error()}
 	} else {
-		var l LitJSON
+		var l research.LitJSON
 		_ = json.Unmarshal(raw, &l) // raw already validated by JSONToYAML
 		m.LitJSON = JSONResult{
 			OK:     true,
 			MS:     ms,
 			Bytes:  len(raw),
-			Blocks: l.blockKinds(),
-			BBoxes: l.bboxCount(),
+			Blocks: l.BlockKinds(),
+			BBoxes: l.BBoxCount(),
 		}
 	}
 	return m, nil

@@ -19,6 +19,11 @@ No laptop-absolute paths. Config lives in env files under `$HOME/.config/brain/`
 - Optional: ghostscript `gs` — normalizes export-locked / oversized PDFs before
   extraction (strips export-protection, shrinks; original preserved, artifact
   in `var/tmp`). Clean PDFs skip it, so the pdftotext fast path stays fast.
+- Optional: **liteparse service** (epic #219) — документы → структурированный
+  JSON/YAML. `docker compose up -d liteparse` (демон с warmup), вызов через
+  `docker compose exec -T liteparse lit parse ...` (~100ms против ~700ms
+  `docker run`). Инструменты: `bin/research/convert.go` (→ `var/struct-data/<sha256>.yml`,
+  idempotent), `bin/research/bench.go` (p95). Детали: `docs/research-liteparse.md`.
 
 ```bash
 eval "$(bin/cgo/zig env)"   # optional; bin/brain/{search,get,stats,eval,serve}.go auto-wrap zig

@@ -160,3 +160,76 @@ LitItem/LitBlock`, `gopkg.in/yaml.v3`; yaml-теги явные, иначе yaml
 JSON для сложных + геометрия `text_items` для структурного извлечения».
 Следующий шаг эпика #219 — PoC гибридного handler'а с `text_items`-реконструкцией
 таблиц на реальном корпусе.
+
+---
+
+## Оптимизация: start-as-service + struct-data ETL (2026-08-30)
+
+### Паттерн «демон-контейнер» подтверждён замерами
+
+`docker run` на каждый документ платит 0.5–0.7s за lifecycle контейнера
+(overlay mount + bridge network + `--rm`). Решение — **start-as-service**:
+один долгоживущий контейнер, вызов через `docker compose exec`.
+
+```bash
+docker compose up -d liteparse                 # warmup при старте (entrypoint)
+docker compose exec -T liteparse lit parse /v/<rel>.pdf --format json -o /data/work/<name>.json
+```
+
+Warmup в `scripts/liteparse-entrypoint.sh` гоняет `lit --version` + один parse
+при старте — pdfium/tesseract попадают в page cache, первый холодный OCR не
+платит 2.5s.
+
+**p95 (n=10, прогон 2026-08-30, docker 26.1.4):**
+
+| Паттерн | text md p95 | text json p95 | scan OCR p95 |
+|---|---|---|---|
+| `docker run` на документ (старый A/B) | ~700 ms | ~700 ms | ~2.7 s |
+| **демон-контейнер `docker compose exec`** | **118 ms** | **113 ms** | **312 ms** |
+
+Вывод: демон-паттерн ускоряет text-путь ~**6x**, OCR ~**8.7x**. OCR 312ms —
+это реальная работа tesseract (не overhead); 2.5s холодного OCR при первом
+запуске убирается warmup'ом.
+
+### struct-data ETL: документ → YAML по hash
+
+`bin/research/convert.go` — любой документ (pdf/docx/xlsx/pptx/odf/image) →
+литерparse JSON (тёплый сервис) → YAML в `var/struct-data/<sha256>.yml`,
+**content-addressed** (hash исходника). Идемпотентно: существующий непустой
+YAML → skip, повторный запуск не пере-оцифровывает.
+
+```bash
+./bin/research/convert.go <file-or-dir>...    # → var/struct-data/<hash>.yml
+./bin/research/convert.go --ocr <scan.pdf>    # OCR-путь
+./bin/research/convert.go --list              # список var/struct-data
+```
+
+Обёртка YAML (meta + document):
+
+```yaml
+meta:
+  hash: <sha256 исходника>
+  source_path: var/research/samples/invoice-text.pdf
+  extension: pdf
+  format: pdf
+  size: 922
+  created_at: ...      # mtime файла
+  modified_at: ...
+  digitized_at: ...    # время оцифровки
+  engine: liteparse
+  ocr: false
+  blocks: true
+  original_name: invoice-text.pdf
+document:              # литерparse структурированный JSON→YAML
+  total_pages: 1
+  pages: [page, width, height, text, text_items[], blocks[]]
+```
+
+Это и есть то, что нужно для CRM/факт-экстракции: metadata (даты, путь/URL,
+extension, формат, время оцифровки) + структура (`text_items` bbox, `blocks`).
+Следующий этап (вне данного исследования) — YAML association mapping в CRM /
+fact-audit: чтение `var/struct-data/*.yml` как источника фактов.
+
+Типы liteparse + демон-exec раннер вынесены в `internal/research` (single
+implementation): используются и `bin/research/ab.go`, и `convert.go`, и
+`bench.go`. Инструмент замеров: `bin/research/bench.go` (warmup + p50/p95).
