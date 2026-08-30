@@ -229,6 +229,36 @@ services:
       OCR_ENGINE: paddle
     command: ["python", "-c", "print('OCR_ENGINE=paddle; install paddleocr on PATH')"]
 
+  # liteparse as a long-lived document→structured-JSON service (epic #219).
+  # Start once, then call per document via `docker compose exec liteparse
+  # lit parse ...` — docker exec on a warm container is ~40ms vs ~0.7s for
+  # `docker run` per document (see docs/research-liteparse.md). The official
+  # image ships LibreOffice + tesseract + pdfium, so docx/xlsx/pptx and scans
+  # convert in-place. Entrypoint runs a warmup pass (libs into page cache).
+  #   docker compose up -d liteparse
+  #   docker compose exec liteparse lit parse /v/<rel>.pdf --format json -o /data/work/<name>.json
+  liteparse:
+    image: ghcr.io/eslider/2dph:liteparse
+    build:
+      context: .
+      dockerfile: Dockerfile.liteparse
+      cache_from:
+        - ghcr.io/eslider/2dph:liteparse-cache
+    environment:
+      PDFIUM_LIB_PATH: /usr/local/lib/pdfium-rs/chromium_7897/pdfium-linux-x64/lib
+      LD_LIBRARY_PATH: /usr/local/lib/pdfium-rs/chromium_7897/pdfium-linux-x64/lib
+    volumes:
+      - ./var:/v
+      - ./var/research/samples:/s:ro
+      - /tmp:/tmp:rw
+    entrypoint: ["/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "lit", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
 volumes:
   reasoner-ollama:
   picoclaw-home:

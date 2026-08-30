@@ -1,0 +1,16 @@
+# liteparse service image — cache-friendly wrapper around the official image.
+#
+# The upstream image (ghcr.io/run-llama/liteparse:latest) already ships the
+# full stack: LibreOffice (docx/xlsx/pptx conversion), tesseract (OCR), pdfium.
+# We add only a warmup entrypoint; the COPY layer is the only re-buildable
+# layer, so upstream changes never force a slow rebuild (cache_from in compose).
+FROM ghcr.io/run-llama/liteparse:latest
+
+# Same path the upstream full.Dockerfile installs pdfium to.
+ENV PDFIUM_LIB_PATH=/usr/local/lib/pdfium-rs/chromium_7897/pdfium-linux-x64/lib
+ENV LD_LIBRARY_PATH=${PDFIUM_LIB_PATH}
+
+COPY scripts/liteparse-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]

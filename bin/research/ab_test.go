@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/ocr"
+	"github.com/eSlider/2dph/internal/research"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,9 +44,9 @@ const fixtureJSON = `{
 }`
 
 func TestJSONToYAMLConvertsBlocks(t *testing.T) {
-	y, err := JSONToYAML([]byte(fixtureJSON))
+	y, err := research.JSONToYAML([]byte(fixtureJSON))
 	if err != nil {
-		t.Fatalf("JSONToYAML: %v", err)
+		t.Fatalf("research.JSONToYAML: %v", err)
 	}
 	var m map[string]any
 	if err := yaml.Unmarshal(y, &m); err != nil {
@@ -94,22 +95,22 @@ func num(v any) float64 {
 }
 
 func TestJSONToYAMLRejectsInvalid(t *testing.T) {
-	if _, err := JSONToYAML([]byte("{not json")); err == nil {
-		t.Fatal("JSONToYAML accepted invalid JSON")
+	if _, err := research.JSONToYAML([]byte("{not json")); err == nil {
+		t.Fatal("research.JSONToYAML accepted invalid JSON")
 	}
 }
 
 func TestBlockKindsAndBBoxes(t *testing.T) {
-	var l LitJSON
+	var l research.LitJSON
 	if err := json.Unmarshal([]byte(fixtureJSON), &l); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	kinds := l.blockKinds()
+	kinds := l.BlockKinds()
 	if kinds["heading"] != 1 || kinds["paragraph"] != 1 || kinds["table"] != 1 {
-		t.Errorf("blockKinds = %#v, want heading=1 paragraph=1 table=1", kinds)
+		t.Errorf("BlockKinds = %#v, want heading=1 paragraph=1 table=1", kinds)
 	}
-	if n := l.bboxCount(); n != 2 {
-		t.Errorf("bboxCount = %d, want 2 text_items", n)
+	if n := l.BBoxCount(); n != 2 {
+		t.Errorf("BBoxCount = %d, want 2 text_items", n)
 	}
 }
 
