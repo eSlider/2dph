@@ -312,3 +312,122 @@ func escPDFText(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `(`, `\(`, `)`, `\)`)
 	return r.Replace(s)
 }
+
+// slicesContain reports whether ss contains want (exact).
+func slicesContain(ss []string, want string) bool {
+	for _, s := range ss {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+// billPage reproduces the text_items of a real bordered invoice
+// (var/research/samples/invoice-bill.pdf): two kind:table blocks with bbox
+// (Items + Totals) and wrapped cell lines ("Consulting"/"services") that must
+// merge back into one cell. Proves bbox-scoped reconstruction + wrap merge
+// without docker.
+func billPage() research.LitPage {
+	mk := func(text string, x, y, w, h, fs float64) research.LitItem {
+		return research.LitItem{Text: text, X: x, Y: y, Width: w, Height: h,
+			FontName: "Helvetica", FontSize: fs, Confidence: 1}
+	}
+	billBox := research.LitBBox{X: 72.1, Y: 255.3, Width: 366.8, Height: 106.3}
+	totalsBox := research.LitBBox{X: 72.0, Y: 394.85, Width: 252.1, Height: 64.5}
+	return research.LitPage{
+		Page: 1, Width: 612, Height: 792,
+		Blocks: []research.LitBlock{
+			{Kind: "table", BBox: &billBox},
+			{Kind: "table", BBox: &totalsBox},
+		},
+		TextItems: []research.LitItem{
+			mk("INVOICE No. INV-2026-0042", 72.1, 143.93, 200, 18, 16),
+			// Items table (within billBox bbox)
+			mk("n", 151.3, 255.74, 8, 12, 12),
+			mk("#", 72.1, 255.58, 6, 12, 12),
+			mk("Qty", 230.5, 255.30, 18, 12, 12),
+			mk("Unit Price", 309.7, 255.37, 60, 12, 12),
+			mk("Amount", 388.8, 255.45, 45, 12, 12),
+			mk("1", 72.1, 273.60, 6, 12, 12),
+			mk("Consulting", 151.3, 273.38, 70, 12, 12),
+			mk("services", 151.3, 287.67, 45, 12, 12),
+			mk("10", 230.5, 273.60, 12, 12, 12),
+			mk("120.00", 309.7, 273.60, 35, 12, 12),
+			mk("1200.00", 388.9, 273.60, 45, 12, 12),
+			mk("2", 72.1, 305.20, 6, 12, 12),
+			mk("Software", 151.3, 304.98, 55, 12, 12),
+			mk("license", 151.3, 318.98, 40, 12, 12),
+			mk("2", 230.5, 305.20, 12, 12, 12),
+			mk("450.00", 309.7, 305.20, 35, 12, 12),
+			mk("900.00", 388.9, 305.20, 45, 12, 12),
+			mk("3", 72.1, 336.80, 6, 12, 12),
+			mk("Support", 151.3, 336.80, 50, 12, 12),
+			mk("(annual)", 151.3, 350.58, 50, 12, 12),
+			mk("1", 230.5, 336.80, 12, 12, 12),
+			mk("300.00", 309.7, 336.80, 35, 12, 12),
+			mk("300.00", 388.9, 336.80, 45, 12, 12),
+			// Totals table (within totalsBox bbox)
+			mk("Item", 72.1, 394.85, 60, 12, 12),
+			mk("Amount", 270.0, 394.85, 45, 12, 12),
+			mk("Subtotal", 72.1, 412.88, 55, 12, 12),
+			mk("2400.00", 270.1, 413.10, 45, 12, 12),
+			mk("VAT (19%)", 72.0, 430.48, 60, 12, 12),
+			mk("456.00", 270.1, 430.70, 45, 12, 12),
+			mk("Total Due", 72.1, 448.18, 55, 12, 12),
+			mk("2856.00", 270.1, 448.40, 45, 12, 12),
+			// note (single cell, outside both bboxes)
+			mk("Payment terms: net 14 days.", 72.1, 472.98, 220, 12, 12),
+		},
+	}
+}
+
+// TestReconstructBillTablesBBox proves bbox-scoped reconstruction of two
+// bordered tables plus wrap-merge of split cell lines — the regression for
+// the bill sample (#223 follow-up).
+func TestReconstructBillTablesBBox(t *testing.T) {
+	tables := ReconstructTables([]research.LitPage{billPage()}, URLBase{})
+	if len(tables) != 2 {
+		t.Fatalf("tables = %d, want 2 (Items + Totals)", len(tables))
+	}
+	// Items: header + 3 data rows, wrapped words merged.
+	items := tables[0]
+	if len(items.Rows) != 4 {
+		t.Fatalf("Items rows = %d, want 4", len(items.Rows))
+	}
+	header := rowTexts(items.Rows[0])
+	for _, want := range []string{"#", "Qty", "Unit Price", "Amount"} {
+		if !slicesContain(header, want) {
+			t.Errorf("Items header %v missing %q", header, want)
+		}
+	}
+	if got := rowTexts(items.Rows[1]); !slicesEqual(got, []string{"1", "Consulting services", "10", "120.00", "1200.00"}) {
+		t.Errorf("row 1 = %v, want wrap-merged [1 Consulting services 10 120.00 1200.00]", got)
+	}
+	// Totals: 4 rows, exact cells.
+	totals := tables[1]
+	if len(totals.Rows) != 4 {
+		t.Fatalf("Totals rows = %d, want 4", len(totals.Rows))
+	}
+	wantRows := [][]string{
+		{"Item", "Amount"},
+		{"Subtotal", "2400.00"},
+		{"VAT (19%)", "456.00"},
+		{"Total Due", "2856.00"},
+	}
+	for i, w := range wantRows {
+		if got := rowTexts(totals.Rows[i]); !slicesEqual(got, w) {
+			t.Errorf("Totals row %d = %v, want %v", i, got, w)
+		}
+	}
+	// note must not leak into any table
+	for _, tb := range tables {
+		for _, r := range tb.Rows {
+			for _, c := range r.Cells {
+				if strings.Contains(c.Text, "Payment") {
+					t.Errorf("note leaked into table: %q", c.Text)
+				}
+			}
+		}
+	}
+}

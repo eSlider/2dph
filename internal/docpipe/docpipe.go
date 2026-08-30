@@ -221,11 +221,30 @@ func containerPath(path string) string {
 // cells within a row are sorted by x, and a table is a maximal run of
 // consecutive multi-cell rows (≥ 2 rows). Single-cell lines (titles, notes)
 // never join a table. Nodes get #100-style URLs under base.
+//
+// When liteparse reports kind:table blocks with a bbox (bordered tables —
+// real invoices/contracts), each table is reconstructed from the text_items
+// falling inside its bbox only: this separates adjacent tables and keeps
+// wrapped header/cell lines from leaking into neighbouring rows. Fallback:
+// the whole page, split on multi-cell runs.
 func ReconstructTables(pages []research.LitPage, base URLBase) []Table {
 	base = base.normalized()
 	var tables []Table
 	for pi, p := range pages {
 		if len(p.TextItems) == 0 {
+			continue
+		}
+		bboxTables := pageBBoxTables(p)
+		if len(bboxTables) > 0 {
+			for bi, bt := range bboxTables {
+				items := itemsInBBox(p.TextItems, bt)
+				rows := bucketRows(items, yThreshold(items))
+				rows = mergeWrappedRows(rows)
+				tab := rowsToTable(base, pi, bi, rows)
+				if tab != nil {
+					tables = append(tables, *tab)
+				}
+			}
 			continue
 		}
 		rows := bucketRows(p.TextItems, yThreshold(p.TextItems))
@@ -236,16 +255,10 @@ func ReconstructTables(pages []research.LitPage, base URLBase) []Table {
 				cur = nil
 				return
 			}
-			url := nodeURL(base, pi, tableIdx)
-			tr := make([]Row, len(cur))
-			for j, r := range cur {
-				tr[j] = r
-				tr[j].URL = nodeURL(base, pi, tableIdx) + "/tr[" + itoa(j) + "]"
-				for m := range tr[j].Cells {
-					tr[j].Cells[m].URL = tr[j].URL + "/td[" + itoa(m) + "]"
-				}
+			tab := rowsToTable(base, pi, tableIdx, cur)
+			if tab != nil {
+				tables = append(tables, *tab)
 			}
-			tables = append(tables, Table{URL: url, Page: pi, Rows: tr})
 			tableIdx++
 			cur = nil
 		}
@@ -259,6 +272,90 @@ func ReconstructTables(pages []research.LitPage, base URLBase) []Table {
 		flush()
 	}
 	return tables
+}
+
+// pageBBoxTables returns kind:table blocks that carry a bbox (bordered
+// tables detected by liteparse's layout classifier).
+func pageBBoxTables(p research.LitPage) []research.LitBlock {
+	var out []research.LitBlock
+	for _, b := range p.Blocks {
+		if b.Kind == "table" && b.BBox != nil {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// itemsInBBox filters text_items whose top-left corner falls inside the
+// table block's bounding box.
+func itemsInBBox(items []research.LitItem, b research.LitBlock) []research.LitItem {
+	out := make([]research.LitItem, 0, len(items))
+	if b.BBox == nil {
+		return items
+	}
+	bb := b.BBox
+	for _, it := range items {
+		if it.X >= bb.X && it.X < bb.X+bb.Width &&
+			it.Y >= bb.Y && it.Y < bb.Y+bb.Height {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// mergeWrappedRows merges consecutive rows that are actually a wrapped cell
+// line: only a row with fewer cells than the previous one whose first cell
+// falls inside the previous row's first cell band gets merged into it.
+// Handles LibreOffice/Pandoc line wraps inside table cells ("Consulting" /
+// "services") without collapsing genuine multi-column data rows.
+func mergeWrappedRows(rows []Row) []Row {
+	if len(rows) == 0 {
+		return rows
+	}
+	out := []Row{rows[0]}
+	for i := 1; i < len(rows); i++ {
+		prev := &out[len(out)-1]
+		cur := rows[i]
+		if len(cur.Cells) == 1 && len(prev.Cells) > 1 && len(prev.Cells) > 0 {
+			// single-cell wrap line: merge into the column band it continues.
+			c0 := cur.Cells[0]
+			for ci := range prev.Cells {
+				c := &prev.Cells[ci]
+				if c0.X >= c.X && c0.X < c.X+c.W {
+					c.Text += " " + c0.Text
+					goto merged
+				}
+			}
+		}
+		out = append(out, cur)
+	merged:
+	}
+	return out
+}
+
+// rowsToTable builds a Table from a run of rows, or nil when too short.
+func rowsToTable(base URLBase, pageIdx, tableIdx int, rows []Row) *Table {
+	// drop single-cell padding rows at the top (header-only "Descriptio n"
+	// split) and the bottom (wrapped note) — keep the multi-cell core.
+	var core []Row
+	for _, r := range rows {
+		if len(r.Cells) >= 2 {
+			core = append(core, r)
+		}
+	}
+	if len(core) < 2 {
+		return nil
+	}
+	url := nodeURL(base, pageIdx, tableIdx)
+	tr := make([]Row, len(core))
+	for j, r := range core {
+		tr[j] = r
+		tr[j].URL = nodeURL(base, pageIdx, tableIdx) + "/tr[" + itoa(j) + "]"
+		for m := range tr[j].Cells {
+			tr[j].Cells[m].URL = tr[j].URL + "/td[" + itoa(m) + "]"
+		}
+	}
+	return &Table{URL: url, Page: pageIdx, Rows: tr}
 }
 
 // bucketRows groups items into visual lines: items whose y differs from the

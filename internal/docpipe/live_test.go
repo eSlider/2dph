@@ -100,6 +100,68 @@ func TestLiveInvoiceTextHybrid(t *testing.T) {
 	}
 }
 
+// TestLiveBillTables verifies the handler on a real bill PDF with actual
+// bordered tables (invoice-bill.pdf): liteparse detects kind:table blocks and
+// ReconstructTables rebuilds both the Items table and the Totals table from
+// text_items geometry. Skipped when the sample/service is unavailable.
+func TestLiveBillTables(t *testing.T) {
+	root := repoRoot(t)
+	t.Chdir(root)
+	if !research.DockerOK() {
+		t.Skip("docker not on PATH")
+	}
+	probe := exec.Command("docker", "compose", "exec", "-T", "liteparse", "lit", "--version")
+	if err := probe.Run(); err != nil {
+		t.Skipf("liteparse service not reachable: %v", err)
+	}
+	sample := filepath.Join("var", "research", "samples", "invoice-bill.pdf")
+	if _, err := os.Stat(sample); err != nil {
+		t.Skipf("sample %s not present: %v", sample, err)
+	}
+
+	res, err := Handle(context.Background(), sample, Opts{ForceLiteparse: true})
+	if err != nil {
+		t.Fatalf("liteparse path: %v", err)
+	}
+	t.Logf("liteparse: method=%s ms=%.1f tables=%d", res.Method, res.LiteparseMs, len(res.Tables))
+	if res.Method != MethodLiteparse {
+		t.Fatalf("method = %s, want liteparse", res.Method)
+	}
+	if len(res.Tables) < 2 {
+		t.Fatalf("tables = %d, want >= 2 (Items + Totals)", len(res.Tables))
+	}
+	// Items table: header row #/Description/Qty/Unit Price/Amount + 3 rows.
+	items := res.Tables[0]
+	if len(items.Rows) < 4 {
+		t.Fatalf("Items rows = %d, want >= 4", len(items.Rows))
+	}
+	header := rowTexts(items.Rows[0])
+	for _, want := range []string{"#", "Qty", "Amount"} {
+		if !slicesContain(header, want) {
+			t.Errorf("Items header %v missing %q", header, want)
+		}
+	}
+	// Totals table: Subtotal/VAT/Total Due with amounts.
+	totals := res.Tables[len(res.Tables)-1]
+	totalTexts := tableTexts(totals)
+	for _, want := range []string{"Subtotal", "VAT (19%)", "Total Due", "2856.00"} {
+		if !slicesContain(totalTexts, want) {
+			t.Errorf("Totals table missing %q (got %v)", want, totalTexts)
+		}
+	}
+	if len(res.YAML) == 0 {
+		t.Error("YAML empty on liteparse path")
+	}
+}
+
+func tableTexts(t Table) []string {
+	var out []string
+	for _, r := range t.Rows {
+		out = append(out, rowTexts(r)...)
+	}
+	return out
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		return s[:i]
