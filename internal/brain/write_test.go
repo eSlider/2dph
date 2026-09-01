@@ -5,10 +5,13 @@ package brain
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 
@@ -289,5 +292,169 @@ func TestParseIngestLeafsContractFields(t *testing.T) {
 	}
 	if leafs[0].ExternalID != "msg-7" || leafs[0].ObservedAt != "2026-08-31T09:15:00Z" {
 		t.Fatalf("contract fields lost: %+v", leafs[0])
+	}
+}
+
+// openTestDB открывает свежую БД со схемой в t.TempDir().
+func openTestDB(t *testing.T) (*lbug.Database, *lbug.Connection) {
+	t.Helper()
+	dir := t.TempDir()
+	db, conn, err := OpenWritable(filepath.Join(dir, "kb.lbug"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := InitSchema(conn); err != nil {
+		t.Fatal(err)
+	}
+	return db, conn
+}
+
+func dbLeafCount(t *testing.T, conn *lbug.Connection) int {
+	t.Helper()
+	res, err := conn.Query("MATCH (l:Leaf) RETURN count(l)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Close()
+	for res.HasNext() {
+		row, err := res.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		vals, err := row.GetAsSlice()
+		if err != nil || len(vals) < 1 {
+			t.Fatal("count row")
+		}
+		n, err := strconv.Atoi(fmt.Sprint(vals[0]))
+		if err != nil {
+			t.Fatalf("count value %q: %v", vals[0], err)
+		}
+		return n
+	}
+	return 0
+}
+
+// issue #237: resume-набор (Existing) собирается один раз на старте и
+// переиспользуется между чанками — второй чанк с дубликатами дописывает ровно
+// недостающее, без пересборки набора на чанк.
+func TestWriteCorpusResumeExistingSetAcrossChunks(t *testing.T) {
+	db, conn := openTestDB(t)
+	defer db.Close()
+	defer conn.Close()
+
+	leafs := mkTestLeafs(6, "r")
+	n1, err := WriteCorpus(conn, leafs[:4], nil, WriteOptions{Workers: 2, Batch: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n1 != 4 {
+		t.Fatalf("chunk1 wrote %d, want 4", n1)
+	}
+	// Existing собран один раз, до чанка 2 (как в index-драйвере на старте)
+	existing, err := ExistingLeafIDSet(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(existing) != 4 {
+		t.Fatalf("ExistingLeafIDSet size = %d, want 4", len(existing))
+	}
+	// чанк 2: leafs 2,3 — дубликаты чанка 1, leafs 4,5 — новые
+	n2, err := WriteCorpus(conn, leafs[2:], nil, WriteOptions{Workers: 2, Batch: 2, Skip: true, Existing: existing})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n2 != 2 {
+		t.Fatalf("chunk2 wrote %d, want 2", n2)
+	}
+	if got := dbLeafCount(t, conn); got != 6 {
+		t.Fatalf("db leaf count = %d, want 6", got)
+	}
+}
+
+// issue #237: WriteCorpus без Existing, но со Skip — совместимость: набор
+// собирается внутри (старый путь single-shot вызова).
+func TestWriteCorpusResumeCollectsSetInternally(t *testing.T) {
+	db, conn := openTestDB(t)
+	defer db.Close()
+	defer conn.Close()
+
+	leafs := mkTestLeafs(3, "c")
+	if _, err := WriteCorpus(conn, leafs, nil, WriteOptions{Workers: 2, Batch: 2}); err != nil {
+		t.Fatal(err)
+	}
+	// повторная запись тех же leafs с Skip и Existing=nil → всё отфильтровано
+	n, err := WriteCorpus(conn, leafs, nil, WriteOptions{Workers: 2, Batch: 2, Skip: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("resume wrote %d, want 0", n)
+	}
+	if got := dbLeafCount(t, conn); got != 3 {
+		t.Fatalf("db leaf count = %d, want 3", got)
+	}
+}
+
+// issue #237: сквозной прогресс — done не сбрасывается на чанк, total общий.
+func TestWriteCorpusChunkedProgressCumulative(t *testing.T) {
+	db, conn := openTestDB(t)
+	defer db.Close()
+	defer conn.Close()
+
+	r := NewProgressReporter(io.Discard, time.Hour)
+	leafs := mkTestLeafs(5, "p")
+	// чанк 1: base=0, total=5; чанк 2: base=3, total=5 (как WriteCorpusChunked)
+	if _, err := WriteCorpus(conn, leafs[:3], nil, WriteOptions{
+		Workers: 2, Batch: 1, Progress: r, ProgressDone: 0, ProgressTotal: 5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := WriteCorpus(conn, leafs[3:], nil, WriteOptions{
+		Workers: 2, Batch: 1, Progress: r, ProgressDone: 3, ProgressTotal: 5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.done.Load(); got != 5 {
+		t.Errorf("done = %d, want 5 (сквозной счётчик)", got)
+	}
+	if got := r.total.Load(); got != 5 {
+		t.Errorf("total = %d, want 5", got)
+	}
+}
+
+// issue #237: запись чанками даёт тот же результат, что и запись целиком
+// (детерминированные id = ContentHash, число и состав leafs совпадают).
+func TestWriteCorpusChunkedEqualsWhole(t *testing.T) {
+	db, conn := openTestDB(t)
+	defer db.Close()
+	defer conn.Close()
+
+	leafs := mkTestLeafs(10, "w")
+	if _, err := WriteCorpus(conn, leafs, nil, WriteOptions{Workers: 2, Batch: 3}); err != nil {
+		t.Fatal(err)
+	}
+	want := dbLeafCount(t, conn)
+	if want != 10 {
+		t.Fatalf("whole write count = %d, want 10", want)
+	}
+
+	db2, conn2 := openTestDB(t)
+	defer db2.Close()
+	defer conn2.Close()
+	stats := CorpusStats{Total: len(leafs), BySource: map[string]int{"test": len(leafs)}}
+	n, err := WriteCorpusChunked(context.Background(), []contract.Source{fakeSource{name: "test", leafs: leafs}}, 4, 0, stats,
+		func(chunk []contract.Leaf, base, total int) (int, error) {
+			return WriteCorpus(conn2, chunk, nil, WriteOptions{
+				Workers: 2, Batch: 2, ProgressDone: base, ProgressTotal: total,
+			})
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 10 {
+		t.Fatalf("chunked write = %d, want 10", n)
+	}
+	if got := dbLeafCount(t, conn2); got != want {
+		t.Fatalf("chunked count = %d, want %d", got, want)
 	}
 }
