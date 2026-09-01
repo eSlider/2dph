@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/eSlider/2dph/internal/contract"
 )
 
 func embedStr(i int, text string) string { return text }
@@ -143,20 +145,20 @@ func TestParallelEmbedEmpty(t *testing.T) {
 }
 
 func TestFilterExistingLeafs(t *testing.T) {
-	leafs := []CorpusLeaf{
-		{Heading: "h1", Text: "t1", Source: "s1"},
-		{Heading: "h2", Text: "t2", Source: "s2"},
-		{Heading: "h3", Text: "t3", Source: "s3"},
+	leafs := []contract.Leaf{
+		{Source: "docs", ExternalID: "a.md", Kind: "reference", Text: "h1\n\nt1"},
+		{Source: "docs", ExternalID: "b.md", Kind: "reference", Text: "h2\n\nt2"},
+		{Source: "docs", ExternalID: "c.md", Kind: "reference", Text: "h3\n\nt3"},
 	}
 	// Present: id of leaf 0 only. Also present with a source that differs in
-	// case so ToValidUTF8 + exact source matching matter.
+	// case so normalization matters.
 	existing := map[string]bool{
-		LeafID("h1\n\nt1", "s1"): true,
-		LeafID("h2\n\nt2", "s2"): true,
+		leafs[0].ContentHash(): true,
+		leafs[1].ContentHash(): true,
 	}
 	got := filterExistingLeafs(leafs, existing)
-	if len(got) != 1 || got[0].Source != "s3" {
-		t.Fatalf("filterExistingLeafs kept %+v, want only s3", got)
+	if len(got) != 1 || got[0].ExternalID != "c.md" {
+		t.Fatalf("filterExistingLeafs kept %+v, want only c.md", got)
 	}
 	// Empty existing -> keep all.
 	if all := filterExistingLeafs(leafs, map[string]bool{}); len(all) != 3 {
@@ -165,10 +167,24 @@ func TestFilterExistingLeafs(t *testing.T) {
 	// All present -> keep none.
 	allSet := map[string]bool{}
 	for _, lf := range leafs {
-		allSet[LeafID(lf.Heading+"\n\n"+lf.Text, lf.Source)] = true
+		allSet[lf.ContentHash()] = true
 	}
 	if none := filterExistingLeafs(leafs, allSet); len(none) != 0 {
 		t.Fatalf("all present should keep none, got %d", len(none))
+	}
+}
+
+// P-9.3 #5.3: filterExistingLeafs нормализует текст так же, как writer —
+// leaf с CRLF/хвостовыми пробелами совпадает по id с уже записанным.
+func TestFilterExistingLeafsNormalizesText(t *testing.T) {
+	base := contract.Leaf{Source: "mail", ExternalID: "msg-1", Kind: "mail", Text: "subject\n\nbody"}
+	withCRLF := contract.Leaf{Source: "mail", ExternalID: "msg-1", Kind: "mail", Text: "subject\r\n\r\nbody  "}
+	if base.ContentHash() != withCRLF.ContentHash() {
+		t.Fatal("normalization must unify text before ContentHash")
+	}
+	got := filterExistingLeafs([]contract.Leaf{withCRLF}, map[string]bool{base.ContentHash(): true})
+	if len(got) != 0 {
+		t.Fatalf("normalized duplicate must be filtered, kept %+v", got)
 	}
 }
 

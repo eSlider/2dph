@@ -3,6 +3,7 @@
 package brain
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	lbug "github.com/LadybugDB/go-ladybug"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/contract"
+	"github.com/eSlider/2dph/internal/corpus"
 )
 
 func TestAddLeafsAndIndexes(t *testing.T) {
@@ -35,8 +38,8 @@ func TestAddLeafsAndIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ids) != 1 || len(ids[0]) != 24 {
-		t.Fatalf("ids=%v", ids)
+	if len(ids) != 1 || len(ids[0]) != 32 {
+		t.Fatalf("ids=%v (want 32-hex ContentHash id)", ids)
 	}
 	if _, err := LinkFromFile(conn, ids[0], "test.md", "repo", ""); err != nil {
 		t.Fatal(err)
@@ -155,8 +158,11 @@ func TestFactsAndChatsLandOnRebuild(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chats, err := LoadCorpusPath(chatDir)
-	if err != nil {
+	var chats []contract.Leaf
+	if err := (corpus.Chats{Dir: chatDir}).Stream(context.Background(), func(l contract.Leaf) error {
+		chats = append(chats, l)
+		return nil
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if len(chats) == 0 {
