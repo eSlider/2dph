@@ -18,7 +18,14 @@ type WriteOptions struct {
 	Workers  int               // parallel embedding workers (0 = 4)
 	Batch    int               // leafs per transaction (0 = 64)
 	Skip     bool              // skip leafs whose id already exists (resume)
+	Existing map[string]bool   // resume-set (issue #237): собран вызывающим один раз на старте; nil → собрать здесь (ExistingLeafIDSet)
 	Progress *ProgressReporter // optional progress/ETA monitor
+
+	// Сквозной прогресс чанкованной записи (issue #237): ProgressDone — сколько
+	// leafs записано до этого чанка, ProgressTotal — всего по всем чанкам
+	// (0 → len(leafs)). done в Report/Finish не сбрасывается на чанк.
+	ProgressDone  int
+	ProgressTotal int
 }
 
 // WriteCorpus embeds (in parallel) and upserts corpus leafs in batches, linking
@@ -28,6 +35,10 @@ type WriteOptions struct {
 // P-9.3: leafs приходят от адаптеров корпуса (internal/corpus, contract.Source)
 // уже с source=корпус и external_id=устойчивый ref; текст нормализуется здесь
 // единообразно (contract.NormalizeText), id = contract.ContentHash()[:32].
+//
+// issue #237: память ограничена чанком вызывающего (WriteCorpusChunked) —
+// внутри держатся только leafs чанка, items и results эмбеддингов; срез на
+// весь корпус не строится.
 func WriteCorpus(conn *lbug.Connection, leafs []contract.Leaf, model *StaticModel, opt WriteOptions) (int, error) {
 	if opt.Workers <= 0 {
 		opt.Workers = 4
@@ -40,29 +51,34 @@ func WriteCorpus(conn *lbug.Connection, leafs []contract.Leaf, model *StaticMode
 	}
 
 	// Единая нормализация перед хэшем и записью (P-9.3 #5.3): хэш считается
-	// от того же текста, который ляжет в БД.
-	norm := make([]contract.Leaf, len(leafs))
-	for i, lf := range leafs {
-		lf.Text = contract.NormalizeText(lf.Text)
-		norm[i] = lf
-	}
-	leafs = norm
-
-	// Resume: drop leafs already present before embedding, so a re-run skips
-	// the costly embedding step entirely.
+	// от того же текста, который ляжет в БД. Skip-путь нормализует
+	// filterExistingLeafs (при сравнении id); остальное — in-place: срез
+	// принадлежит вызывающему (чанк) и после записи не нужен.
 	if opt.Skip {
-		existing, err := existingLeafIDSet(conn)
-		if err != nil {
-			return 0, err
+		existing := opt.Existing
+		if existing == nil {
+			var err error
+			existing, err = ExistingLeafIDSet(conn)
+			if err != nil {
+				return 0, err
+			}
 		}
 		leafs = filterExistingLeafs(leafs, existing)
+	} else {
+		for i := range leafs {
+			leafs[i].Text = contract.NormalizeText(leafs[i].Text)
+		}
 	}
-	if opt.Progress != nil {
-		opt.Progress.Report(0, len(leafs))
+
+	base := opt.ProgressDone
+	total := opt.ProgressTotal
+	if total <= 0 {
+		total = len(leafs)
 	}
+	progressReport(opt.Progress, base, total, 0)
 	if len(leafs) == 0 {
 		if opt.Progress != nil {
-			opt.Progress.Finish(0, 0)
+			opt.Progress.Finish(base, total)
 		}
 		return 0, nil
 	}
@@ -79,7 +95,7 @@ func WriteCorpus(conn *lbug.Connection, leafs []contract.Leaf, model *StaticMode
 	}
 	var progress func(int, int)
 	if opt.Progress != nil {
-		progress = opt.Progress.Report
+		progress = func(done int, _ int) { progressReport(opt.Progress, base, total, done) }
 	}
 	results, err := parallelEmbed(context.Background(), items, embed, opt.Workers, progress)
 	if err != nil {
@@ -113,18 +129,18 @@ func WriteCorpus(conn *lbug.Connection, leafs []contract.Leaf, model *StaticMode
 			}
 			n++
 		}
-		if opt.Progress != nil {
-			opt.Progress.Report(n, len(inputs))
-		}
+		progressReport(opt.Progress, base, total, n)
 	}
 	if opt.Progress != nil {
-		opt.Progress.Finish(n, len(leafs))
+		opt.Progress.Finish(base+n, total)
 	}
 	return n, nil
 }
 
-// existingLeafIDSet returns the set of all current leaf ids (for resume).
-func existingLeafIDSet(conn *lbug.Connection) (map[string]bool, error) {
+// ExistingLeafIDSet returns the set of all current leaf ids (for resume).
+// issue #237: собирается один раз на старте (до чанков) и передаётся в
+// WriteCorpus через WriteOptions.Existing, а не пересобирается на чанк.
+func ExistingLeafIDSet(conn *lbug.Connection) (map[string]bool, error) {
 	res, err := conn.Query("MATCH (l:Leaf) RETURN l.id")
 	if err != nil {
 		return nil, err

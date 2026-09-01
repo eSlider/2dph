@@ -43,7 +43,7 @@ type indexFlags struct {
 	db, factsJSON, withChats, since, gitRoot                                            string
 	corpus                                                                              []string
 	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut, skip, force bool
-	limit, workers, batch, progress                                                     int
+	limit, workers, batch, chunk, progress                                              int
 }
 
 // gitRepoRoot resolves the actual repository checkout (independent of
@@ -101,6 +101,7 @@ func run(args []string) int {
 	p.Int(&v.limit, "", "limit", "max leafs to embed")
 	p.Int(&v.workers, "", "workers", "parallel embedding workers (default 4)")
 	p.Int(&v.batch, "", "batch", "leafs per transaction (default 64)")
+	p.Int(&v.chunk, "", "chunk", "leafs per chunk before write (default 2048)")
 	p.Int(&v.progress, "", "progress", "progress/ETA line every N seconds")
 	p.Bool(&v.skip, "", "skip", "skip leafs already in the db (resume)")
 	p.Bool(&v.force, "", "force", "rebuild even if the db is open by a live process")
@@ -124,19 +125,14 @@ func run(args []string) int {
 		port = "8630"
 	}
 
-	// Единый проход: адаптеры корпуса → collect → WriteCorpus (P-9.3).
-	var leafs []contract.Leaf
-	perSource := map[string]int{}
-	for _, s := range sources(v, root) {
-		before := len(leafs)
-		if err := s.Stream(context.Background(), func(l contract.Leaf) error {
-			leafs = append(leafs, l)
-			return nil
-		}); err != nil {
-			fmt.Fprintf(os.Stderr, "brain/index: corpus %s: %v\n", s.Name(), err)
-			return 1
-		}
-		perSource[s.Name()] = len(leafs) - before
+	// Pass 1: подсчёт leafs по источникам (dry-run + сквозной total/прогресс).
+	// Чанкованная запись (issue #237) не копит корпус: pass 2 стримит и пишет
+	// чанками по --chunk, память ограничена размером чанка (~2048 leafs).
+	ctx := context.Background()
+	stats, err := brain.CountCorpus(ctx, sources(v, root))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "brain/index: corpus: %v\n", err)
+		return 1
 	}
 
 	facts := []brain.LeafInput{}
@@ -154,14 +150,14 @@ func run(args []string) int {
 
 	if v.dryRun {
 		msg := map[string]any{
-			"info": len(leafs), "facts": len(facts), "by_source": perSource,
+			"info": stats.Total, "facts": len(facts), "by_source": stats.BySource,
 			"would_index": true,
 		}
 		if v.jsonOut {
 			enc := json.NewEncoder(os.Stdout)
 			_ = enc.Encode(msg)
 		} else {
-			fmt.Printf("brain/index: %d info + %d facts would be indexed (%v)\n", len(leafs), len(facts), perSource)
+			fmt.Printf("brain/index: %d info + %d facts would be indexed (%v)\n", stats.Total, len(facts), stats.BySource)
 		}
 		return 0
 	}
@@ -219,11 +215,24 @@ func run(args []string) int {
 	}
 
 	prog := brain.NewProgressReporter(os.Stderr, time.Duration(v.progress)*time.Second)
-	opt := brain.WriteOptions{
-		Limit: v.limit, Workers: v.workers, Batch: v.batch, Skip: v.skip,
-		Progress: prog,
+	// Resume: existing-set собирается ОДИН раз на старте (до чанков) и
+	// передаётся в WriteCorpus через WriteOptions.Existing (issue #237).
+	var existing map[string]bool
+	if v.skip {
+		if existing, err = brain.ExistingLeafIDSet(conn); err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: resume set: %v\n", err)
+			return 1
+		}
 	}
-	infoN, err := brain.WriteCorpus(conn, leafs, model, opt)
+	// Pass 2: стрим корпуса → чанки по --chunk → WriteCorpus(чанк) → буфер
+	// освобождается. Пиковая память ограничена чанком (~2048 leafs + их
+	// эмбеддинги), весь корпус в памяти не держится.
+	infoN, err := brain.WriteCorpusChunked(ctx, sources(v, root), v.chunk, v.limit, stats, func(chunk []contract.Leaf, base, total int) (int, error) {
+		return brain.WriteCorpus(conn, chunk, model, brain.WriteOptions{
+			Workers: v.workers, Batch: v.batch, Skip: v.skip, Existing: existing,
+			Progress: prog, ProgressDone: base, ProgressTotal: total,
+		})
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brain/index: write info: %v\n", err)
 		return 1
@@ -266,10 +275,10 @@ func run(args []string) int {
 	if v.jsonOut {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"indexed_info": infoN, "indexed_facts": factN, "db": dbpath, "total": total,
-			"by_source": perSource,
+			"by_source": stats.BySource,
 		})
 	} else {
-		fmt.Printf("indexed %d/%d info + %d facts; db total %d\n", infoN, len(leafs), factN, total)
+		fmt.Printf("indexed %d/%d info + %d facts; db total %d\n", infoN, stats.Total, factN, total)
 	}
 	return 0
 }

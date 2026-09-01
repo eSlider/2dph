@@ -84,6 +84,16 @@ func filterExistingLeafs(leafs []contract.Leaf, existing map[string]bool) []cont
 	return kept
 }
 
+// progressReport — сквозной прогресс чанкованной записи (issue #237): done
+// сдвигается на base (уже записанные до этого чанка leafs), total остаётся
+// общим по всем чанкам (не размером чанка).
+func progressReport(p *ProgressReporter, base, total, done int) {
+	if p == nil {
+		return
+	}
+	p.Report(base+done, total)
+}
+
 // chunkBounds splits [0,n) into [start,end) batches of at most size. size<=0
 // means a single batch.
 func chunkBounds(n, size int) [][2]int {
