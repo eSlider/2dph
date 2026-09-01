@@ -42,6 +42,30 @@ Schema of a written leaf (source/external_id/observed_at/kind, dedup by
 ContentHash, versioning): see `docs/brain/contract.md` (P-9.2/P-9.3); audit
 compliance with `bin/brain/audit-contract.go`.
 
+## Corpus — what lives in the brain (#198/#199)
+
+`info` holds the WHOLE corpus, never just one root. Current composition
+(after the mail-corpus fix #199, ~313k leafs):
+
+- **mail** — BOTH corpora index into the brain: live `var/corpus/mail`
+  (inbox 50 + PST) AND legacy `var/mail` (215k message.md: tb-andriy-profile,
+  tb-backup-128g, tb-2010-zip, contacts_eml, defacto, gmail_*, inbox).
+  `bin/brain/index.go --with-mail` включает mail-адаптер
+  (`corpus.Mail`, `corpus.MailRoots`); dedup между корпусами — по ContentHash
+  (external_id = content-address текста, P-9.3). Mail is only in the brain if
+  the index ran with `--with-mail`.
+- **git history** — `bin/brain/import-git.go --root <dir>` (git-адаптер, go-git).
+- **chats** — telegram/linkedin/whatsapp messages.md (`--with-chats`,
+  `var/corpus/chats/md`).
+- **docs** — README/PLAN/AGENTS/docs/skills (default) + `--corpus` пути.
+
+If a search misses mail that exists on disk: the brain was rebuilt WITHOUT
+`--with-mail`, or `var/mail` was never indexed. Fix:
+`bin/stack/sync.go --with-mail` (wave step `mail-index`) or
+`bin/brain/index.go --skip --with-mail` (resume/append, de-duped, idempotent).
+`bin/brain/stats.go` must show info ≥ ~200k on the ops host; anything less
+means a corpus is missing.
+
 ## Corpus sources (P-9.3) — каждый корпус = адаптер
 
 `info` holds the whole corpus via four adapters (`internal/corpus`, cgo-free),
