@@ -233,6 +233,7 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 			Text: strings.ToValidUTF8(items[r.i].text, "\uFFFD"), Root: "info",
 			Confidence: "confirmed", Source: lf.Source, SourceRev: "working-tree",
 			How: how, Loc: lf.Source, Type: typ, Embedding: r.emb, ValidFrom: lf.Date,
+			ExternalID: lf.ExternalID, ObservedAt: lf.ObservedAt,
 		})
 		repos = append(repos, lf.Repo)
 	}

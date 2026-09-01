@@ -18,6 +18,8 @@ import (
 const EmbedDim = 256
 
 // LeafInput is one facts|info leaf for AddLeafs / upsert.
+// ExternalID/ObservedAt соответствуют контракту записи (internal/contract,
+// docs/brain/contract.md): устойчивый ref источника и момент записи.
 type LeafInput struct {
 	Text       string
 	Root       string
@@ -29,6 +31,8 @@ type LeafInput struct {
 	Type       string
 	ValidFrom  string
 	ValidTo    string
+	ExternalID string // устойчивый ref внутри корпуса (message id / commit sha / путь)
+	ObservedAt string // когда контент увиден; пусто → now() при записи
 	Embedding  []float64
 }
 
@@ -95,6 +99,7 @@ func InitSchema(conn *lbug.Connection) error {
 		`CREATE NODE TABLE IF NOT EXISTS Leaf (
  id STRING, text STRING, root STRING, confidence STRING,
  sha256 STRING, source STRING, source_rev STRING, observed_at STRING,
+ external_id STRING,
  how STRING, loc STRING, type STRING,
  valid_from STRING, valid_to STRING,
  embedding FLOAT[256],
@@ -120,7 +125,7 @@ author STRING, email STRING, date STRING, PRIMARY KEY(id))`,
 			qClose(res)
 		}
 	}
-	for _, col := range []string{"valid_from", "valid_to"} {
+	for _, col := range []string{"valid_from", "valid_to", "external_id"} {
 		res, _ := conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
 		qClose(res)
 	}
@@ -173,19 +178,26 @@ func UpsertLeaf(conn *lbug.Connection, lf LeafInput) (string, error) {
 		lf.Type = "reference"
 	}
 	lid := LeafID(lf.Text, lf.Source)
-	obs := time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	// observed_at passthrough (контракт): источник может указать момент записи;
+	// пусто → штампуем now() (обратная совместимость). В хэш id не входит —
+	// та же семантика, что gator ContentHash (G-8.0 #73).
+	obs := lf.ObservedAt
+	if obs == "" {
+		obs = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+	}
 	vf := facts.NormalizeDay(lf.ValidFrom)
 	vt := facts.NormalizeDay(lf.ValidTo)
 
 	q := `MERGE (l:Leaf {id:$id})
 SET l.text=$text, l.root=$root, l.confidence=$confidence,
     l.sha256=$sha, l.source=$source, l.source_rev=$rev, l.observed_at=$obs,
+    l.external_id=$eid,
     l.how=$how, l.loc=$location, l.type=$type,
     l.valid_from=$vf, l.valid_to=$vt`
 	args := map[string]any{
 		"id": lid, "text": lf.Text, "root": lf.Root, "confidence": lf.Confidence,
 		"sha": textSHA(lf.Text), "source": lf.Source, "rev": lf.SourceRev,
-		"obs": obs, "how": lf.How, "location": lf.Loc, "type": lf.Type,
+		"obs": obs, "eid": lf.ExternalID, "how": lf.How, "location": lf.Loc, "type": lf.Type,
 		"vf": vf, "vt": vt,
 	}
 	if len(lf.Embedding) > 0 {

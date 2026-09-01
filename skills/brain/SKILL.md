@@ -38,6 +38,10 @@ bin/brain/eval.go                                      # recall@5 >= 0.95 gate (
 `--as-of YYYY-MM-DD` keeps leafs whose `valid_from`/`valid_to` cover that day
 (empty interval = always; not D16 source staleness).
 
+Schema of a written leaf (source/external_id/observed_at/kind, dedup by
+ContentHash, versioning): see `docs/brain/contract.md` (P-9.2); audit
+compliance with `bin/brain/audit-contract.go`.
+
 ## Rules
 
 - Search before you read. Never grep a repo for a concept the graph covers.

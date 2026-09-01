@@ -307,6 +307,7 @@ func parseIngestLeafs(raw []byte) ([]LeafInput, error) {
 			SourceRev: fmt.Sprint(m["source_rev"]), How: fmt.Sprint(m["how"]),
 			Loc: fmt.Sprint(m["loc"]), Type: fmt.Sprint(m["type"]),
 			ValidFrom: fmt.Sprint(m["valid_from"]), ValidTo: fmt.Sprint(m["valid_to"]),
+			ExternalID: fmt.Sprint(m["external_id"]), ObservedAt: fmt.Sprint(m["observed_at"]),
 		}
 		if lf.Text == "<nil>" {
 			lf.Text = ""

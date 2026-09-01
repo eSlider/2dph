@@ -148,10 +148,11 @@ func qClose(res *lbug.QueryResult) {
 	}
 }
 
-// migrateIntervalColumns adds D24 valid_from/valid_to on existing Leaf tables.
-// Fresh CREATE already has them; ALTER is a no-op when the column exists.
+// migrateIntervalColumns adds D24 valid_from/valid_to and contract external_id
+// on existing Leaf tables. Fresh CREATE already has them; ALTER is a no-op
+// when the column exists.
 func migrateIntervalColumns() {
-	for _, col := range []string{"valid_from", "valid_to"} {
+	for _, col := range []string{"valid_from", "valid_to", "external_id"} {
 		res, err := conn.Query("ALTER TABLE Leaf ADD " + col + " STRING")
 		qClose(res)
 		_ = err
