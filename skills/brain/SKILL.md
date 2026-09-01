@@ -39,8 +39,43 @@ bin/brain/eval.go                                      # recall@5 >= 0.95 gate (
 (empty interval = always; not D16 source staleness).
 
 Schema of a written leaf (source/external_id/observed_at/kind, dedup by
-ContentHash, versioning): see `docs/brain/contract.md` (P-9.2); audit
+ContentHash, versioning): see `docs/brain/contract.md` (P-9.2/P-9.3); audit
 compliance with `bin/brain/audit-contract.go`.
+
+## Corpus sources (P-9.3) — каждый корпус = адаптер
+
+`info` holds the whole corpus via four adapters (`internal/corpus`, cgo-free),
+each implementing `contract.Source` (`Name()` + `Stream(ctx, emit(Leaf))`):
+
+| Корпус | Адаптер | Что индексирует | source / external_id |
+|--------|---------|-----------------|----------------------|
+| docs | `corpus.Docs` | README/PLAN/AGENTS/docs/skills + `--corpus` пути (md + yaml) | `docs` / rel-путь |
+| mail | `corpus.Mail` | live `var/corpus/mail` + legacy `var/mail` (`<id>/message.md`) | `mail` / content-address `sha256(text)[:16]` |
+| chats | `corpus.Chats` | `var/corpus/chats/md/<platform>/<chat>/messages.md` | `chats` / frontmatter `id` |
+| git | `corpus.Git` | история коммитов (go-git) | `git` / полный commit sha |
+
+`bin/brain/index.go` — драйвер: `corpus.StreamAll` → `brain.WriteCorpus`
+(единый writer, id = `contract.ContentHash()`[:32]). Флаги включают адаптеры:
+`--with-mail`, `--with-chats [DIR]`, `--corpus DIR` (повторяемый), `--git-root DIR`.
+`bin/brain/import-git.go --root DIR` — тонкая обёртка над git-адаптером
+(волна `stack/sync.go`, шаг git-brain).
+
+**Как добавить новый источник корпуса** (например `calendar`):
+1. Новый файл адаптера в `internal/corpus/<name>.go`: struct с `Name() string`
+   (имя корпуса — оно же `source` в лифах) и
+   `Stream(ctx, emit func(contract.Leaf) error) error`; каждый emit должен
+   проходить `Leaf.Validate()` (source/external_id/kind/text), текст —
+   `Heading + "\n\n" + body`.
+2. Юнит-тест рядом (`<name>_test.go`, фикстуры в t.TempDir, без lbug): форма
+   лифа, external_id, дедуп по ContentHash.
+3. Зарегистрировать адаптер в `sources()` драйвера `bin/brain/index.go`
+   (+ флаг-переключатель при необходимости).
+4. Пересборка: `bin/brain/index.go --rebuild <флаги>` — детерминированные id
+   (ContentHash) → добавление/удаление корпуса без ручной магии.
+5. `skill-sync push` + PR на обновлённый SKILL.md (см. skill-sync).
+
+Дубль git устранён: git-история пишется только git-адаптером;
+`var/corpus/git/*.md` и `2dph__corpus__git__*` docs-адаптером исключаются.
 
 ## Rules
 

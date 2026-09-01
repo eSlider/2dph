@@ -15,6 +15,11 @@ Fresh rebuild of info + mail + facts with control flags:
         --rebuild --with-mail --with-facts \
         --workers 12 --batch 256 --progress 5 --skip
 
+Corpus adapters (P-9.3): `--with-mail` → mail-адаптер, `--with-chats` →
+chats-адаптер, `--corpus DIR` → docs-адаптер (доп. пути), `--git-root DIR` →
+git-адаптер (история репозиториев). Каждый корпус — `contract.Source`
+(`internal/corpus`); index пишет их единым `WriteCorpus`.
+
 > Facts require `--with-facts` (or `--facts-json`). Corpus leafs are always
 > written as `root=info` (single file source each); the facts layer
 > (`root=facts`, ≥2 independent sources) comes from `bin/facts/extract.go` and
@@ -28,9 +33,9 @@ Fresh rebuild of info + mail + facts with control flags:
 - `--progress N`  print rate + ETA every N seconds to stderr
 - `--skip`        resume: skip leafs whose id is already in the db
 
-Because leaf ids are deterministic (`LeafID(text, source)`), `--skip` makes a
-re-run cheap: it filters existing ids before embedding, so it embeds only new
-leafs. After a partial/aborted run, re-running with `--skip` skips the
+Because leaf ids are deterministic (`contract.ContentHash`, P-9.3), `--skip`
+makes a re-run cheap: it filters existing ids before embedding, so it embeds
+only new leafs. After a partial/aborted run, re-running with `--skip` skips the
 already-written corpus and goes straight to index build.
 
 > Note: `--rebuild` deletes the db, so `--skip` + `--rebuild` always restarts
