@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"strings"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 
@@ -94,33 +93,10 @@ func openReadOnly() (*lbug.Connection, func(), error) {
 	}, nil
 }
 
-// corpusOf выделяет имя корпуса из source по эвристике. Живые leafs пишутся
-// с путями вида /corpus/docs/2dph__corpus__git__<sha>.md (git-лифы попали в
-// docs — известное расхождение, #10), поэтому детект по сигнатурам, а не по
-// первому сегменту.
-// ponytail: после P-9.3 (миграция source=корпус) поле source станет именем
-// корпуса и эвристика не нужна.
-func corpusOf(source string) string {
-	switch {
-	case strings.Contains(source, "ooMail:"):
-		return "ooMail"
-	case strings.Contains(source, "@"), strings.Contains(source, "corpus__git"):
-		return "git"
-	case strings.Contains(source, "/chats/"):
-		return "chats"
-	case strings.Contains(source, "/corpus/mail/"):
-		return "mail"
-	case strings.Contains(source, "/corpus/docs/"):
-		return "docs"
-	case strings.Contains(source, "/corpus/"):
-		return "corpus"
-	}
-	if s := strings.TrimSpace(source); s != "" {
-		return s
-	}
-	return "(empty)"
-}
-
+// corpusOf больше не нужен (P-9.3): source пишется как имя корпуса
+// (mail/git/chats/docs/facts), аудит группирует по нему напрямую. Живая
+// kb.lbug до пересборки всё ещё содержит старые evidence-указатели в source —
+// до миграции такие строки показываются как есть.
 func auditContract(conn *lbug.Connection) (map[string]any, error) {
 	// Живая БД может ещё не иметь колонки external_id (миграция применяется
 	// при старте сервиса). Пробуем с ней; при ошибке биндера падаем на
@@ -144,7 +120,7 @@ func auditContract(conn *lbug.Connection) (map[string]any, error) {
 		}
 		source := fmt.Sprint(vals[0])
 		total++
-		byCorpus[corpusOf(source)]++
+		byCorpus[source]++
 		if empty(vals[1]) {
 			missing["observed_at"]++
 		}

@@ -257,7 +257,7 @@ func TestANNIncrementalUpsertProof(t *testing.T) {
 	// by Lookup → Upsert (append WAL). Measure the add phase itself.
 	newRows := make([]ann.Row, 0, extraN)
 	for _, lf := range extra {
-		id := LeafID(lf.Text, lf.Source)
+		id := lf.ContentHash()
 		if !idx.Lookup(id) {
 			newRows = append(newRows, ann.Row{ID: id, Vec: toFloat32(lf.Embedding, EmbedDim)})
 		}

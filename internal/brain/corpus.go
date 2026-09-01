@@ -5,154 +5,12 @@ package brain
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/eSlider/2dph/internal/markdown"
+	"github.com/eSlider/2dph/internal/contract"
 
 	lbug "github.com/LadybugDB/go-ladybug"
 )
-
-var corpusDefaults = []string{"README.md", "PLAN.md", "AGENTS.md", "docs", "skills"}
-
-// CorpusLeaf is a markdown-derived info leaf before embed/write.
-// LoadDefaultCorpus walks README/PLAN/AGENTS/docs/skills.
-func LoadDefaultCorpus(root string) ([]CorpusLeaf, error) {
-	var files []string
-	for _, entry := range corpusDefaults {
-		p := filepath.Join(root, entry)
-		st, err := os.Stat(p)
-		if err != nil {
-			continue
-		}
-		if st.IsDir() {
-			mds, err := markdown.WalkMarkdown(p)
-			if err != nil {
-				return nil, err
-			}
-			files = append(files, mds...)
-		} else {
-			files = append(files, p)
-		}
-	}
-	return leafsFromMarkdownFiles(files, "eSlider/2dph", "kb/index")
-}
-
-// indexable keeps vendor noise and secret-ish paths out of the brain.
-func indexable(path string) bool {
-	segs := strings.Split(filepath.ToSlash(path), "/")
-	for _, s := range segs {
-		if s == "" {
-			continue
-		}
-		low := strings.ToLower(s)
-		for _, d := range []string{"node_modules", ".venv", "venv", ".git", "_archive",
-			"var", "dist", "build", ".next", ".cache", "target"} {
-			if low == d {
-				return false
-			}
-		}
-		for _, d := range []string{".ssh", "secrets", "credentials", "certs", "keys",
-			"tokens", "wallets", "private"} {
-			if low == d {
-				return false
-			}
-		}
-	}
-	base := strings.ToLower(filepath.Base(path))
-	for _, x := range []string{".env", "secret", "credential", "allowlist", "token",
-		"id_rsa", ".pem", ".p12", "password", "passwords"} {
-		if strings.Contains(base, x) {
-			return false
-		}
-	}
-	return true
-}
-
-// LoadCorpusPath indexes an extra markdown file or directory.
-func LoadCorpusPath(source string) ([]CorpusLeaf, error) {
-	st, err := os.Stat(source)
-	if err != nil {
-		return nil, nil
-	}
-	repo := filepath.Base(source)
-	var files []string
-	if st.IsDir() {
-		repo = filepath.Base(source)
-		mds, err := markdown.WalkMarkdown(source)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range mds {
-			if indexable(m) {
-				files = append(files, m)
-			}
-		}
-	} else {
-		repo = filepath.Base(filepath.Dir(source))
-		files = []string{source}
-	}
-	leafs, err := leafsFromMarkdownFiles(files, repo, "kb/index")
-	if err != nil {
-		return nil, err
-	}
-	if st.IsDir() {
-		_ = filepath.Walk(source, func(p string, info os.FileInfo, err error) error {
-			if err != nil {
-				if os.IsPermission(err) {
-					return nil
-				}
-				return err
-			}
-			if info.IsDir() {
-				return nil
-			}
-			ext := strings.ToLower(filepath.Ext(p))
-			if ext != ".yaml" && ext != ".yml" {
-				return nil
-			}
-			if !indexable(p) {
-				return nil
-			}
-			raw, err := os.ReadFile(p)
-			if err != nil {
-				return nil
-			}
-			text := string(raw)
-			if len(text) > 20000 {
-				text = text[:20000]
-			}
-			leafs = append(leafs, CorpusLeaf{
-				Source: p, Repo: repo, Heading: strings.TrimSuffix(filepath.Base(p), ext),
-				Text: text, Type: "seed", How: "kb/index",
-			})
-			return nil
-		})
-	}
-	return leafs, nil
-}
-
-func leafsFromMarkdownFiles(files []string, repo, how string) ([]CorpusLeaf, error) {
-	out := make([]CorpusLeaf, 0, len(files))
-	for _, path := range files {
-		if !strings.HasSuffix(strings.ToLower(path), ".md") && !strings.HasSuffix(strings.ToLower(path), ".markdown") {
-			continue
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "brain/index: skip %s: %v\n", path, err)
-			continue
-		}
-		for _, lf := range markdown.ToAll(string(raw), path, repo) {
-			out = append(out, CorpusLeaf{
-				Source: lf.Source, Repo: lf.Repo, Heading: lf.Heading,
-				Text: lf.Text, Type: lf.Type, How: how,
-			})
-		}
-	}
-	return out, nil
-}
 
 // WriteOptions controls corpus writing (worker concurrency, batch size, resume).
 type WriteOptions struct {
@@ -164,8 +22,13 @@ type WriteOptions struct {
 }
 
 // WriteCorpus embeds (in parallel) and upserts corpus leafs in batches, linking
-// FROM_FILE. Embedding errors abort; per-batch writes use one transaction.
-func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, opt WriteOptions) (int, error) {
+// FROM_FILE to Loc. Embedding errors abort; per-batch writes use one
+// transaction.
+//
+// P-9.3: leafs приходят от адаптеров корпуса (internal/corpus, contract.Source)
+// уже с source=корпус и external_id=устойчивый ref; текст нормализуется здесь
+// единообразно (contract.NormalizeText), id = contract.ContentHash()[:32].
+func WriteCorpus(conn *lbug.Connection, leafs []contract.Leaf, model *StaticModel, opt WriteOptions) (int, error) {
 	if opt.Workers <= 0 {
 		opt.Workers = 4
 	}
@@ -175,6 +38,15 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 	if opt.Limit > 0 && len(leafs) > opt.Limit {
 		leafs = leafs[:opt.Limit]
 	}
+
+	// Единая нормализация перед хэшем и записью (P-9.3 #5.3): хэш считается
+	// от того же текста, который ляжет в БД.
+	norm := make([]contract.Leaf, len(leafs))
+	for i, lf := range leafs {
+		lf.Text = contract.NormalizeText(lf.Text)
+		norm[i] = lf
+	}
+	leafs = norm
 
 	// Resume: drop leafs already present before embedding, so a re-run skips
 	// the costly embedding step entirely.
@@ -197,7 +69,7 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 
 	items := make([]poolItem, len(leafs))
 	for i, lf := range leafs {
-		items[i] = poolItem{i: i, text: lf.Heading + "\n\n" + lf.Text}
+		items[i] = poolItem{i: i, text: lf.Text}
 	}
 	embed := func(text string) ([]float64, error) {
 		if model == nil || text == "" {
@@ -215,27 +87,17 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 	}
 
 	inputs := make([]LeafInput, 0, len(results))
-	repos := make([]string, 0, len(results))
 	for i, r := range results {
 		if r.err != nil {
 			return 0, fmt.Errorf("embed %d: %w", i, r.err)
 		}
 		lf := leafs[r.i]
-		typ := lf.Type
-		if typ == "" {
-			typ = "reference"
-		}
-		how := lf.How
-		if how == "" {
-			how = "kb/index"
-		}
 		inputs = append(inputs, LeafInput{
-			Text: strings.ToValidUTF8(items[r.i].text, "\uFFFD"), Root: "info",
-			Confidence: "confirmed", Source: lf.Source, SourceRev: "working-tree",
-			How: how, Loc: lf.Source, Type: typ, Embedding: r.emb, ValidFrom: lf.Date,
+			Text: strings.ToValidUTF8(items[r.i].text, "\uFFFD"), Root: lf.Root,
+			Confidence: lf.Confidence, Source: lf.Source, SourceRev: "working-tree",
+			How: lf.How, Loc: lf.Loc, Type: lf.Kind, Embedding: r.emb,
 			ExternalID: lf.ExternalID, ObservedAt: lf.ObservedAt,
 		})
-		repos = append(repos, lf.Repo)
 	}
 
 	n := 0
@@ -246,7 +108,7 @@ func WriteCorpus(conn *lbug.Connection, leafs []CorpusLeaf, model *StaticModel, 
 		}
 		for j, id := range ids {
 			in := inputs[b[0]+j]
-			if _, err := LinkFromFile(conn, id, in.Source, repos[b[0]+j], ""); err != nil {
+			if _, err := LinkFromFile(conn, id, in.Loc, in.Source, ""); err != nil {
 				return n, err
 			}
 			n++

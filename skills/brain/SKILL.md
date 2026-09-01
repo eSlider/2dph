@@ -39,8 +39,67 @@ bin/brain/eval.go                                      # recall@5 >= 0.95 gate (
 (empty interval = always; not D16 source staleness).
 
 Schema of a written leaf (source/external_id/observed_at/kind, dedup by
-ContentHash, versioning): see `docs/brain/contract.md` (P-9.2); audit
+ContentHash, versioning): see `docs/brain/contract.md` (P-9.2/P-9.3); audit
 compliance with `bin/brain/audit-contract.go`.
+
+## Corpus — what lives in the brain (#198/#199)
+
+`info` holds the WHOLE corpus, never just one root. Current composition
+(after the mail-corpus fix #199, ~313k leafs):
+
+- **mail** — BOTH corpora index into the brain: live `var/corpus/mail`
+  (inbox 50 + PST) AND legacy `var/mail` (215k message.md: tb-andriy-profile,
+  tb-backup-128g, tb-2010-zip, contacts_eml, defacto, gmail_*, inbox).
+  `bin/brain/index.go --with-mail` включает mail-адаптер
+  (`corpus.Mail`, `corpus.MailRoots`); dedup между корпусами — по ContentHash
+  (external_id = content-address текста, P-9.3). Mail is only in the brain if
+  the index ran with `--with-mail`.
+- **git history** — `bin/brain/import-git.go --root <dir>` (git-адаптер, go-git).
+- **chats** — telegram/linkedin/whatsapp messages.md (`--with-chats`,
+  `var/corpus/chats/md`).
+- **docs** — README/PLAN/AGENTS/docs/skills (default) + `--corpus` пути.
+
+If a search misses mail that exists on disk: the brain was rebuilt WITHOUT
+`--with-mail`, or `var/mail` was never indexed. Fix:
+`bin/stack/sync.go --with-mail` (wave step `mail-index`) or
+`bin/brain/index.go --skip --with-mail` (resume/append, de-duped, idempotent).
+`bin/brain/stats.go` must show info ≥ ~200k on the ops host; anything less
+means a corpus is missing.
+
+## Corpus sources (P-9.3) — каждый корпус = адаптер
+
+`info` holds the whole corpus via four adapters (`internal/corpus`, cgo-free),
+each implementing `contract.Source` (`Name()` + `Stream(ctx, emit(Leaf))`):
+
+| Корпус | Адаптер | Что индексирует | source / external_id |
+|--------|---------|-----------------|----------------------|
+| docs | `corpus.Docs` | README/PLAN/AGENTS/docs/skills + `--corpus` пути (md + yaml) | `docs` / rel-путь |
+| mail | `corpus.Mail` | live `var/corpus/mail` + legacy `var/mail` (`<id>/message.md`) | `mail` / content-address `sha256(text)[:16]` |
+| chats | `corpus.Chats` | `var/corpus/chats/md/<platform>/<chat>/messages.md` | `chats` / frontmatter `id` |
+| git | `corpus.Git` | история коммитов (go-git) | `git` / полный commit sha |
+
+`bin/brain/index.go` — драйвер: `corpus.StreamAll` → `brain.WriteCorpus`
+(единый writer, id = `contract.ContentHash()`[:32]). Флаги включают адаптеры:
+`--with-mail`, `--with-chats [DIR]`, `--corpus DIR` (повторяемый), `--git-root DIR`.
+`bin/brain/import-git.go --root DIR` — тонкая обёртка над git-адаптером
+(волна `stack/sync.go`, шаг git-brain).
+
+**Как добавить новый источник корпуса** (например `calendar`):
+1. Новый файл адаптера в `internal/corpus/<name>.go`: struct с `Name() string`
+   (имя корпуса — оно же `source` в лифах) и
+   `Stream(ctx, emit func(contract.Leaf) error) error`; каждый emit должен
+   проходить `Leaf.Validate()` (source/external_id/kind/text), текст —
+   `Heading + "\n\n" + body`.
+2. Юнит-тест рядом (`<name>_test.go`, фикстуры в t.TempDir, без lbug): форма
+   лифа, external_id, дедуп по ContentHash.
+3. Зарегистрировать адаптер в `sources()` драйвера `bin/brain/index.go`
+   (+ флаг-переключатель при необходимости).
+4. Пересборка: `bin/brain/index.go --rebuild <флаги>` — детерминированные id
+   (ContentHash) → добавление/удаление корпуса без ручной магии.
+5. `skill-sync push` + PR на обновлённый SKILL.md (см. skill-sync).
+
+Дубль git устранён: git-история пишется только git-адаптером;
+`var/corpus/git/*.md` и `2dph__corpus__git__*` docs-адаптером исключаются.
 
 ## Rules
 

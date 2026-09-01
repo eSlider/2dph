@@ -11,10 +11,12 @@
 package contract
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"io"
+	"strings"
 )
 
 // Leaf — одна запись корпуса: контент + identity + темпоральность.
@@ -51,7 +53,33 @@ func (l Leaf) Validate() error {
 	return nil
 }
 
+// Source — источник корпуса (P-9.3), по образцу gator contract.Source
+// (G-8.0 #73). Каждый корпус (mail/git/chats/docs) реализует Source и
+// стримит leafs через emit; единый index-драйвер собирает их и пишет одним
+// writer'ом. Пакет cgo-free — адаптеры работают и тестируются без Ladybug.
+type Source interface {
+	// Name — имя корпуса: mail / git / chats / docs. Используется как source
+	// в Leaf и для registry-пересборки.
+	Name() string
+	// Stream вызывает emit для каждого leaf корпуса. Ошибка emit или
+	// источника прерывает стрим. ctx отменяет стрим.
+	Stream(ctx context.Context, emit func(Leaf) error) error
+}
+
+// NormalizeText — единая нормализация текста перед ContentHash/записью
+// (P-9.3 #5.3): валидный UTF-8 (невалидный байт → U+FFFD), LF-переводы строк,
+// без внешних пробелов/пустых строк. Один контент из разных путей (CRLF vs
+// LF, хвостовые пробелы) даёт один hash.
+func NormalizeText(text string) string {
+	text = strings.ToValidUTF8(text, "\uFFFD")
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.TrimSpace(text)
+}
+
 // ContentHash — dedup-ключ версии: sha256(source|external_id|kind|text)[:32].
+//
+// text нормализуется через NormalizeText перед хэшем (P-9.3 #5.3), поэтому
+// id стабилен между источниками: один контент из разных путей даёт один ключ.
 //
 // observed_at намеренно вне хэша — семантика gator ContentHash (G-8.0 #73):
 // тот же контент, записанный позже, дедуплицируется к той же версии
@@ -66,6 +94,6 @@ func (l Leaf) ContentHash() string {
 	io.WriteString(h, "|")
 	io.WriteString(h, l.Kind)
 	io.WriteString(h, "|")
-	io.WriteString(h, l.Text)
+	io.WriteString(h, NormalizeText(l.Text))
 	return hex.EncodeToString(h.Sum(nil))[:32]
 }

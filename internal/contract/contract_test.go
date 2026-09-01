@@ -1,6 +1,7 @@
 package contract
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -139,4 +140,53 @@ func TestContentHashDistinctSources(t *testing.T) {
 	if mail.ContentHash() == chat.ContentHash() {
 		t.Fatal("same external id in different sources must not collide")
 	}
+}
+
+// P-9.3 #5.3: ContentHash нормализует text внутри себя — один контент из
+// разных путей (CRLF vs LF, хвостовые пробелы, невалидный UTF-8) даёт один
+// id. Это и есть обещание «id стабилен между источниками».
+func TestContentHashNormalizesText(t *testing.T) {
+	base := aliceLeaf()
+	variants := []Leaf{
+		{Source: "mail", ExternalID: "msg-42", Kind: "mail", Text: "Alice wrote: ship the report\r\n"},
+		{Source: "mail", ExternalID: "msg-42", Kind: "mail", Text: "  Alice wrote: ship the report  "},
+		{Source: "mail", ExternalID: "msg-42", Kind: "mail", Text: "\n\nAlice wrote: ship the report\n\n\n"},
+	}
+	for i, v := range variants {
+		if v.ContentHash() != base.ContentHash() {
+			t.Fatalf("variant %d (whitespace/CRLF/UTF-8) must hash equal to the normalized base", i)
+		}
+	}
+}
+
+func TestNormalizeText(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{"plain", "plain"},
+		{"  padded  ", "padded"},
+		{"a\r\nb", "a\nb"},
+		{"\n\na\n\n\n", "a"},
+		{"x\xffy", "x\uFFFdy"}, // невалидный байт → U+FFFD
+		{"", ""},
+	}
+	for _, c := range cases {
+		if got := NormalizeText(c.in); got != c.want {
+			t.Errorf("NormalizeText(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// P-9.3: каждый корпус — адаптер по контракту gator Source.
+// Компилируемая проверка: любая реализация Source должна отдавать Name и
+// Stream(ctx, emit).
+func TestSourceInterface(t *testing.T) {
+	var _ Source = fakeSource{}
+}
+
+type fakeSource struct{}
+
+func (fakeSource) Name() string { return "fake" }
+func (fakeSource) Stream(ctx context.Context, emit func(Leaf) error) error {
+	return emit(Leaf{Source: "fake", ExternalID: "1", Kind: "reference", Text: "x"})
 }

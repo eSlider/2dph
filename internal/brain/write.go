@@ -12,6 +12,7 @@ import (
 
 	lbug "github.com/LadybugDB/go-ladybug"
 
+	"github.com/eSlider/2dph/internal/contract"
 	"github.com/eSlider/2dph/internal/facts"
 )
 
@@ -34,6 +35,15 @@ type LeafInput struct {
 	ExternalID string // устойчивый ref внутри корпуса (message id / commit sha / путь)
 	ObservedAt string // когда контент увиден; пусто → now() при записи
 	Embedding  []float64
+}
+
+// ContentHash — dedup-ключ записи по контракту (P-9.3): тот же ключ, что
+// internal/contract.Leaf.ContentHash (source|external_id|kind|text), чтобы
+// id в БД совпадал с контрактным хэшем (dedup-ключ == id).
+func (lf LeafInput) ContentHash() string {
+	return contract.Leaf{
+		Source: lf.Source, ExternalID: lf.ExternalID, Kind: lf.Type, Text: lf.Text,
+	}.ContentHash()
 }
 
 // OpenWritable opens kb.lbug for writes (ReadOnly=false) and loads FTS+VECTOR.
@@ -154,7 +164,7 @@ func execParams(conn *lbug.Connection, query string, args map[string]any) error 
 
 // UpsertLeaf MERGEs one leaf. Safe while FTS/HNSW exist (no DROP INDEX).
 func UpsertLeaf(conn *lbug.Connection, lf LeafInput) (string, error) {
-	lf.Text = strings.ToValidUTF8(lf.Text, "\uFFFD")
+	lf.Text = contract.NormalizeText(lf.Text)
 	lf.Source = strings.ToValidUTF8(lf.Source, "\uFFFD")
 	if lf.Text == "" || lf.Source == "" {
 		return "", fmt.Errorf("leaf needs text and source")
@@ -177,7 +187,7 @@ func UpsertLeaf(conn *lbug.Connection, lf LeafInput) (string, error) {
 	if lf.Type == "" {
 		lf.Type = "reference"
 	}
-	lid := LeafID(lf.Text, lf.Source)
+	lid := lf.ContentHash()
 	// observed_at passthrough (контракт): источник может указать момент записи;
 	// пусто → штампуем now() (обратная совместимость). В хэш id не входит —
 	// та же семантика, что gator ContentHash (G-8.0 #73).
