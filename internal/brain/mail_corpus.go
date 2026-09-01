@@ -104,6 +104,9 @@ func mailLeafsIn(root, since string) ([]CorpusLeaf, error) {
 				out = append(out, CorpusLeaf{
 					Source: src, Repo: "ooMail", Heading: lf.Heading,
 					Text: lf.Text, Type: lf.Type, How: "mail/import", Date: date,
+					// контракт P-9.2: external_id = message id (директория
+					// письма); observed_at = receivedDate из message.json.
+					ExternalID: id, ObservedAt: msgDate(md),
 				})
 			}
 		}

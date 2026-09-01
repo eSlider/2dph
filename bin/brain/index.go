@@ -343,6 +343,8 @@ func factsFromJSON(raw []byte) []brain.LeafInput {
 			How:       strOr(m["how"], "facts/extract"),
 			Loc:       strOr(m["loc"], source),
 			Type:      "fact",
+			ExternalID: strOr(m["external_id"], ""),
+			ObservedAt: strOr(m["observed_at"], ""),
 		})
 	}
 	return out

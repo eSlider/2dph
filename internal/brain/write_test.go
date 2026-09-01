@@ -3,8 +3,10 @@
 package brain
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	lbug "github.com/LadybugDB/go-ladybug"
@@ -203,5 +205,83 @@ func TestFactsAndChatsLandOnRebuild(t *testing.T) {
 	}
 	if n := count("unique-fact-token"); n == 0 {
 		t.Fatal("facts must be FTS-searchable")
+	}
+}
+
+// Контракт P-9.2: observed_at из источника пишется как есть, пусто → now().
+// external_id сохраняется в колонке.
+func TestContractObservedAtPassthrough(t *testing.T) {
+	dir := t.TempDir()
+	db, conn, err := OpenWritable(filepath.Join(dir, "kb.lbug"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	defer conn.Close()
+	if err := InitSchema(conn); err != nil {
+		t.Fatal(err)
+	}
+
+	// leaf с observed_at/external_id из источника
+	id, err := UpsertLeaf(conn, LeafInput{
+		Text: "alice contract leaf", Source: "test-contract.md",
+		ExternalID: "msg-42", ObservedAt: "2026-08-31T09:15:00Z",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// leaf без observed_at → штамп now()
+	if _, err := UpsertLeaf(conn, LeafInput{
+		Text: "bob plain leaf", Source: "test-contract.md", ExternalID: "msg-43",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]string{}
+	res, err := conn.Query("MATCH (l:Leaf) RETURN l.id, l.observed_at, l.external_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Close()
+	for res.HasNext() {
+		row, err := res.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		vals, err := row.GetAsSlice()
+		if err != nil || len(vals) < 3 {
+			t.Fatal("leaf row")
+		}
+		got[fmt.Sprint(vals[0])] = fmt.Sprint(vals[1]) + "|" + fmt.Sprint(vals[2])
+	}
+	wantObs := "2026-08-31T09:15:00Z|msg-42"
+	if got[id] != wantObs {
+		t.Fatalf("alice leaf observed_at|external_id = %q, want %q", got[id], wantObs)
+	}
+	// bob: observed_at заполнен now(), external_id на месте
+	for lid, v := range got {
+		if lid == id {
+			continue
+		}
+		if v == "|msg-43" || v == "<nil>|msg-43" {
+			t.Fatalf("bob leaf observed_at must fall back to now(), got %q", v)
+		}
+		if !strings.Contains(v, "msg-43") {
+			t.Fatalf("bob leaf external_id missing: %q", v)
+		}
+	}
+}
+
+// /ingest принимает external_id/observed_at из запроса (контракт P-9.2).
+func TestParseIngestLeafsContractFields(t *testing.T) {
+	leafs, err := parseIngestLeafs([]byte(`{"text":"hi","source":"mail","external_id":"msg-7","observed_at":"2026-08-31T09:15:00Z"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(leafs) != 1 {
+		t.Fatalf("leafs=%d", len(leafs))
+	}
+	if leafs[0].ExternalID != "msg-7" || leafs[0].ObservedAt != "2026-08-31T09:15:00Z" {
+		t.Fatalf("contract fields lost: %+v", leafs[0])
 	}
 }

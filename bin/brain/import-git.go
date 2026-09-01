@@ -94,6 +94,9 @@ func run(args []string) int {
 				How:    "git-log",
 				Source: l.Source,
 				Loc:    l.Repo,
+				// контракт P-9.2: external_id = commit sha, observed_at = дата коммита
+				ExternalID: cm.SHA,
+				ObservedAt: cm.Date,
 			})
 		}
 		fmt.Fprintf(os.Stderr, "brain-import-git: %-24s %5d commits  %s\n", name, len(cs), rp)

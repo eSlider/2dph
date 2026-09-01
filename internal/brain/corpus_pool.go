@@ -31,6 +31,11 @@ type CorpusLeaf struct {
 	Type    string
 	How     string
 	Date    string
+	// ExternalID — устойчивый ref внутри корпуса (контракт записи, P-9.2);
+	// заполняется там, где источник уже знает id (mail message id, git sha).
+	ExternalID string
+	// ObservedAt — момент записи из источника; пусто → now() при upsert.
+	ObservedAt string
 }
 
 // poolItem is one unit of parallel work: embed text for item at index i.
