@@ -86,6 +86,20 @@ type Config struct {
 	// vector path from the index; disabled/missing index falls back to the
 	// linear scan.
 	Vector VectorConfig `mapstructure:"vector"`
+
+	// Gator configures the gator kind=mail canon importer (D-1.3 #260):
+	// read-only hive root of parquet/mail (gator var/gator/parquet/mail on
+	// the shared data host). Machine-local path → config.local.yml,
+	// никогда не хардкодится в коде.
+	Gator GatorConfig `mapstructure:"gator"`
+}
+
+// GatorConfig configures read access to the gator aggregation platform canon.
+type GatorConfig struct {
+	// MailHive is the hive root of the gator mail canon: directory holding
+	// source=mail/channel=*/dt=*/*.parquet. Empty = tools resolve it from
+	// env (GATOR_MAIL_HIVE) or fail with a config error.
+	MailHive string `mapstructure:"mailhive"`
 }
 
 // VectorConfig configures the vector search layer (issue #204).
