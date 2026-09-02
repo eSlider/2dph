@@ -23,6 +23,7 @@ import (
 	lbug "github.com/LadybugDB/go-ladybug"
 	"github.com/eSlider/2dph/internal/brain/rank"
 	"github.com/eSlider/2dph/internal/config"
+	"github.com/eSlider/2dph/internal/contract"
 	"github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -357,12 +358,13 @@ func nullStr(v any) string {
 
 // JSON output types
 type jsonOut struct {
-	Query      string             `json:"query"`
-	RootFilter string             `json:"root_filter"`
-	AsOf       string             `json:"as_of,omitempty"`
-	Count      int                `json:"count"`
-	Results    []jsonHit          `json:"results"`
-	Web        *rank.SecondSource `json:"web,omitempty"`
+	Query           string             `json:"query"`
+	RootFilter      string             `json:"root_filter"`
+	AsOf            string             `json:"as_of,omitempty"`
+	Count           int                `json:"count"`
+	Results         []jsonHit          `json:"results"`
+	Web             *rank.SecondSource `json:"web,omitempty"`
+	ContractVersion string             `json:"contract_version"`
 }
 
 type jsonHit struct {
@@ -393,12 +395,13 @@ func toJSONOut(hits []Hit, query, rootFilter, asOf string, web *rank.SecondSourc
 		}
 	}
 	return &jsonOut{
-		Query:      query,
-		RootFilter: rootFilter,
-		AsOf:       asOf,
-		Count:      len(hits),
-		Results:    out,
-		Web:        web,
+		Query:           query,
+		RootFilter:      rootFilter,
+		AsOf:            asOf,
+		Count:           len(hits),
+		Results:         out,
+		Web:             web,
+		ContractVersion: contract.ReadContractVersion,
 	}
 }
 

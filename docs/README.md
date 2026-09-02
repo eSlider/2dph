@@ -22,6 +22,8 @@ issue comments, not here.
 | explanation | [design](design.md) — two roots, deduction, versioning, read path |
 | reference | [PLAN.md](../PLAN.md) — decisions D1–D25 |
 | howto (brain ops) | [brain/rebuild](brain/rebuild.md) — parallel write, resume |
+| reference | [brain/read-contract](brain/read-contract.md) — search/get/stats/audit formats, versioning (P-9.4) |
+| reference | [brain/contract](brain/contract.md) — write contract, ContentHash, corpus adapters (P-9.2/P-9.3) |
 | howto (facts) | [facts/audit-recipes](facts/audit-recipes.md) — audit recipes |
 | howto (agent) | [picoclaw](picoclaw.md) — MCP gateway (`scripts/stack/start-assistant`) |
 | howto (reasoner) | [reasoner](reasoner.md) — CPU bench (D18) |

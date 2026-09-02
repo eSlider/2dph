@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/contract"
 )
 
 // ingestMu serializes /ingest writes: the serve process holds kb.lbug open
@@ -90,11 +91,12 @@ func (HTTP) Get(_ context.Context, id string, body bool) ([]byte, error) {
 		return nil, fmt.Errorf("leaf row")
 	}
 	out := map[string]any{
-		"id":         fmt.Sprint(vals[0]),
-		"root":       fmt.Sprint(vals[2]),
-		"confidence": fmt.Sprint(vals[3]),
-		"source":     fmt.Sprint(vals[4]),
-		"type":       fmt.Sprint(vals[5]),
+		"id":               fmt.Sprint(vals[0]),
+		"root":             fmt.Sprint(vals[2]),
+		"confidence":       fmt.Sprint(vals[3]),
+		"source":           fmt.Sprint(vals[4]),
+		"type":             fmt.Sprint(vals[5]),
+		"contract_version": contract.ReadContractVersion,
 	}
 	if body {
 		out["text"] = fmt.Sprint(vals[1])
@@ -128,7 +130,10 @@ func (HTTP) Stats(context.Context) ([]byte, error) {
 		byRoot[fmt.Sprint(vals[0])] = n
 		total += n
 	}
-	return json.Marshal(map[string]any{"total": total, "by_root": byRoot, "db": dbPath(), "ann": annStatsJSON()})
+	return json.Marshal(map[string]any{
+		"total": total, "by_root": byRoot, "db": dbPath(), "ann": annStatsJSON(),
+		"contract_version": contract.ReadContractVersion,
+	})
 }
 
 func (HTTP) Audit(context.Context) ([]byte, error) {
@@ -158,7 +163,10 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 			"count":      asInt(vals[2]),
 		})
 	}
-	return json.Marshal(map[string]any{"status": "ok", "by_confidence": rows})
+	return json.Marshal(map[string]any{
+		"status": "ok", "by_confidence": rows,
+		"contract_version": contract.ReadContractVersion,
+	})
 }
 
 // embedIngestLeafs fills missing embeddings for /ingest leafs. Package-level

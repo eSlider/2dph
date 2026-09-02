@@ -11,6 +11,7 @@ import (
 	lbug "github.com/LadybugDB/go-ladybug"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/contract"
 	"github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -142,6 +143,7 @@ func auditContract(conn *lbug.Connection) (map[string]any, error) {
 	}
 	return map[string]any{
 		"total": total, "missing": missing, "by_corpus": byCorpus, "db": dbPath(),
+		"contract_version": contract.ReadContractVersion,
 	}, nil
 }
 
