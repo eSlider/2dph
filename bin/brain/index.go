@@ -266,7 +266,20 @@ func run(args []string) int {
 		factN++
 	}
 	if !v.skipIndexes {
-		if err := brain.EnsureIndexes(conn); err != nil {
+		// Фаза индексов (issue #244): CREATE_FTS_INDEX на полном корпусе
+		// падает на дефолтном пуле 1GB (buffer pool full) и оставляет
+		// орфан-таблицу 0_id_appears_info, недостижимую через SQL. Пул для
+		// этой фазы подбирается по размеру текста корпуса; write-хэндл
+		// закрывается, БД переоткрывается с нужным пулом (автоматизация
+		// двухфазного workaround-а из docs/brain/rebuild.md).
+		totalChars, err := brain.CorpusTextChars(conn)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: corpus chars: %v\n", err)
+			return 1
+		}
+		conn.Close()
+		db.Close()
+		if err := brain.BuildIndexes(dbpath, totalChars); err != nil {
 			fmt.Fprintf(os.Stderr, "brain/index: indexes: %v\n", err)
 			return 1
 		}

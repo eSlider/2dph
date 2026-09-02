@@ -51,16 +51,24 @@ func OpenWritable(path string) (*lbug.Database, *lbug.Connection, error) {
 	if path == "" {
 		path = dbPath()
 	}
+	pool := uint64(1 << 30)
+	if v := brainCfg().BufferPool; v > 0 {
+		pool = uint64(v)
+	}
+	return openWritable(path, pool)
+}
+
+// openWritable opens the db writable with an explicit buffer pool (issue #244:
+// the FTS index phase needs a larger pool than the leaf write phase on big
+// corpora; BuildIndexes reopens the db with an auto-sized pool).
+func openWritable(path string, pool uint64) (*lbug.Database, *lbug.Connection, error) {
 	if err := os.MkdirAll(filepathDir(path), 0o755); err != nil {
 		return nil, nil, err
 	}
 	cfg := lbug.DefaultSystemConfig()
 	cfg.ReadOnly = false
 	cfg.MaxNumThreads = 8
-	cfg.BufferPoolSize = 1 << 30
-	if v := brainCfg().BufferPool; v > 0 {
-		cfg.BufferPoolSize = uint64(v)
-	}
+	cfg.BufferPoolSize = pool
 	db, err := lbug.OpenDatabase(path, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("OpenDatabase: %w", err)
@@ -336,7 +344,13 @@ func EnsureIndexes(conn *lbug.Connection) error {
 	if !names["id"] {
 		if res, err := conn.Query("CALL CREATE_FTS_INDEX('Leaf', 'id', ['text'])"); err != nil {
 			qClose(res)
-			return fmt.Errorf("CREATE_FTS_INDEX: %w (delete kb.lbug and --rebuild)", err)
+			// Best-effort: если каталог успел зарегистрировать индекс до
+			// падения — снять его (в режиме buffer pool full не регистрируется,
+			// остаётся орфан-таблица 0_id_appears_info, недостижимая через SQL).
+			if dropRes, dropErr := conn.Query("CALL DROP_FTS_INDEX('Leaf', 'id')"); dropErr == nil {
+				qClose(dropRes)
+			}
+			return fmt.Errorf("CREATE_FTS_INDEX: %w; partial FTS tables (e.g. 0_id_appears_info) are not droppable via SQL and block retry on this db — the db must be deleted and rebuilt (or restored from a backup)", err)
 		} else {
 			qClose(res)
 		}
