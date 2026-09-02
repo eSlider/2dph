@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain/ann"
@@ -57,15 +58,47 @@ func openAnnToolDB(dbPath string) error {
 	return nil
 }
 
-// extractRows pulls every leaf (id, embedding) from the DB. Zero-norm and
-// short embeddings are dropped by the ann package at build/upsert.
+// annExtractEmbed — вектор для leaf при построении ANN (issue #248 B3):
+// embedding-колонка не пишется когда ANN включён (index пишет БД текстом),
+// поэтому build/upsert/ensure эмбедят l.text напрямую моделью. Модель
+// грузится лениво один раз на процесс и только если есть leafs без колонки
+// (legacy-БД с колонкой идут старым путём без модели). Var — cgo-тесты
+// подменяют детерминированным вектором без модели/HF-кэша (как embedQueryFn).
+var annExtractEmbed = func(text string) ([]float64, error) {
+	model, err := annExtractModel()
+	if err != nil {
+		return nil, err
+	}
+	return model.Embed(text)
+}
+
+var (
+	annExtractModelOnce sync.Once
+	annExtractModelVal  *StaticModel
+	annExtractModelErr  error
+)
+
+func annExtractModel() (*StaticModel, error) {
+	annExtractModelOnce.Do(func() {
+		annExtractModelVal, annExtractModelErr = loadModel()
+	})
+	return annExtractModelVal, annExtractModelErr
+}
+
+// extractRows тянет каждый leaf (id, embedding) для build/upsert/ensure.
+// Источник вектора: embedding-колонка когда она есть (legacy/ANN-off БД —
+// быстрый путь без модели), иначе текст эмбеддится моделью на лету (свежий
+// rebuild при ANN-on: БД без колонки, ANN строится из l.text). Отсутствие
+// модели при наличии column-less leafs — ошибка (громко), а не тихий
+// недобор векторов. Zero-norm и короткие эмбеддинги отбрасывает ann-пакет
+// на build/upsert.
 func extractRows(limit int) ([]ann.Row, error) {
 	brainMu.RLock()
 	defer brainMu.RUnlock()
 	if conn == nil {
 		return nil, fmt.Errorf("brain not open")
 	}
-	stmt, err := conn.Prepare("MATCH (l:Leaf) WHERE l.embedding IS NOT NULL RETURN l.id, l.embedding")
+	stmt, err := conn.Prepare("MATCH (l:Leaf) RETURN l.id, l.embedding, l.text")
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +108,7 @@ func extractRows(limit int) ([]ann.Row, error) {
 		return nil, err
 	}
 	defer res.Close()
+	dim := annParams().Dim
 	rows := make([]ann.Row, 0, 320000)
 	for res.HasNext() {
 		row, err := res.Next()
@@ -82,14 +116,23 @@ func extractRows(limit int) ([]ann.Row, error) {
 			return nil, err
 		}
 		vals, err := row.GetAsSlice()
-		if err != nil || len(vals) < 2 {
+		if err != nil || len(vals) < 3 {
 			continue
 		}
-		e, ok := vals[1].([]any)
-		if !ok || len(e) == 0 {
-			continue
+		id := fmt.Sprint(vals[0])
+		if e, ok := vals[1].([]any); ok && len(e) > 0 {
+			rows = append(rows, ann.Row{ID: id, Vec: anyToFloat32(e)})
+		} else {
+			text := fmt.Sprint(vals[2])
+			if text == "" || text == "<nil>" {
+				continue
+			}
+			emb, err := annExtractEmbed(text)
+			if err != nil {
+				return nil, fmt.Errorf("embed %s: %w", id, err)
+			}
+			rows = append(rows, ann.Row{ID: id, Vec: toFloat32(emb, dim)})
 		}
-		rows = append(rows, ann.Row{ID: fmt.Sprint(vals[0]), Vec: anyToFloat32(e)})
 		if limit > 0 && len(rows) >= limit {
 			break
 		}
@@ -316,7 +359,7 @@ func runAnnEnsure(args []string) int {
 	}
 	extractDur := time.Since(t0)
 	if len(rows) == 0 {
-		fmt.Fprintln(os.Stderr, "brain/ann ensure: no leafs with embeddings to index")
+		fmt.Fprintln(os.Stderr, "brain/ann ensure: no leafs to index")
 		return 0
 	}
 

@@ -1,7 +1,7 @@
 # Brain corpus rebuild (runbook)
 
-Optimized corpus (re)index. Parallel embedding, batched writes, resume, and a
-live progress/ETA monitor.
+Optimized corpus (re)index. Parallel embedding, batched writes, resume, a live
+progress/ETA monitor, and cross-chunk dedup before write (issue #248).
 
 ## Commands
 
@@ -34,10 +34,35 @@ git-адаптер (история репозиториев). Каждый ко�
 - `--progress N`  print rate + ETA every N seconds to stderr
 - `--skip`        resume: skip leafs whose id is already in the db
 
+### Dedup перед записью (issue #248 A1)
+
+`WriteCorpusChunked` дедуплицирует **кросс-чанково и всегда** (не только при
+`--skip`): leaf с контрактным `ContentHash` (source|external_id|kind|text),
+уже виденным в этом прогоне, не эмбеддится и не пишется. Это убирает двойной
+стрим одной почты (live `var/corpus/mail` + legacy `var/mail`, #199/#184):
+полный rebuild — 307k streamed → ~105k unique, C-сторона делает 3× меньше
+MERGE/undo-работы. Детерминизм id/порядка финальных leafs не меняется
+(дубликаты схлопывались бы к тому же id и на C-стороне — теперь раньше).
+
+Pass 1 (`CountCorpus`, dry-run) считает так же: `info` = уникальных
+(сколько ляжет в БД), `streamed` = сырой стрим с дублями. `--limit` считается
+по стримнутым leafs, поэтому dry-run и фактическая запись при том же limit
+дают одно число.
+
 Because leaf ids are deterministic (`contract.ContentHash`, P-9.3), `--skip`
 makes a re-run cheap: it filters existing ids before embedding, so it embeds
 only new leafs. After a partial/aborted run, re-running with `--skip` skips the
 already-written corpus and goes straight to index build.
+
+### Embedding-колонка и ANN (issue #248 B3)
+
+Когда `vector.ann.enabled=true` (прод-дефолт #206), rebuild **не пишет
+embedding-колонку**: модель не грузится вовсе (минус ~1.5GB RSS write-фазы),
+leafs и facts пишутся текстом. Векторный индекс строит шаг волны `ann-build`
+(`bin/brain/ann.go ensure`) из текста напрямую — `extractRows` эмбеддит
+column-less leafs моделью (legacy-БД с колонкой идут старым путём, без
+модели). Колонка пишется только когда ANN **выключен** — тогда векторный
+путь поиска это linear-scan по `l.embedding` (search.go `vecScanStmt`).
 
 > Note: `--rebuild` deletes the db, so `--skip` + `--rebuild` always restarts
 > fresh. To resume a crashed build (leafs already written, indexes missing),
@@ -90,6 +115,16 @@ working set, поэтому завышение пула безопасно (па
 (malloc-арены): полный корпус 105k → ~14-15 GB C-side + модель ~1.5 GB.
 CHECKPOINT каждые 1024 лифа не влияет. Это внутренности liblbug 0.19.1
 (undo/версионные структуры узла), вне Go-контроля.
+
+> Checkpoint (issue #248 B1, замерено): liblbug 0.19.1 включает
+> `auto_checkpoint` по умолчанию с порогом WAL 16MB — и go-ladybug v0.17.0
+> пробрасывает это как есть (поля `auto_checkpoint`/`checkpoint_threshold` в
+> Go-`SystemConfig` отсутствуют, toC стартует от C-дефолта). В write-фазе WAL
+> растёт до ~16MB и циклически чекпойнтится в основную БД (наблюдалось на
+> 15k leafs: wal 0→16.6MB → сброс в 2.2MB, db растёт порциями). Явный
+> `CHECKPOINT` как Cypher-стейтмент тоже принимается. На RSS это не влияет
+> (рост дают undo-структуры, не WAL) — главный рычаг пика это dedup (A1):
+> 3× меньше MERGE/undo на C-стороне.
 
 Следствие для пикового RSS: фаза индексов стартует после закрытия write-хэндла
 (тот же процесс — память удержана), поэтому пик ≈ C-накопление write-фазы +

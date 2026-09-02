@@ -203,7 +203,10 @@ recall@30 ≥ 0.93 при NList=2000/NProbe=128 (замеры probe #204). Ин�
 скан, а волна (шаг `ann-build`) строит его.
 
 ```bash
-# полный build из БД (~30s extract + ~4min k-means + assign на 313k, NList=2000)
+# полный build из БД (~30s extract + ~4min k-means + assign на 313k, NList=2000).
+# Источник векторов: embedding-колонка когда есть (legacy/ANN-off БД); у БД
+# после --rebuild при ANN-on колонки нет (issue #248 B3) — build/upsert/ensure
+# эмбедят l.text моделью напрямую (~16k/s, +модель ~1.5GB в этом процессе).
 KB_BUFFER_POOL=4294967296 ./bin/brain/ann.go build
 
 # волна/ручной режим: build если индекса нет или он устарел (>10% отставания
