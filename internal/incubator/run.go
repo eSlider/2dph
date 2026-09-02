@@ -9,9 +9,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/eSlider/2dph/pkg/utils"
 )
+
+// ErrRejected marks a per-message save rejection by the mail server (e.g.
+// Dovecot quota_max_mail_size: the message exceeds the server's maximum mail
+// size). The message is NOT recorded in the manifest (it was never imported)
+// and the run continues past it — one oversized message must not block the
+// rest of the corpus. Re-runs retry it and keep reporting it until the
+// server-side constraint is lifted or the message is handled (decision for
+// the operator / epic B, never silently dropped).
+var ErrRejected = errors.New("incubator: message rejected by the mail server")
 
 // SaveFunc pushes one raw message into the owner's mailbox. The production
 // transport is `docker exec -i <container> doveadm save -u <user> -m <mb>`
@@ -73,6 +83,14 @@ type Stats struct {
 	// Targets counts the save targets of imported messages — the routing
 	// result of layout mode (Sent/INBOX/INBOX/Unmatched, #252).
 	Targets map[string]int
+	// Rejected counts messages the mail server refused to save (ErrRejected,
+	// e.g. oversized > quota_max_mail_size). The run continues past them; they
+	// are never recorded in the manifest, so a re-run retries them.
+	Rejected int
+	// RejectedPaths lists the source paths of rejected messages, so the
+	// operator can act on them (lift the server constraint / handle the
+	// message) — never silently dropped (epic B decision).
+	RejectedPaths []string
 }
 
 // manifestSaveEvery is the crash-resume checkpoint cadence: the manifest is
@@ -192,6 +210,15 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 				ensured[mb] = true
 			}
 			if err := save(ctx, mb, raw); err != nil {
+				if errors.Is(err, ErrRejected) {
+					// Server refused THIS message (e.g. too large). Not a
+					// transport failure: count it, keep the rest of the
+					// window going, do not record it in the manifest (a
+					// re-run retries it until the constraint is lifted).
+					st.Rejected++
+					st.RejectedPaths = append(st.RejectedPaths, m.Rel)
+					continue
+				}
 				saveManifestBestEffort(manifest, o.State)
 				return st, fmt.Errorf("incubator: %s → %s: %w", m.Rel, mb, err)
 			}
@@ -260,11 +287,18 @@ func doveadm(ctx context.Context, bin, container string, args []string, stdin io
 }
 
 // DoveadmSave saves one raw message into user's mailbox via
-// `doveadm save -u <user> -m <mailbox>` (message over stdin).
+// `doveadm save -u <user> -m <mailbox>` (message over stdin). When doveadm
+// refuses the message itself (exit status 65, "Saving failed" — e.g. the
+// message exceeds quota_max_mail_size), the error wraps ErrRejected so the
+// run can skip that message and continue; transport failures stay fatal.
 func DoveadmSave(ctx context.Context, docker, container, user, mailbox string, raw []byte) error {
 	out, err := doveadm(ctx, docker, container, []string{"save", "-u", user, "-m", mailbox}, bytes.NewReader(raw))
 	if err != nil {
-		return fmt.Errorf("doveadm save %s %s: %w: %s", user, mailbox, err, utils.Snippet(string(out), 512))
+		msg := string(out)
+		if bytes.Contains(out, []byte("Saving failed")) || strings.Contains(err.Error(), "Saving failed") {
+			return fmt.Errorf("%w: doveadm save %s %s: %s", ErrRejected, user, mailbox, utils.Snippet(msg, 512))
+		}
+		return fmt.Errorf("doveadm save %s %s: %w: %s", user, mailbox, err, utils.Snippet(msg, 512))
 	}
 	return nil
 }

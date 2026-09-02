@@ -108,12 +108,16 @@ func run(args []string) int {
 		}
 		line := fmt.Sprintf("mail/incubator: %s: found=%d unique=%d no-id=%d window=%d new=%d already=%d dup=%d (%s, user=%s)",
 			imp.Label, st.Scanned, st.Unique, st.NoID, st.Window, st.Imported, st.Already, st.DupInRun, mode, imp.User)
+		if st.Rejected > 0 {
+			line += fmt.Sprintf(", rejected=%d (server refused; not in manifest, re-run retries)", st.Rejected)
+		}
 		if o.Owner != "" {
 			line += fmt.Sprintf(", layout-owner=%s", o.Owner)
 		}
 		fmt.Println(line)
 		printMailboxMap(st)
 		printTargets(st)
+		printRejected(st)
 	}
 	return rc
 }
@@ -148,6 +152,18 @@ func printTargets(st incubator.Stats) {
 	sort.Strings(mbs)
 	for _, mb := range mbs {
 		fmt.Printf("    %-70s %d\n", mb, st.Targets[mb])
+	}
+}
+
+// printRejected lists the messages the mail server refused to save (source
+// paths) — the operator acts on them, nothing is silently dropped.
+func printRejected(st incubator.Stats) {
+	if len(st.RejectedPaths) == 0 {
+		return
+	}
+	fmt.Println("    rejected (server refused, not imported):")
+	for _, p := range st.RejectedPaths {
+		fmt.Printf("    %s\n", p)
 	}
 }
 
