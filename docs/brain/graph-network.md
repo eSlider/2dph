@@ -73,6 +73,13 @@ msgs, threads, replies, period, projects[], premises[] — первые 5 +
 extraPremises счётчик; полный список в `--json`). Дублей нет: каждая связь
 один раз со всеми каналами. Сервисные связи (kind=service) исключены
 (N-1.1 #268). Источник помечен `source: 2dph graph mail+git (L-9.5 #234)`.
+Формат — тип `network.Manifest` (`internal/network/manifest.go`), общий
+контракт с коннектором.
+
+**Write в CRM (N-1.2 #269):** `bin/onlyoffice/import-network.go` читает этот
+манифест и пишет каждую не-сервисную связь как контакт Person
+(email/имя/тег `2dph:network:<target>`/about со сводкой и premises),
+идемпотентно по email. Маппинг и команды — [docs/brain/oo-network-import.md](oo-network-import.md).
 
 ## 5. Границы (что НЕ выводится)
 

@@ -851,3 +851,25 @@ markets-platform/chiliproject@trac), а реальные люди и компа�
 Verification: `go test ./internal/mailconv/ ./internal/network/` + `go vet ./...`
 green; cgo `bin/cgo/zig go vet -tags system_ladybug,network_cli ./bin/network/`
 green. Branch `feat/network-human-filter#268` off `main`.
+
+## 2026-09-03 — N-1.2: коннектор OO: импорт accept-манифеста сети в CRM (gitea #269, epic #267)
+
+Goal: write-инструмент — манифест accept-связей (bin/network --accept-only,
+network.Manifest) → контакт Person в OnlyOffice CRM (email/имя/тег источника
+`2dph:network:<target>`/about со сводкой + premises), идемпотентно по email;
+сервис-аккаунты (N-1.1 #268) пропущены; dry-run/report-only ничего не пишет.
+
+| Item | Status |
+|------|--------|
+| `internal/network/manifest.go`: тип `network.Manifest` (crmDoc/crmLink из bin/network, L-9.5 #234) — общий контракт продюсера и коннектора; bin/network печатает его | done |
+| `internal/ooimport` (cgo-free): `ParseManifest` → `BuildPlan` (маппинг person/company→Person: имя через mailconv.SplitPersonName, fallback локальная часть email; kind=service/без email → skipped; тег default `2dph:network:<target-email>`; about: `{msgs} писем / {threads} тредов / {replies} ответов, период {period}; premises: mail/commit … (+N ещё); source: <manifest>`) → `Run` (BuildContactEmailIndex один проход → matched skip / create: CreatePerson + AddContactInfo email primary + CreateContactTag/AddContactTag; rollback созданного при сбое email/тега; dry-run/limit) | done |
+| CLI `bin/onlyoffice/import-network.go` (shebang, tag onlyoffice_import_network): `--manifest <file|->` (обязателен), `--dry-run`/`--write` (mutually exclusive), `--limit N`, `--tag`; report only по умолчанию; отчёт created/matched/skipped/failed/pending | done |
+| Маппинг-решения: linkedin-релеи людей (hit-reply@linkedin.com, display name реальный) — Person как есть (email=релей, имя=человек); роль-ящики/компании (info@/alle@, kind=company) — Person с fallback-именем (компания-группировка — N-1.4 #271); kind=service не идёт | done (док: docs/brain/oo-network-import.md) |
+| TDD офлайн: ParseManifest (+roundtrip продюсер-консьюмер yaml), BuildPlan (имя/email lowercase/тег/about-точная строка/sort/skip), splitByExisting (повтор = 0 новых) | done — зелёные |
+| Интеграция с живым OO (`//go:build integration`, creds ONLYOFFICE_URL/USER/PASS, без creds — skip): dry-run ничего не пишет → write создаёт контакт email/тег/about → повтор = 0 новых/all matched; --limit создаёт часть, добивание — остальное; тестовый контакт удаляется в t.Cleanup (тег остаётся 0-count — API не удаляет теги) | done — зелёные на office.produktor.io |
+| Документация: docs/brain/oo-network-import.md (маппинг/команды/границы) + graph-network.md §4 + PLAN.md | done |
+
+Verification: `go test ./internal/network/ ./internal/mailconv/ ./internal/ooimport/`
++ `go vet ./...` green; integration `go test -tags=integration ./internal/ooimport/`
+green (live OO); CLI dry-run на fixture — report-only, ничего не пишет.
+Branch `feat/oo-crm-connector#269` off `main`.
