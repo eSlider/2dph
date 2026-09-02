@@ -118,12 +118,16 @@ SENT/TO/CC/BCC/REPLY_TO (mail) + AUTHORED (git) сосуществуют.
   сопряжение mail↔git Person (SENT + AUTHORED на одном узле), no-email,
   сосуществование с Leaf/Message + EnsureIndexes.
 
-## 8. Осталось (L-9.5 #234)
+## 8. Сеть связей (L-9.5 #234) — сделано
 
-Сеть связей «с кем и через кого» из mail+commits: Commit.repo — ось
-«проект/время»; группировка файлов → проектная область (сейчас область =
-repo); экспорт accept в CRM. Инструмент `2dph network` поверх готового
-графа (mail D-1 + git L-9.4).
+Сетевой слой поверх графа (mail D-1 #257 + git L-9.4 #233): инструмент
+`bin/network/network.go` «кто с кем и через кого» — Person↔Person по общим
+письмам/тредам (SENT/TO/CC/BCC/REPLY_TO) и общим проектам (AUTHORED
+Commit.repo — ось «проект/время»), premises (Message.id/Commit.id), verdict
+accept/weaken, экспорт accept в CRM (ADR-0012 п.4). Дизайн и границы:
+[docs/brain/graph-network.md](graph-network.md). Осталось после #234 (не
+скоуп): группировка файлов → проектная область (сейчас область = repo),
+алиасы email, транзитивные цепочки depth>1.
 
 ## Ссылки
 

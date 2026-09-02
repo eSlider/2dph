@@ -258,6 +258,28 @@ Verification: `go test ./...` + `go vet ./...` green (CI-режим);
 `bin/cgo/zig go vet -tags system_ladybug ./internal/brain/` green.
 Branch `feat/git-commits#233` off `main`.
 
+## 2026-09-02 — L-9.5: сеть связей «кто с кем и через кого» (gitea #234, epic #229)
+
+Goal: инструмент сети поверх готового графа (mail D-1 #257 + git L-9.4 #233):
+Person↔Person по общим письмам/тредам/получателям (SENT/TO/CC/BCC/REPLY_TO) и
+общим проектам (AUTHORED Commit.repo), с premises (Message.id/Commit.id) и
+verdict по audit-картам (accept/weaken); экспорт accept в CRM (ADR-0012 п.4).
+Read-only: ничего не пишет, схему не меняет. Дизайн:
+[docs/brain/graph-network.md](docs/brain/graph-network.md).
+
+| Item | Status |
+|------|--------|
+| `internal/network` (cgo-free): BuildLinks — деривации mail (прямой контакт sender↔recipient, вес TO/CC/BCC, общий получатель, REPLY_TO-диалог, треды) + git (общий проект по AUTHORED Commit.repo), premises, период, verdict accept/weaken+OPEN, ранжирование | done |
+| Read-only запросы графа `internal/network/query.go` (cgo): LoadRows — Message/Person/рёбра SENT/TO/CC/BCC/REPLY_TO + Commit/AUTHORED → строки сети | done |
+| CLI `bin/network/network.go` (read-only): `--person` (обязателен), `--project`, `--since/--until`, `--limit`, `--json`, `--accept-only` (CRM-экспорт YAML) | done |
+| TDD: юнит cgo-free (деривации/вес/вердикты/ранжирование/premises на synthetic Alice/Bob/Carol) + cgo на живой Ladybug (temp DB): LoadRows→BuildLinks end-to-end | done |
+| Live-пилот: eslider@gmail.com / andriy.oblivantsev@wheregroup.com на живой kb.lbug (read-only) — топ связей, premises, CRM-экспорт accept | done |
+| Документация: docs/brain/graph-network.md + PLAN.md | done |
+
+Verification: `go test ./...` + `go vet ./...` green (CI-режим);
+`bin/cgo/zig go test -tags system_ladybug ./internal/network/ ./internal/brain/`
+green (cgo). Branch `feat/network#234` off `main`.
+
 ## 2026-09-02 — D-1.2: Message/Person граф-схема + write-путь (gitea #259, epic #257)
 
 Goal: перенести conversation-канон ([#99](https://git.produktor.io/eSlider/2dph/issues/99),

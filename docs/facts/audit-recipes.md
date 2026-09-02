@@ -79,6 +79,39 @@ inference = `deduction`; verdict:
 - Leaf-коммиты (premises, source=git) не раздуваются — граф пишется
   отдельным слоем Commit/Person/AUTHORED.
 
+### 0a. Сеть связей «кто с кем и через кого» (L-9.5 #234)
+
+Граф mail (Message/Person + SENT/TO/CC/BCC/REPLY_TO, D-1 #257) + git
+(Commit/Person/AUTHORED, L-9.4 #233) → связи Person↔Person с premises и
+verdict; read-only инструмент `bin/network/network.go`.
+
+```bash
+bin/network/network.go --person eslider@gmail.com                # топ связей
+bin/network/network.go --person eslider@gmail.com --json         # полный JSON
+bin/network/network.go --person alice@x --project demo --since 2026-01-01
+bin/network/network.go --person alice@x --accept-only            # CRM-экспорт (YAML)
+```
+
+**Деривации** (только из существующих узлов/рёбер): письмо sender↔recipient
+(вес TO 1.0/CC 0.5/BCC 0.25), общий получатель, REPLY_TO-диалог, треды
+(thread_id), общий проект (AUTHORED Commit.repo). Premises — Message.id /
+Commit.id `repo:sha`.
+
+**Шаблон audit card (link-факт):** claim «Q связан(а) с target: N писем, M
+тредов, период D»; inference = `deduction`; verdict:
+
+- `accept` — ≥2 прямых писем, или ≥1 REPLY_TO-диалог, или общий проект
+  (обе стороны AUTHORED в repo) → экспорт в CRM (ADR-0012 п.4);
+- `weaken` — одиночный контакт (1 письмо без ответа и без проекта) или
+  только общий получатель → gap `OPEN`, в CRM-экспорт не идёт (ADR-0012
+  п.2 «1 письмо ≠ устойчивая связь»).
+
+**Границы (иначе fallacy):** алиасы email не склеиваются (сопряжение строго
+по email); «что обсуждали» по телу письма не выводится (Paragraph не
+материализован); транзитивные цепочки «знакомые знакомых» — вне пилота
+(depth=1); mail↔repo привязка не выдумывается (в графе нет такого ребра).
+Дизайн: docs/brain/graph-network.md.
+
 ### 1. Dossier URL dedupe
 
 ```bash
