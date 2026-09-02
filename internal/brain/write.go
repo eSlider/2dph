@@ -111,7 +111,7 @@ func loadExt(conn *lbug.Connection, name string) error {
 	return nil
 }
 
-// InitSchema creates Leaf/File/Commit/Person tables (idempotent).
+// InitSchema creates Leaf/File/Commit/Person/Message tables + rels (idempotent).
 func InitSchema(conn *lbug.Connection) error {
 	stmts := []string{
 		`CREATE NODE TABLE IF NOT EXISTS Leaf (
@@ -131,6 +131,19 @@ func InitSchema(conn *lbug.Connection) error {
 author STRING, email STRING, date STRING, PRIMARY KEY(id))`,
 		`CREATE NODE TABLE IF NOT EXISTS Person (id STRING, name STRING, email STRING, PRIMARY KEY(id))`,
 		`CREATE REL TABLE IF NOT EXISTS AUTHORED (FROM Commit TO Person)`,
+		// D-1.2 (#259): почта как граф — Message узел + рёбра
+		// (:Person)-[:SENT]->(:Message), (:Message)-[:TO|CC|BCC]->(:Person),
+		// (:Message)-[:REPLY_TO]->(:Message). id = message_id, gator_ref =
+		// deeplink kind=mail#v-<hash8>; Person-таблица выше (id=email).
+		`CREATE NODE TABLE IF NOT EXISTS Message (
+ id STRING, thread_id STRING, folder STRING, subject STRING,
+ sent_at STRING, gator_ref STRING, body STRING,
+ PRIMARY KEY(id))`,
+		`CREATE REL TABLE IF NOT EXISTS SENT (FROM Person TO Message)`,
+		`CREATE REL TABLE IF NOT EXISTS TO (FROM Message TO Person)`,
+		`CREATE REL TABLE IF NOT EXISTS CC (FROM Message TO Person)`,
+		`CREATE REL TABLE IF NOT EXISTS BCC (FROM Message TO Person)`,
+		`CREATE REL TABLE IF NOT EXISTS REPLY_TO (FROM Message TO Message)`,
 		// SYNAPTIC models user-defined edges between neurons (leafs): issue #82
 		// "Synapse Matrix". `type` is the synapse label (default "synapse").
 		`CREATE REL TABLE IF NOT EXISTS SYNAPTIC (FROM Leaf TO Leaf, type STRING)`,

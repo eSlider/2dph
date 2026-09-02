@@ -96,6 +96,50 @@ gator parquet/mail (channel X) --read_parquet/query.Mail--> []canon.Message
 - Импортёр гдеgroup (3984) → пилот → gmail (18007).
 - Оценка размера/времени: 18k писем ~ простой MERGE (секунды-минуты).
 
+## 8. Реализация D-1.2 (#259) — схема и write-путь
+
+Код-схема (не импорт; импорт — D-1.3 #260).
+
+**InitSchema** (internal/brain/write.go) — аддитивно, только `IF NOT EXISTS`,
+ничего не DROP:
+
+```cypher
+CREATE NODE TABLE IF NOT EXISTS Message (
+ id STRING, thread_id STRING, folder STRING, subject STRING,
+ sent_at STRING, gator_ref STRING, body STRING,
+ PRIMARY KEY(id))
+CREATE REL TABLE IF NOT EXISTS SENT     (FROM Person TO Message)
+CREATE REL TABLE IF NOT EXISTS TO       (FROM Message TO Person)
+CREATE REL TABLE IF NOT EXISTS CC       (FROM Message TO Person)
+CREATE REL TABLE IF NOT EXISTS BCC      (FROM Message TO Person)
+CREATE REL TABLE IF NOT EXISTS REPLY_TO (FROM Message TO Message)
+```
+
+`Person`-таблица уже была (id/name/email, PK id) — не пересоздаётся.
+`Message.id` = message_id, `gator_ref` = deeplink `kind=mail#v-<hash8>`.
+Paragraph/PART_OF на этом этапе НЕ материализуются (решение D-1.1, YAGNI).
+
+**Write-путь** (internal/brain/graphplan.go — чистая деривация, cgo-free;
+graph.go — исполнение через execParams, cgo):
+
+- Вход `MessageInput{ canon.Message; Folder; Subject; GatorRef }` — canon #99
+  используется as-is, рёбра берутся из `canon.Message.Edges()`.
+- `planGraph`: уникальные Person-узлы (порядок From → To → CC → BCC, name
+  первого вхождения; повторный sync перезаписывает name последним — SET в
+  MERGE) и рёбра `Edges()` минус PART_OF и само-REPLY_TO.
+- Запись идемпотентна: `MERGE (n:Label {id:$id}) SET ...` для узлов и
+  `MATCH (a..), (b..) MERGE (a)-[:REL]->(b)` для рёбер — повторный прогон
+  даёт 0 новых узлов/рёбер.
+- REPLY_TO на ещё не импортированного родителя молча пропускается (MATCH не
+  находит конец) — ребро появляется при повторном прогоне после импорта
+  родителя; импортёр D-1.3 упорядочивает по дате (родители раньше ответов).
+- Транзакции: `UpsertMessages` пишет пачку в одном BEGIN/COMMIT (образец
+  `AddLeafs`).
+
+**Read**: read path (search/get/stats/audit, P-9.4 #240) не тронут; узлы
+Message/Person читаются обычным Cypher (`MATCH (m:Message)-[:TO]->(p:Person)`),
+клиенты P-9 (#241) работают поверх Leaf-контракта как раньше.
+
 ## Ссылки
 
 - ADR-0013 (mail canon → gator; 2dph = Message/Person/Leaf граф)

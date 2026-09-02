@@ -234,6 +234,30 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 | 5 | [#19](https://git.produktor.io/eSlider/2dph/issues/19) | **in** — CI recall SoT is `bin/brain/eval.go` via Zig. |
 
 Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.
+
+## 2026-09-02 — D-1.2: Message/Person граф-схема + write-путь (gitea #259, epic #257)
+
+Goal: перенести conversation-канон ([#99](https://git.produktor.io/eSlider/2dph/issues/99),
+`internal/canon`) в рабочую Ladybug-схему kb.lbug: узел **Message** + рёбра
+**SENT/TO/CC/BCC/REPLY_TO** рядом с существующими Leaf/Person; идемпотентная
+запись (MERGE). Дизайн: [docs/brain/graph-gator-mail.md](docs/brain/graph-gator-mail.md)
+(D-1.1 #258). По итогу почта в 2dph живёт как граф сущностей, а не Leaf-текст
+из сырья.
+
+| Item | Status |
+|------|--------|
+| `InitSchema` аддитивно (`IF NOT EXISTS`): `Message` node (id/thread_id/folder/subject/sent_at/gator_ref/body, PK id) + rel `SENT (Person→Message)`, `TO/CC/BCC (Message→Person)`, `REPLY_TO (Message→Message)`; Person/Leaf/Commit не тронуты | done |
+| `internal/brain/graphplan.go` (cgo-free): `MessageInput` (canon.Message + folder/subject/gator_ref), `planGraph` — уникальные Person (From→To→CC→BCC, name первого вхождения), рёбра = `canon.Edges()` минус PART_OF/само-REPLY_TO; генерация MERGE-запросов (person/message/edge), `edgeSchema` | done |
+| `internal/brain/graph.go` (cgo): `UpsertMessage`/`UpsertMessages` — пачка в одной транзакции, MERGE по message_id/email; Person name-мердж «последний sync побеждает» (SET в MERGE); gator_ref на Message | done |
+| TDD: юнит cgo-free (план persons/edges, детерминизм, формы MERGE-запросов, sentAtText); cgo-тесты на живой Ladybug (temp DB): запись+перечитывание, повторный прогон = 0 дублей, name-мердж, сосуществование с Leaf + EnsureIndexes | done — 8 юнит + 4 cgo зелёные |
+| Документация: §8 «Реализация D-1.2» в дизайн-доке (схема + write-путь) | done |
+| Импорт gator kind=mail → граф (wheregroup 3984) | #260 (следующий) |
+
+Verification: `bin/cgo/zig go test -race -tags system_ladybug ./internal/brain/` green
+(весь пакет, ~6 мин); `go vet ./...` + `go test ./...` green (CI-режим);
+`go test ./internal/canon/` — 14 тестов green (canon #99 не изменён).
+Branch `feat/graph-schema#259` off `main` (cc40235).
+
 ## 2026-08-18 — Go-only write path sync (gitea #41)
 
 Goal: consolidate the most advanced version here and in sync with GitHub main.
