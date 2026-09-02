@@ -165,11 +165,17 @@ type IncubatorConfig struct {
 
 // IncubatorImport is one incubator source: Label (manifest file stem /
 // report name), Source (corpus profile root, machine-local path), User (the
-// doveadm mailbox owner, e.g. wheregroup@produktor.io).
+// doveadm mailbox owner, e.g. andriy.oblivantsev@wheregroup.com) and Owner
+// (the historical address matched in headers; empty = User). When Owner is
+// set, messages are routed by recipient: From=owner → Sent,
+// To/CC/Delivered-To=owner → INBOX, owner nowhere → INBOX/Unmatched
+// (decision 2026-09-02, #252).
 type IncubatorImport struct {
 	Label  string `mapstructure:"label"`
 	Source string `mapstructure:"source"`
 	User   string `mapstructure:"user"`
+	// Owner is the historical owner address for recipient routing; empty = User.
+	Owner string `mapstructure:"owner"`
 	// State overrides the manifest path; empty = <root>/var/state/incubator-<label>.json.
 	State string `mapstructure:"state"`
 }

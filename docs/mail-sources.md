@@ -86,46 +86,68 @@ root-доступа устанавливается локально в `var/dist
 ## Mail-инкубатор: legacy `.eml` → docker-mailserver (эпик #250, issue #252)
 
 Ревизионная зона почты: ETL из legacy-корпусов (`var/mail`, 37GB) идёт **через
-mail-server** (docker-mailserver, ящики-владельцы по источнику, `info@`
-читает их как shared). Автосинк в gator `kind=mail` — эпик B (вне A).
+mail-server** (docker-mailserver, `info@` читает ящики как shared). Автосинк в
+gator `kind=mail` — эпик B (вне A).
+
+**Модель ящика (решение 2026-09-02, #252):** ящик инкубатора = **исторический
+адрес владельца** периода, НЕ абстрактный «источник». Гдеgroup-период →
+`andriy.oblivantsev@wheregroup.com`; на будущие периоды — свой аккаунт на
+каждый исторический адрес (`eslider@gmail.com`, `…@viscreation.de`). Письма
+раскладываются по адресату: owner в `From` → **Sent**; owner в
+`To`/`Cc`/`Delivered-To` → **INBOX**; owner нигде (чужое/тикет-рассылки,
+не-распарсенные) → **INBOX/Unmatched** (карантин, разбирается отдельно, не
+выкидывается молча). Служебные папки аккаунта — стандартные (Sent/Drafts/
+Trash/Junk, как у обычного ящика). A1-ящик `wheregroup@produktor.io`
+(абстрактный источник) — свернутая модель: письма переложены в
+`andriy.oblivantsev@wheregroup.com`, аккаунт удалён (#252).
 
 `bin/mail/incubator.go` (тонкая CLI-обёртка; оркестрация в `internal/incubator`
-— `Run`/`Scan`/`MailboxOfDir`) читает секцию `incubator.*` типизированного
-конфига: `imports: [{label, source, user, state}]` (пути корпусов — из
-инвентаря #79, класть в `config.local.yml`), `docker`, `container`.
+— `Run`/`Scan`/`MailboxOfDir`/`LayoutOf`) читает секцию `incubator.*`
+типизированного конфига: `imports: [{label, source, user, owner, state}]`
+(пути корпусов — из инвентаря #79, класть в `config.local.yml`), `docker`,
+`container`.
 
-Пайплайн на источник (label = owner, пилот `wheregroup` → гдеgroup@produktor.io):
+Пайплайн на источник (label = owner; гдеgroup → `andriy.oblivantsev@wheregroup.com`):
 
 1. **Scan**: обход `**/*.eml` профиля TB (числовые id-директории = письма;
    копии под `attachments/` пропускаются — в гдеgroup это единственный .eml без
    Message-ID).
-2. **Канон**: Message-ID из заголовка (emersion/go-message): первый токен,
-   trim `<>`, lowercase — контрактный ключ gator `kind=mail` (эпик B). Письма
-   без Message-ID → fallback `body-sha256:<hex>` тела, помечаются в логе.
-3. **Дедуп/идемпотентность**: манифест `var/state/incubator-<label>.json`
+2. **Канон**: Message-ID из заголовка (stdlib `net/mail`, header-only): первый
+   токен, trim `<>`, lowercase — контрактный ключ gator `kind=mail` (эпик B).
+   Письма без Message-ID → fallback `body-sha256:<hex>` тела, помечаются в
+   логе. (emersion/go-message для этого НЕ используется: он падает на legacy
+   charset `iso-8859-15` в заголовках гдеgroup — регрессия зафиксирована при
+   первом live-прогоне.)
+3. **Раскладка** (при заданном `owner`): `LayoutOf` — owner в From → Sent,
+   owner в To/Cc/Delivered-To → INBOX, иначе INBOX/Unmatched. Адрес-списки
+   парсятся (addr-spec, регистронезависимо); при не-парсящемся значении —
+   substring-fallback, чтобы legacy-письмо атрибутировалось владельцу.
+   Без `owner` — legacy-режим: плоско в INBOX или дерево папок (`--folders`).
+4. **Дедуп/идемпотентность**: манифест `var/state/incubator-<label>.json`
    (Message-ID канон → путь + папка) — источник истины. Повторный прогон с тем
    же `--limit` даёт 0 новых. `doveadm save` сам **не** дедуплицирует
    (проверено live, 2026-09-02) — на doveadm не полагаемся. Чекпойнт пишется
-   атомарно каждые 25 импортов (crash-resume).
-4. **Импорт**: `docker exec -i mailserver doveadm save -u <user> -m <mb>` с
+   атомарно каждые 25 импортов (crash-resume). `--force` пересоздаёт манифест
+   (перекладка после смены аккаунта/модели).
+5. **Импорт**: `docker exec -i mailserver doveadm save -u <user> -m <mb>` с
    .eml на stdin — **bind-mount legacy-корпуса в контейнер не нужен** (решение
-   открытого вопроса #250/Q3). Пилот (`--limit 1000` без `--folders`) — плоско
-   в INBOX (ACL уже выданы в A1/#251). `--folders` повторяет дерево:
-   корневые id-директории и плоская порция `INBOX_sbd/` → INBOX;
-   `INBOX_sbd/<Name>_sbd/...` → `INBOX/<Name>/...` (суффикс `_sbd` снять, имена
-   в MUTF-7 раскодировать); целевые папки создаются `doveadm mailbox create`
-   (doveadm save не автосоздаёт папку). После импорта с деревом — повторный
-   прогон user-patches.sh (права info@ на новые папки).
+   открытого вопроса #250/Q3). Целевые папки создаются `doveadm mailbox
+   create` (doveadm save не автосоздаёт папку — проверено live); после импорта
+   в новые папки (INBOX/Unmatched, --folders-дерево) — повторный прогон
+   user-patches.sh (права info@ на новые папки).
 
 ```bash
 ./bin/mail/incubator.go --dry-run               # скан + план (папки, счёт)
-./bin/mail/incubator.go --limit 1000            # пилот: 1000 писем в INBOX
-./bin/mail/incubator.go --limit 1000 --folders  # то же, с деревом папок
-./bin/mail/incubator.go --limit 1000 --force    # пере-импорт (только после очистки ящика!)
+./bin/mail/incubator.go --limit 1000            # 1000 писем с раскладкой по owner из конфига
+./bin/mail/incubator.go --owner <addr> --limit 1000  # раскладка по явному адресу
+./bin/mail/incubator.go --limit 1000 --folders  # legacy: дерево папок (без owner)
+./bin/mail/incubator.go --limit 1086 --force    # пере-импорт окна с пересозданием манифеста
 ```
 
-Результат пилота (2026-09-02): найдено 4249 писем-сообщений (4250 .eml на
-диске, из них 1 — attachment-копия `0000640/attachments/ForwardedMessage.eml`,
-пропущена), уникальных Message-ID 4249; импортировано 1000 в INBOX гдеgroup@;
-повторный `--limit 1000` → 0 новых. Проверка: `doveadm fetch -u
-wheregroup@produktor.io 'uid hdr.message-id' mailbox INBOX all` (счёт).
+Результат пилота (2026-09-02, модель «исторический адрес»): найдено 4249
+писем-сообщений (4250 .eml на диске, из них 1 — attachment-копия
+`0000640/attachments/ForwardedMessage.eml`, пропущена), уникальных Message-ID
+**3986** (263 дубля в корпусе); в `andriy.oblivantsev@wheregroup.com`
+переложено 1000 (Sent/INBOX/INBOX-Unmatched — раскладка в отчёте #252);
+повторный прогон → 0 новых. Проверка: `doveadm search -u
+andriy.oblivantsev@wheregroup.com mailbox INBOX ALL` (счёт).

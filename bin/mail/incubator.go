@@ -11,17 +11,24 @@
 // Reads the incubator.* section of the typed config (etc/brain/config.yml; the
 // source corpus roots are machine-local inventory, see #79 — put them in
 // config.local.yml). For every configured import (label = source owner, e.g.
-// wheregroup → гдеgroup@produktor.io) the tool walks the Thunderbird profile
-// dump, derives the canonical Message-ID dedup key per message (fallback:
-// body sha256 for id-less mail), skips already-imported messages via the
-// manifest var/state/incubator-<label>.json (gitignored runtime state) and
-// pushes new ones into the owner mailbox with
+// wheregroup → the owner's historical account andriy.oblivantsev@wheregroup.com)
+// the tool walks the Thunderbird profile dump, derives the canonical
+// Message-ID dedup key per message (fallback: body sha256 for id-less mail),
+// skips already-imported messages via the manifest
+// var/state/incubator-<label>.json (gitignored runtime state) and pushes new
+// ones into the owner mailbox with
 // `docker exec -i mailserver doveadm save` over stdin — no bind-mount of the
-// legacy corpus into the container is needed. The pilot target is flat INBOX;
-// --folders maps the source tree onto Dovecot mailboxes (issue #252 п.3).
+// legacy corpus into the container is needed. The incubator mailbox IS the
+// owner's historical address (decision 2026-09-02, #252), so when an owner
+// address is configured (import.owner / --owner) each message is routed by
+// recipient: owner in From → Sent, owner in To/CC/Delivered-To → INBOX, owner
+// nowhere → INBOX/Unmatched (quarantine for triage). Without an owner the tool
+// keeps the legacy targets: flat INBOX (pilot default) or the replicated
+// folder tree (--folders, issue #252 п.3).
 // Re-runs are idempotent: the manifest is the source of truth (doveadm save
 // itself does NOT dedup — verified live, 2026-09-02). Logic lives in
-// internal/incubator (Run/Scan/MailboxOfDir); this tool is a thin CLI wrapper.
+// internal/incubator (Run/Scan/MailboxOfDir/LayoutOf); this tool is a thin
+// CLI wrapper.
 //
 // NOTE: never run gofmt -w — it rewrites the shebang.
 package main
@@ -46,12 +53,14 @@ func main() { os.Exit(run(os.Args[1:])) }
 func run(args []string) int {
 	var dry, folders, force bool
 	var limit int
+	var ownerFlag string
 	p := cliparse.New("mail-incubator")
 	p.Description = "legacy .eml corpus → doveadm save into incubator mailbox (#252)"
 	p.Bool(&dry, "", "dry-run", "scan + plan only: no doveadm calls, no manifest write")
 	p.Bool(&folders, "", "folders", "replicate the source folder tree (INBOX/<Folder>/...); default = flat INBOX")
 	p.Bool(&force, "", "force", "ignore the manifest and re-import the window (only after wiping the mailbox — doveadm save does not dedup)")
 	p.Int(&limit, "", "limit", "max messages per import run (0 = all; pilot = 1000)")
+	p.String(&ownerFlag, "", "owner", "historical owner address: route by recipient (owner in From → Sent, To/CC/Delivered-To → INBOX, else INBOX/Unmatched); default = the import's config owner, unset = legacy flat/folder import")
 	if err := cliparse.Parse(p, args); err != nil {
 		return cliparse.Fail(err)
 	}
@@ -71,9 +80,14 @@ func run(args []string) int {
 
 	rc := 0
 	for _, imp := range cfg.Incubator.Imports {
+		owner := imp.Owner
+		if ownerFlag != "" {
+			owner = ownerFlag
+		}
 		o := incubator.Options{
 			Root:      imp.Source,
 			User:      imp.User,
+			Owner:     owner,
 			State:     impState(cfg, imp),
 			Docker:    cfg.Incubator.Docker,
 			Container: cfg.Incubator.Container,
@@ -92,15 +106,20 @@ func run(args []string) int {
 		if dry {
 			mode = "dry-run"
 		}
-		fmt.Printf("mail/incubator: %s: found=%d unique=%d no-id=%d window=%d new=%d already=%d dup=%d (%s, user=%s)\n",
+		line := fmt.Sprintf("mail/incubator: %s: found=%d unique=%d no-id=%d window=%d new=%d already=%d dup=%d (%s, user=%s)",
 			imp.Label, st.Scanned, st.Unique, st.NoID, st.Window, st.Imported, st.Already, st.DupInRun, mode, imp.User)
+		if o.Owner != "" {
+			line += fmt.Sprintf(", layout-owner=%s", o.Owner)
+		}
+		fmt.Println(line)
 		printMailboxMap(st)
+		printTargets(st)
 	}
 	return rc
 }
 
-// printMailboxMap prints the per-folder distribution of the run window — the
-// "карта папок" of issue #252 (target mailboxes as doveadm would see them).
+// printMailboxMap prints the per-folder distribution of the scan — the
+// "карта папок" of issue #252 (source folders as doveadm would see them).
 func printMailboxMap(st incubator.Stats) {
 	if len(st.ByMailbox) == 0 {
 		return
@@ -112,6 +131,23 @@ func printMailboxMap(st incubator.Stats) {
 	sort.Strings(mbs)
 	for _, mb := range mbs {
 		fmt.Printf("    %-70s %d\n", mb, st.ByMailbox[mb])
+	}
+}
+
+// printTargets prints the recipient-routing result of layout mode
+// (Sent/INBOX/INBOX/Unmatched, decision 2026-09-02 / #252).
+func printTargets(st incubator.Stats) {
+	if len(st.Targets) == 0 {
+		return
+	}
+	fmt.Println("    targets (layout):")
+	mbs := make([]string, 0, len(st.Targets))
+	for mb := range st.Targets {
+		mbs = append(mbs, mb)
+	}
+	sort.Strings(mbs)
+	for _, mb := range mbs {
+		fmt.Printf("    %-70s %d\n", mb, st.Targets[mb])
 	}
 }
 

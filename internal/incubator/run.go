@@ -28,8 +28,15 @@ type EnsureFunc func(ctx context.Context, mailbox string) error
 type Options struct {
 	// Root is the source profile root (machine-local path from config.local.yml).
 	Root string
-	// User is the doveadm mailbox owner (e.g. wheregroup@produktor.io).
+	// User is the doveadm mailbox owner (the incubator account, e.g.
+	// andriy.oblivantsev@wheregroup.com).
 	User string
+	// Owner is the historical address of the owner matched in message headers
+	// (decision 2026-09-02, #252: the incubator mailbox IS that address).
+	// When set, routing is by recipient: owner in From → Sent, owner in
+	// To/CC/Delivered-To → INBOX, owner nowhere → INBOX/Unmatched. Empty =
+	// legacy flat/folder routing (Mailbox / Folders).
+	Owner string
 	// State is the manifest path (var/state/incubator-<label>.json).
 	State string
 	// Docker is the docker binary; empty = PATH lookup.
@@ -63,6 +70,9 @@ type Stats struct {
 	DupInRun  int            // in window, key already imported earlier this run
 	Imported  int            // saved to the mailbox (or planned, in dry-run)
 	ByMailbox map[string]int // window size per source folder (issue п.3 карта)
+	// Targets counts the save targets of imported messages — the routing
+	// result of layout mode (Sent/INBOX/INBOX/Unmatched, #252).
+	Targets map[string]int
 }
 
 // manifestSaveEvery is the crash-resume checkpoint cadence: the manifest is
@@ -85,6 +95,10 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 	if o.State == "" {
 		return st, errors.New("incubator: Options.State is required")
 	}
+	if o.Folders && o.Owner != "" {
+		return st, errors.New("incubator: recipient layout (Owner) and Folders are mutually exclusive")
+	}
+	layoutMode := o.Owner != ""
 
 	manifest, err := LoadManifest(o.State)
 	if err != nil {
@@ -126,8 +140,11 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 	st.Window = len(window)
 
 	target := o.Mailbox
-	if !o.Folders && target == "" {
+	if !o.Folders && !layoutMode && target == "" {
 		target = "INBOX"
+	}
+	if layoutMode {
+		st.Targets = make(map[string]int, 4)
 	}
 	ensured := make(map[string]bool, 16)
 	inRun := make(map[string]struct{}, st.Window)
@@ -147,15 +164,27 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 			continue
 		}
 		mb := m.Mailbox
-		if !o.Folders {
-			mb = target
-		}
-		if !o.Dry {
-			raw, err := os.ReadFile(filepath.Join(o.Root, filepath.FromSlash(m.Rel)))
+		var raw []byte
+		if layoutMode {
+			// Routing needs the headers, so the file is read even in dry-run.
+			raw, err = os.ReadFile(filepath.Join(o.Root, filepath.FromSlash(m.Rel)))
 			if err != nil {
 				return st, fmt.Errorf("incubator: read %s: %w", m.Rel, err)
 			}
-			if o.Folders && mb != "INBOX" && !ensured[mb] {
+			if mb, err = LayoutOf(raw, o.Owner); err != nil {
+				return st, fmt.Errorf("incubator: layout %s: %w", m.Rel, err)
+			}
+		} else if !o.Folders {
+			mb = target
+		}
+		if !o.Dry {
+			if raw == nil {
+				raw, err = os.ReadFile(filepath.Join(o.Root, filepath.FromSlash(m.Rel)))
+				if err != nil {
+					return st, fmt.Errorf("incubator: read %s: %w", m.Rel, err)
+				}
+			}
+			if mb != "INBOX" && !ensured[mb] {
 				if err := ensure(ctx, mb); err != nil {
 					saveManifestBestEffort(manifest, o.State)
 					return st, fmt.Errorf("incubator: ensure mailbox %s: %w", mb, err)
@@ -174,6 +203,9 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 			}
 		}
 		st.Imported++
+		if st.Targets != nil {
+			st.Targets[mb]++
+		}
 		inRun[m.Key] = struct{}{}
 	}
 
