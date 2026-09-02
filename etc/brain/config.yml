@@ -97,3 +97,10 @@ vector:
     nlist: 2000             # IVF k-means cells (~150 vectors per cell at 313k)
     nprobe: 2000            # cells probed per search. Decision #206: 2000 = full probe, recall@5=1.0,
                             # p50 ~0.4s; 256 = p50 ~0.28s but recall@5 ~0.9 — correctness first, tune later.
+
+# Gator mail canon importer (bin/mail/graph.go, D-1.3 #260): read-only hive
+# root of parquet/mail (source=mail/channel=*/dt=*/ on the shared gator var).
+# Machine-local path — put the real value in config.local.yml, never in code.
+# Empty = pass --hive or set GATOR_MAIL_HIVE.
+gator:
+  mailhive: ""             # e.g. <gator var>/parquet/mail (machine-local, см. #79 inventory)

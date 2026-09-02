@@ -763,3 +763,24 @@ Goal: закрыть остаток #79 — два PST-файла (Andriy + ко
 | docs: `docs/mail-sources.md` (статусы PST → импортировано, секция PST-импорт), PLAN.md (этот блок) | done |
 
 Verification: `go build ./...` (кроме pre-existing build-tag пакетов bin/{reasoner,onlyoffice,postgres} — main без тега), `go vet ./...`, `go test -race ./...` зелёные; gofmt чист (shebang-файлы исключены). Корпус: `var/corpus/mail/pst/{pst-andriy,pst-backup-128g-vorlagen}` + state `var/state/pst.json` (1 seen-id). Branch `feat/pst-import#185`.
+
+## 2026-09-02 — D-1.3: импорт gator wheregroup → граф (gitea #260, epic #257)
+
+Goal: пилот импорта канала **wheregroup** (3984 письма, канон gator kind=mail)
+в kb.lbug как Message/Person узлы + рёбра SENT/TO/CC/BCC/REPLY_TO по write-пути
+D-1.2 (#259) и коннектору D-1.1 (#258). Доказать связку «gator канон → граф
+2dph» до gmail (D-1.4 #261). Read path не тронут; сырьё var/mail не читается.
+
+| Item | Status |
+|------|--------|
+| `pkg/duckdb`: `Exec`/`QueryRows` — произвольный SELECT поверх read_parquet как JSON-совместимые rows (gator-паттерн; LIST(STRUCT)→[]any из map, DECIMAL→float64) | done |
+| `internal/mailgraph` (cgo-free): типизированный Row (message_id/folder/from/to/cc/bcc/in_reply_to/subject/date/body/content_hash), `MapRow`/`MapRows` (email lowercase, date RFC3339/TIMESTAMP, NULL-списки), `ReadSQL` (latest на message_id по observed_at + tombstone deleted исключён + channel), `ResolveThreads` (thread_id = корень цепочки in_reply_to, dangling → внешний корень, цикл → fallback), `SortByDate` (родители раньше ответов), `ToInputs` → `brain.MessageInput`, `ComputeStats` (folder-раскладка/REPLY_TO/уникальные email) | done |
+| конфиг: `Config.Gator.MailHive` (`gator.mailhive`, шаблон etc/brain/config.yml + config.local.yml, флаг `--hive` / env `GATOR_MAIL_HIVE`) | done |
+| `bin/mail/graph.go` (cgo+system_ladybug+mail_graph): `--channel` + dry-run по умолчанию / `--commit`, `--db`, `--skip-existing` (инкремент), live-holder guard (--force), батч-транзакции, отчёт узлы/рёбра после записи | done |
+| TDD: юнит cgo-free (MapRow null/регистр/date-форматы, Input/gator_ref `kind=mail#v-<hash8>`, SortByDate, ResolveThreads root/dangling/цикл, Stats порядок-независим, ReadSQL latest/tombstone/экранирование) + pkg/duckdb roundtrip parquet | done — зелёные |
+| cgo-интеграция (temp Ladybug + synthetic hive parquet): полный цикл → узлы/рёбра, повтор = 0 дублей, `--skip-existing` = 0 новых, dangling REPLY_TO не создаётся | done — `TestImportCycle` (gcc ladybug+duckdb; CI-шаг добавлен, zig duckdb ABI не тянет) |
+| live-прогон wheregroup 3984 → `var/kb.lbug` (бэкап `kb.lbug.pre-d13-260.bak`, compose brain остановлен на запись) | done — Message 0→3984, Person 0→167, рёбра SENT 3984 / TO 4855 / CC 302 / BCC 2 / REPLY_TO 639 (после повтора; первый прогон 630 — 9 рёбер досоздались, родитель позже ответа по date) |
+| повторный прогон идемпотентен; `--skip-existing` = 0 записанных | done |
+| спот-чек: folder INBOX 3143 / Sent 479 / INBOX/Unmatched 362 (сверка с gator), Person andriy.oblivantsev@wheregroup.com, gator_ref `kind=mail#v-<hash8>`, REPLY_TO-цепи, thread_id заполнен | done |
+
+Verification: `go vet ./internal/...` + `go test -race ./internal/mailgraph/ ./internal/config/ ./pkg/duckdb/ ./internal/canon/` green; cgo `go test -tags system_ladybug ./internal/mailgraph/` green (gcc); CLI dry-run/commit/повтор на live. Branch `feat/graph-import-wheregroup#260` off `main`.
