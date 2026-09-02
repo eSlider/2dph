@@ -133,6 +133,51 @@ func TestMailAdapterAttachment(t *testing.T) {
 	}
 }
 
+// TestMailAdapterSkipsContentLessLeafs — content-less leafs не эмитятся:
+// CR-only/пустые attachments/*.md после нормализации дают text=="", такой leaf
+// режется UpsertLeaf с "leaf needs text and source" и валит rebuild (#243).
+// Валидные письма и вложения проходят.
+func TestMailAdapterSkipsContentLessLeafs(t *testing.T) {
+	root := t.TempDir()
+	writeMailFixture(t, root, "var/mail/inbox", "4001", "With attachments", "2026-08-01", "the body is fine")
+
+	attDir := filepath.Join(root, "var", "mail", "inbox", "4001", "attachments")
+	if err := os.MkdirAll(attDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// CR-only: строки-каретки вычищаются TrimSpace → пустой text после normalize.
+	if err := os.WriteFile(filepath.Join(attDir, "cr-only.md"), []byte("\r\n\r\n\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Полностью пустой файл — тоже content-less.
+	if err := os.WriteFile(filepath.Join(attDir, "empty.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Валидное вложение обязано пройти (не выпасть по ошибке фильтра).
+	if err := os.WriteFile(filepath.Join(attDir, "report.pdf.md"), []byte("# report\n\nthe report text\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	leafs := collect(t, Mail{Root: root})
+	// message.md + валидный attachment; CR-only и empty пропущены.
+	if len(leafs) != 2 {
+		t.Fatalf("got %d leafs, want 2 (message + valid attachment; content-less skipped)", len(leafs))
+	}
+	for _, lf := range leafs {
+		if err := lf.Validate(); err != nil {
+			t.Errorf("leaf invalid: %v", err)
+		}
+	}
+	for _, lf := range leafs {
+		if !strings.Contains(filepath.ToSlash(lf.Loc), "attachments/") {
+			continue
+		}
+		if !strings.Contains(lf.Text, "the report text") {
+			t.Errorf("attachment leaf %s: got text %q, want the report text", lf.Loc, lf.Text)
+		}
+	}
+}
+
 // TestMailAdapterSince — фильтр по дате письма.
 func TestMailAdapterSince(t *testing.T) {
 	root := t.TempDir()

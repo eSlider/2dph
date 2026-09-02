@@ -91,6 +91,11 @@ func mailLeafsIn(root, since string, emit func(contract.Leaf) error) error {
 				if lf.Heading == "" {
 					text = lf.Text
 				}
+				// Content-less leaf (CR-only/пустое тело): после нормализации
+				// text=="" — UpsertLeaf режет такие записи и валит rebuild (#243).
+				if contract.NormalizeText(text) == "" {
+					continue
+				}
 				if err := emit(contract.Leaf{
 					Source: "mail", ExternalID: contentAddr(text), Kind: lf.Type,
 					Text: text, Root: "info", Confidence: "confirmed",
