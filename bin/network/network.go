@@ -229,39 +229,17 @@ func dropServices(links []network.Link) []network.Link {
 // связей п.4): только проверенные связи, без дублей (агрегат mail+git).
 // Premises в CRM-выводе ограничены (первые 5 + счётчик) — полный список в
 // --json (аудит/машины), CRM получает ссылки-примеры для проверки.
-type crmDoc struct {
-	Target string    `yaml:"target"`
-	Links  []crmLink `yaml:"links"`
-	Source string    `yaml:"source"`
-}
-
-type crmLink struct {
-	Person   string            `yaml:"person"`
-	Name     string            `yaml:"name,omitempty"`
-	Kind     string            `yaml:"kind"` // person | company (сервисы исключены, N-1.1 #268)
-	Msgs     int               `yaml:"msgs"`
-	Threads  int               `yaml:"threads"`
-	Replies  int               `yaml:"replies"`
-	Period   string            `yaml:"period"`
-	Projects []crmProject      `yaml:"projects,omitempty"`
-	Premises []network.Premise `yaml:"premises"`
-	Extra    int               `yaml:"extraPremises,omitempty"`
-}
-
-type crmProject struct {
-	Repo   string `yaml:"repo"`
-	Period string `yaml:"period"`
-}
-
+// Тип манифеста — network.Manifest (internal/network/manifest.go): общий
+// контракт с коннектором OO (bin/onlyoffice/import-network.go, N-1.2 #269).
 func printCRM(target string, links []network.Link) int {
-	doc := crmDoc{Target: target, Links: []crmLink{}, Source: "2dph graph mail+git (L-9.5 #234)"}
+	doc := network.Manifest{Target: target, Links: []network.ManifestLink{}, Source: "2dph graph mail+git (L-9.5 #234)"}
 	for _, l := range links {
-		cl := crmLink{
+		cl := network.ManifestLink{
 			Person: l.Person, Name: l.Name, Kind: l.Kind, Msgs: l.Msgs, Threads: l.Threads,
 			Replies: l.Replies, Period: l.Period,
 		}
 		for _, pr := range l.Projects {
-			cl.Projects = append(cl.Projects, crmProject{Repo: pr.Repo, Period: pr.Period})
+			cl.Projects = append(cl.Projects, network.ManifestProject{Repo: pr.Repo, Period: pr.Period})
 		}
 		maxPrem := 5
 		if len(l.Premises) < maxPrem {
