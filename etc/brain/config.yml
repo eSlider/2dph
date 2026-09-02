@@ -68,6 +68,16 @@ pst:
   out: ""                # corpus root; empty = <root>/var/corpus/mail/pst
   state: ""              # checkpoint; empty = <root>/var/state/pst.json
 
+# Mail incubator ETL (bin/mail/incubator.go, issue #252 / epic #250): legacy
+# .eml corpora → doveadm save into docker-mailserver incubator owner
+# mailboxes (гдеgroup@produktor.io pilot). Corpus roots are machine-local
+# inventory — put the real paths in config.local.yml, never in code. Missing
+# incubator.imports = explicit error from the tool pointing at this file.
+incubator:
+  docker: ""             # docker binary override; empty = PATH lookup
+  container: "mailserver" # docker-mailserver container name
+  imports: []            # e.g. [{label: wheregroup, source: "<profile root, see #79>", user: "wheregroup@produktor.io", state: ""}]
+
 # Vector ANN index (issues #204/#206): IVF (k-means + exact cosine over the
 # probed cells) outside liblbug (whose own HNSW crashes on grown graphs,
 # #192). Maintained by the wave's ann-build step (bin/brain/ann.go ensure:

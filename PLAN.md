@@ -92,6 +92,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/get.go stats.go eval.go watch.go model.go   # Go read/ops (cgo)
     facts/extract.go audit.go crm.go  # 2-source pairing, confidence, CRM proof
     mail/sync.go import.go convert-mbox.go ocr.go    # mail ETL (Gmail/OO/M365), PDF OCR
+    mail/incubator.go       # legacy .eml → doveadm save в mail-server-инкубатор (#252/эпик #250)
     chats/sync.go import.go facts.go apply.go  # conversations (no chats index)
     contacts/*.go           CRM contacts importer
     web/search.go           SearXNG client (throttled ≠ absence)

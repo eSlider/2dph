@@ -95,6 +95,17 @@ func TestLoadStack_DeepMergeAndPriority(t *testing.T) {
 	if cfg.Reasoner.Device != "cpu" {
 		t.Fatalf("reasoner.device = %q, want default cpu", cfg.Reasoner.Device)
 	}
+	// Incubator: import list from config.yml, container keeps the default.
+	if len(cfg.Incubator.Imports) != 1 {
+		t.Fatalf("incubator.imports = %+v, want 1 import", cfg.Incubator.Imports)
+	}
+	imp := cfg.Incubator.Imports[0]
+	if imp.Label != "wheregroup" || imp.User != "wheregroup@example.com" || imp.Source != "/srv/mail/archive/wheregroup" {
+		t.Fatalf("incubator import wrong: %+v", imp)
+	}
+	if cfg.Incubator.Container != "mailserver" {
+		t.Fatalf("incubator.container = %q, want default mailserver", cfg.Incubator.Container)
+	}
 }
 
 // TestLoad_ProcessEnvOverridesLayer checks that process env (legacy names)

@@ -82,3 +82,50 @@ root-доступа устанавливается локально в `var/dist
 второй это копия из бэкапа): 1 уникальное письмо (Outlook-приветствие 2005) в
 `Posteingang`, 78 контактов VCF + 6 событий ICS извлечены readpst, но
 импортируются другими пайплайнами (#68); исключённых папок нет (пустые).
+
+## Mail-инкубатор: legacy `.eml` → docker-mailserver (эпик #250, issue #252)
+
+Ревизионная зона почты: ETL из legacy-корпусов (`var/mail`, 37GB) идёт **через
+mail-server** (docker-mailserver, ящики-владельцы по источнику, `info@`
+читает их как shared). Автосинк в gator `kind=mail` — эпик B (вне A).
+
+`bin/mail/incubator.go` (тонкая CLI-обёртка; оркестрация в `internal/incubator`
+— `Run`/`Scan`/`MailboxOfDir`) читает секцию `incubator.*` типизированного
+конфига: `imports: [{label, source, user, state}]` (пути корпусов — из
+инвентаря #79, класть в `config.local.yml`), `docker`, `container`.
+
+Пайплайн на источник (label = owner, пилот `wheregroup` → гдеgroup@produktor.io):
+
+1. **Scan**: обход `**/*.eml` профиля TB (числовые id-директории = письма;
+   копии под `attachments/` пропускаются — в гдеgroup это единственный .eml без
+   Message-ID).
+2. **Канон**: Message-ID из заголовка (emersion/go-message): первый токен,
+   trim `<>`, lowercase — контрактный ключ gator `kind=mail` (эпик B). Письма
+   без Message-ID → fallback `body-sha256:<hex>` тела, помечаются в логе.
+3. **Дедуп/идемпотентность**: манифест `var/state/incubator-<label>.json`
+   (Message-ID канон → путь + папка) — источник истины. Повторный прогон с тем
+   же `--limit` даёт 0 новых. `doveadm save` сам **не** дедуплицирует
+   (проверено live, 2026-09-02) — на doveadm не полагаемся. Чекпойнт пишется
+   атомарно каждые 25 импортов (crash-resume).
+4. **Импорт**: `docker exec -i mailserver doveadm save -u <user> -m <mb>` с
+   .eml на stdin — **bind-mount legacy-корпуса в контейнер не нужен** (решение
+   открытого вопроса #250/Q3). Пилот (`--limit 1000` без `--folders`) — плоско
+   в INBOX (ACL уже выданы в A1/#251). `--folders` повторяет дерево:
+   корневые id-директории и плоская порция `INBOX_sbd/` → INBOX;
+   `INBOX_sbd/<Name>_sbd/...` → `INBOX/<Name>/...` (суффикс `_sbd` снять, имена
+   в MUTF-7 раскодировать); целевые папки создаются `doveadm mailbox create`
+   (doveadm save не автосоздаёт папку). После импорта с деревом — повторный
+   прогон user-patches.sh (права info@ на новые папки).
+
+```bash
+./bin/mail/incubator.go --dry-run               # скан + план (папки, счёт)
+./bin/mail/incubator.go --limit 1000            # пилот: 1000 писем в INBOX
+./bin/mail/incubator.go --limit 1000 --folders  # то же, с деревом папок
+./bin/mail/incubator.go --limit 1000 --force    # пере-импорт (только после очистки ящика!)
+```
+
+Результат пилота (2026-09-02): найдено 4249 писем-сообщений (4250 .eml на
+диске, из них 1 — attachment-копия `0000640/attachments/ForwardedMessage.eml`,
+пропущена), уникальных Message-ID 4249; импортировано 1000 в INBOX гдеgroup@;
+повторный `--limit 1000` → 0 новых. Проверка: `doveadm fetch -u
+wheregroup@produktor.io 'uid hdr.message-id' mailbox INBOX all` (счёт).

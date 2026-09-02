@@ -75,6 +75,12 @@ type Config struct {
 	// inventory (see #79) and belong in config.local.yml, never in code.
 	PST PSTConfig `mapstructure:"pst"`
 
+	// Incubator mail ETL (bin/mail/incubator.go, issue #252 / epic #250):
+	// legacy corpora (.eml trees) → doveadm save into docker-mailserver
+	// incubator owner mailboxes. Corpus roots are machine-local inventory →
+	// config.local.yml.
+	Incubator IncubatorConfig `mapstructure:"incubator"`
+
 	// Vector ANN index (issue #204): approximate-nearest-neighbor search
 	// outside liblbug (whose HNSW crashes, #192). Enabled serves the query
 	// vector path from the index; disabled/missing index falls back to the
@@ -145,6 +151,29 @@ type PSTSource struct {
 	Path  string `mapstructure:"path"`
 }
 
+// IncubatorConfig configures the mail incubator ETL (#252): docker transport
+// plus the per-source imports (label, corpus root, doveadm owner).
+type IncubatorConfig struct {
+	// Docker overrides the docker binary; empty = PATH lookup.
+	Docker string `mapstructure:"docker"`
+	// Container is the docker-mailserver container name (default "mailserver").
+	Container string `mapstructure:"container"`
+	// Imports are the incubator sources; each maps one legacy corpus to one
+	// owner mailbox. Empty = the tool fails with a config error.
+	Imports []IncubatorImport `mapstructure:"imports"`
+}
+
+// IncubatorImport is one incubator source: Label (manifest file stem /
+// report name), Source (corpus profile root, machine-local path), User (the
+// doveadm mailbox owner, e.g. wheregroup@produktor.io).
+type IncubatorImport struct {
+	Label  string `mapstructure:"label"`
+	Source string `mapstructure:"source"`
+	User   string `mapstructure:"user"`
+	// State overrides the manifest path; empty = <root>/var/state/incubator-<label>.json.
+	State string `mapstructure:"state"`
+}
+
 // Defaults returns a Config with the built-in defaults. Load() applies the
 // stack on top of these, so fields absent from every layer keep a sane value.
 func Defaults() Config {
@@ -169,6 +198,9 @@ func Defaults() Config {
 		// index is missing or corrupt. The wave's ann-build step maintains it.
 		Vector: VectorConfig{
 			ANN: ANNConfig{Enabled: true},
+		},
+		Incubator: IncubatorConfig{
+			Container: "mailserver",
 		},
 	}
 }

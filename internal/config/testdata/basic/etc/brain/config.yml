@@ -7,3 +7,8 @@ search:
   url: https://search.example.com
 reasoner:
   baseurl: http://cfg.test:11435/v1
+incubator:
+  imports:
+    - label: wheregroup
+      source: /srv/mail/archive/wheregroup
+      user: wheregroup@example.com
