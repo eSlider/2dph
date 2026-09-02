@@ -165,8 +165,9 @@ type step struct {
 
 // dbSteps are the steps that open kb.lbug (write or read). Ladybug opens the
 // DB exclusively, so the brain serve/container must be quiesced around them
-// (see run): mail-index writes leafs, contact-brain/git-brain import leafs,
-// ann-build extracts embeddings for the ANN index.
+// (see run): mail-index writes leafs (без embedding-колонки при ANN-on, #248),
+// contact-brain/git-brain import leafs, ann-build строит ANN — из колонки
+// когда она есть, иначе эмбеддингом l.text моделью (#248 B3).
 var dbSteps = map[string]bool{"contact-brain": true, "git-brain": true, "mail-index": true, "ann-build": true}
 
 // planSteps builds the fixed-order wave. Step names are the public --only

@@ -98,7 +98,7 @@ func run(args []string) int {
 	p.String(&v.since, "", "since", "with --with-mail, messages >= YYYY-MM-DD")
 	p.Bool(&v.dryRun, "", "dry-run", "count leafs, write nothing")
 	p.Bool(&v.skipIndexes, "", "skip-indexes", "write leafs only")
-	p.Int(&v.limit, "", "limit", "max leafs to embed")
+	p.Int(&v.limit, "", "limit", "max leafs to stream (cross-chunk dedup applied before write)")
 	p.Int(&v.workers, "", "workers", "parallel embedding workers (default 4)")
 	p.Int(&v.batch, "", "batch", "leafs per transaction (default 64)")
 	p.Int(&v.chunk, "", "chunk", "leafs per chunk before write (default 2048)")
@@ -125,11 +125,15 @@ func run(args []string) int {
 		port = "8630"
 	}
 
-	// Pass 1: подсчёт leafs по источникам (dry-run + сквозной total/прогресс).
+	// Pass 1: подсчёт уникальных leafs по источникам (dry-run + сквозной
+	// total/прогресс). Счёт дедуплицирован (issue #248 A1): Total = уникальных
+	// ContentHash (сколько ляжет в БД), Streamed = сырой стрим (с дублями
+	// live+legacy mail). --limit применяется и здесь, чтобы dry-run и
+	// фактическая запись давали одно число.
 	// Чанкованная запись (issue #237) не копит корпус: pass 2 стримит и пишет
 	// чанками по --chunk, память ограничена размером чанка (~2048 leafs).
 	ctx := context.Background()
-	stats, err := brain.CountCorpus(ctx, sources(v, root))
+	stats, err := brain.CountCorpus(ctx, sources(v, root), v.limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "brain/index: corpus: %v\n", err)
 		return 1
@@ -151,13 +155,14 @@ func run(args []string) int {
 	if v.dryRun {
 		msg := map[string]any{
 			"info": stats.Total, "facts": len(facts), "by_source": stats.BySource,
-			"would_index": true,
+			"streamed": stats.Streamed, "would_index": true,
 		}
 		if v.jsonOut {
 			enc := json.NewEncoder(os.Stdout)
 			_ = enc.Encode(msg)
 		} else {
-			fmt.Printf("brain/index: %d info + %d facts would be indexed (%v)\n", stats.Total, len(facts), stats.BySource)
+			fmt.Printf("brain/index: %d info + %d facts would be indexed (%d streamed, %d duplicate skipped) (%v)\n",
+				stats.Total, len(facts), stats.Streamed, stats.Streamed-stats.Total, stats.BySource)
 		}
 		return 0
 	}
@@ -195,12 +200,22 @@ func run(args []string) int {
 		_ = os.Remove(dbpath + ".wal")
 	}
 
-	model, err := brain.LoadModel()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "brain/index: model: %v\n", err)
-		return 1
+	// B3 (issue #248): embedding-колонка в БД пишется ТОЛЬКО когда ANN выключен
+	// (тогда векторный путь — linear-scan fallback по l.embedding). Когда ANN
+	// включён (vector.ann.enabled=true) — эмбеддинги в БД не пишутся вовсе:
+	// модель не грузится (минус ~1.5GB RSS write-фазы), WriteCorpus получает
+	// model=nil (leafs пишутся текстом без колонки), facts тоже без эмбеддинга.
+	// ANN строит отдельный шаг волны ann-build (bin/brain/ann.go ensure) из
+	// текста напрямую (см. anntool.extractRows) — колонка ему не нужна.
+	var model *brain.StaticModel
+	if !cfg.Vector.ANN.Enabled {
+		model, err = brain.LoadModel()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/index: model: %v\n", err)
+			return 1
+		}
+		defer model.Close()
 	}
-	defer model.Close()
 
 	db, conn, err := brain.OpenWritable(dbpath)
 	if err != nil {
@@ -288,10 +303,11 @@ func run(args []string) int {
 	if v.jsonOut {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"indexed_info": infoN, "indexed_facts": factN, "db": dbpath, "total": total,
-			"by_source": stats.BySource,
+			"by_source": stats.BySource, "streamed": stats.Streamed,
 		})
 	} else {
-		fmt.Printf("indexed %d/%d info + %d facts; db total %d\n", infoN, stats.Total, factN, total)
+		fmt.Printf("indexed %d/%d info (streamed %d, dedup %d) + %d facts; db total %d\n",
+			infoN, stats.Total, stats.Streamed, stats.Streamed-stats.Total, factN, total)
 	}
 	return 0
 }

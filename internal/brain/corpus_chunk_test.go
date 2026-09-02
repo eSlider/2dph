@@ -43,7 +43,7 @@ func TestCountCorpus(t *testing.T) {
 		fakeSource{name: "docs", leafs: mkTestLeafs(10, "d")},
 		fakeSource{name: "mail", leafs: mkTestLeafs(5, "m")},
 	}
-	stats, err := CountCorpus(context.Background(), sources)
+	stats, err := CountCorpus(context.Background(), sources, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestCountCorpus(t *testing.T) {
 }
 
 func TestCountCorpusEmpty(t *testing.T) {
-	stats, err := CountCorpus(context.Background(), nil)
+	stats, err := CountCorpus(context.Background(), nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestWriteCorpusChunkedOrder(t *testing.T) {
 		fakeSource{name: "docs", leafs: mkTestLeafs(25, "d")},
 		fakeSource{name: "mail", leafs: mkTestLeafs(25, "m")},
 	}
-	stats, err := CountCorpus(context.Background(), sources)
+	stats, err := CountCorpus(context.Background(), sources, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestWriteCorpusChunkedOrder(t *testing.T) {
 // (лимит применяется до чанков, как сейчас через opt.Limit).
 func TestWriteCorpusChunkedLimit(t *testing.T) {
 	sources := []contract.Source{fakeSource{name: "docs", leafs: mkTestLeafs(100, "d")}}
-	stats, err := CountCorpus(context.Background(), sources)
+	stats, err := CountCorpus(context.Background(), sources, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestWriteCorpusChunkedExistingAcrossChunks(t *testing.T) {
 	// дубликаты leafs 2 и 5 (тот же ContentHash) в конце
 	leafs = append(leafs, leafs[2], leafs[5])
 	sources := []contract.Source{fakeSource{name: "docs", leafs: leafs}}
-	stats, err := CountCorpus(context.Background(), sources)
+	stats, err := CountCorpus(context.Background(), sources, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestWriteCorpusChunkedExistingAcrossChunks(t *testing.T) {
 
 // TestWriteCorpusChunkedEmpty — пустой корпус: write не вызывается.
 func TestWriteCorpusChunkedEmpty(t *testing.T) {
-	stats, err := CountCorpus(context.Background(), nil)
+	stats, err := CountCorpus(context.Background(), nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestWriteCorpusChunkedEmpty(t *testing.T) {
 // TestWriteCorpusChunkedDefaultSize — size<=0 → чанк по умолчанию 2048.
 func TestWriteCorpusChunkedDefaultSize(t *testing.T) {
 	sources := []contract.Source{fakeSource{name: "docs", leafs: mkTestLeafs(3000, "d")}}
-	stats, err := CountCorpus(context.Background(), sources)
+	stats, err := CountCorpus(context.Background(), sources, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
