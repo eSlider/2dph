@@ -53,15 +53,26 @@ bin/network/network.go --person alice@x --accept-only     # CRM-экспорт Y
 Флаги: `--person EMAIL` (обязателен), `--project REPO` (git-ось: только
 связи с общим проектом), `--since/--until`, `--limit`, `--json`,
 `--accept-only` (YAML только accept, без дублей — одна запись на связь,
-агрегат mail+git каналов), `--db PATH` (default `<root>/var/kb.lbug`).
+агрегат mail+git каналов), `--exclude-services` (без сервис-аккаунтов,
+kind=service, N-1.1 #268), `--db PATH` (default `<root>/var/kb.lbug`).
 `--depth` зарезервирован (пилот #234 — только прямые связи, depth=1).
+
+## 3a. Классификация связей: люди/компании vs сервисы (N-1.1 #268)
+
+Каждая связь получает поле `kind`: `person` | `company` | `service`
+(классификатор `mailconv.ClassifySender`, правила — в
+[docs/brain/crm-network-filter.md](crm-network-filter.md)). Сервис-аккаунты/
+подсистемы/рассылки (GitLab, PayPal, LinkedIn, markets-platform,
+chiliproject@trac и т.п.) в CRM-экспорт не попадают: `--accept-only`
+исключает `kind=service` (раньше они попадали в экспорт по verdict accept).
 
 ## 4. Экспорт в CRM
 
-`--accept-only` → YAML: target + список accept-связей (person, name, msgs,
-threads, replies, period, projects[], premises[] — первые 5 + extraPremises
-счётчик; полный список в `--json`). Дублей нет: каждая связь один раз со
-всеми каналами. Источник помечен `source: 2dph graph mail+git (L-9.5 #234)`.
+`--accept-only` → YAML: target + список accept-связей (person, name, kind,
+msgs, threads, replies, period, projects[], premises[] — первые 5 +
+extraPremises счётчик; полный список в `--json`). Дублей нет: каждая связь
+один раз со всеми каналами. Сервисные связи (kind=service) исключены
+(N-1.1 #268). Источник помечен `source: 2dph graph mail+git (L-9.5 #234)`.
 
 ## 5. Границы (что НЕ выводится)
 

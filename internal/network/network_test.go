@@ -234,6 +234,65 @@ func TestBuildLinksNoSelfLink(t *testing.T) {
 	}
 }
 
+// Классификация связей (N-1.1 #268): поле Kind = person|company|service.
+// Люди/компании проходят, сервис-аккаунты (noreply@github.com) — Kind
+// service и в CRM-экспорт accept не попадают.
+func TestBuildLinksKindClassification(t *testing.T) {
+	rows := Rows{
+		Persons: []PersonRow{
+			{ID: "alice@example.com", Name: "Alice"},
+			{ID: "bob@example.com", Name: "Bob Smith"},
+			{ID: "noreply@github.com", Name: "GitHub"},
+			{ID: "info@example.com", Name: "Example"},
+		},
+		Msgs: []MsgRow{
+			{ID: "m1@ex", ThreadID: "t1", SentAt: "2026-01-10T09:00:00Z",
+				Sender: "noreply@github.com", To: []string{"alice@example.com"}},
+			{ID: "m2@ex", ThreadID: "t1", SentAt: "2026-01-11T09:00:00Z",
+				Sender: "noreply@github.com", To: []string{"alice@example.com"}},
+			{ID: "m3@ex", ThreadID: "t2", SentAt: "2026-02-01T09:00:00Z",
+				Sender: "bob@example.com", To: []string{"alice@example.com"}},
+			{ID: "m4@ex", ThreadID: "t2", SentAt: "2026-02-02T09:00:00Z",
+				Sender: "alice@example.com", To: []string{"bob@example.com"}},
+			{ID: "m5@ex", ThreadID: "t3", SentAt: "2026-03-01T09:00:00Z",
+				Sender: "info@example.com", To: []string{"alice@example.com"}},
+			{ID: "m6@ex", ThreadID: "t3", SentAt: "2026-03-02T09:00:00Z",
+				Sender: "alice@example.com", To: []string{"info@example.com"}},
+		},
+	}
+	links := BuildLinks(rows, Filter{Person: "alice@example.com"})
+	if got := kindOf(links, "bob@example.com"); got != "person" {
+		t.Fatalf("bob kind = %q, want person", got)
+	}
+	if got := kindOf(links, "noreply@github.com"); got != "service" {
+		t.Fatalf("github kind = %q, want service", got)
+	}
+	if got := kindOf(links, "info@example.com"); got != "company" {
+		t.Fatalf("info@example.com kind = %q, want company (role inbox)", got)
+	}
+	// сервисы исключаются из accept-экспорта в CRM
+	var accepts []Link
+	for _, l := range links {
+		if l.Verdict == "accept" && l.Kind != "service" {
+			accepts = append(accepts, l)
+		}
+	}
+	for _, l := range accepts {
+		if l.Kind == "service" {
+			t.Fatalf("service link in accept export: %+v", l)
+		}
+	}
+}
+
+func kindOf(links []Link, email string) string {
+	for _, l := range links {
+		if l.Person == email {
+			return l.Kind
+		}
+	}
+	return ""
+}
+
 func findLink(t *testing.T, links []Link, email string) *Link {
 	t.Helper()
 	for i := range links {
