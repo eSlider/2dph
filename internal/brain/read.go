@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/eSlider/2dph/internal/brain/rank"
+	"github.com/eSlider/2dph/internal/contract"
 	"github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -53,6 +54,7 @@ func MainGet(args []string) int {
 		for _, kv := range out {
 			m[kv.K] = kv.V
 		}
+		m["contract_version"] = contract.ReadContractVersion
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		enc.SetEscapeHTML(false)
@@ -241,10 +243,11 @@ func leafStats() (map[string]any, error) {
 		total += n
 	}
 	return map[string]any{
-		"total":   total,
-		"by_root": byRoot,
-		"db":      dbPath(),
-		"model":   ModelID,
+		"total":            total,
+		"by_root":          byRoot,
+		"db":               dbPath(),
+		"model":            ModelID,
+		"contract_version": contract.ReadContractVersion,
 	}, nil
 }
 
