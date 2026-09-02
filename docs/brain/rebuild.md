@@ -9,9 +9,10 @@ Build the native binaries (also runs the cgo brain tests):
 
     scripts/stack/serve-brain --build        # or ./bin/cgo/zig go build ...
 
-Fresh rebuild of info + mail + facts with control flags:
+Fresh rebuild of info + mail + facts with control flags (одна команда, без
+двухфазного workaround-а — пул для FTS-фазы подбирается автоматически, #244):
 
-    KB_BUFFER_POOL=10737418240 bin-build/brain-index \
+    bin-build/brain-index \
         --rebuild --with-mail --with-facts \
         --workers 12 --batch 256 --progress 5 --skip
 
@@ -41,9 +42,10 @@ already-written corpus and goes straight to index build.
 > Note: `--rebuild` deletes the db, so `--skip` + `--rebuild` always restarts
 > fresh. To resume a crashed build (leafs already written, indexes missing),
 > run `--skip` **without** `--rebuild` so the db is preserved and only missing
-> indexes are built:
+> indexes are built — фаза индексов в обоих случаях одна и та же
+> (`BuildIndexes`, автопул):
 >
->     KB_BUFFER_POOL=10737418240 bin-build/brain-index --skip \
+>     bin-build/brain-index --skip \
 >         --with-mail --with-facts --workers 12 --batch 256 --progress 5
 
 > Warning: `--rebuild` refuses to run while a brain holds the db open (fd
@@ -62,11 +64,62 @@ Before a fresh rebuild, remove the old db (daemons must be down first):
     scripts/stack/serve-brain --stop          # or pkill bin-build/brain-*
     rm -f var/kb.lbug var/kb.lbug.wal
 
-## Buffer pool
+## Buffer pool (память, issue #244)
 
-`OpenWritable` defaults to a 1 GB buffer pool. Override via `KB_BUFFER_POOL`.
-History: a 1 GB-pool run OOM'd at `CREATE_FTS_INDEX`; a 10 GB pool held a full
-242,275-leaf embedding (DB ~1.4 GB). Use 10 GB (`10737418240`).
+Две фазы прогона живут на разных пулах:
+
+- **write-фаза** (запись leafs) — на конфигурированном `KB_BUFFER_POOL`
+  (default 1 GB). Явный `KB_BUFFER_POOL` остаётся нижней границей для обеих фаз.
+- **FTS-фаза** (`CREATE_FTS_INDEX`, после записи leafs) — хэндл закрывается,
+  БД переоткрывается с автоподобранным пулом `max(1GB, chars×32)`, где chars —
+  суммарный размер текста корпуса (`MATCH (l:Leaf) RETURN sum(size(l.text))`).
+  Замеры порога «buffer pool full»: реальные mail-лифы 10.3 MB текста →
+  64 MB падает / 128 MB проходит; синтетика 10.8 MB → 192 MB / 256 MB;
+  продакшн 105k лифов (280 MB текста) → 1 GB падает / 10 GB проходит.
+  Коэффициент ×32 даёт ~9 GB на полном корпусе.
+
+Пул — это page cache, а не преаллокация: RSS растёт только под реальный
+working set, поэтому завышение пула безопасно (память не резервируется).
+
+### C-потолок: write-фаза ~140 KB/leaf (замер #244)
+
+Помимо пула, C-сторона Ladybug держит ~135-145 KB на каждый записанный лиф
+(независимо от пула: при 1 GB пуле и 30k лифов RSS вырос до ~6.3 GB;
+эмбеддинг не влияет — замер без `embedding` дал те же 141 KB/leaf).
+Рост линейный и **не освобождается при закрытии хэндла в том же процессе**
+(malloc-арены): полный корпус 105k → ~14-15 GB C-side + модель ~1.5 GB.
+CHECKPOINT каждые 1024 лифа не влияет. Это внутренности liblbug 0.19.1
+(undo/версионные структуры узла), вне Go-контроля.
+
+Следствие для пикового RSS: фаза индексов стартует после закрытия write-хэндла
+(тот же процесс — память удержана), поэтому пик ≈ C-накопление write-фазы +
+working set FTS-фазы. Раньше (до #244) runbook предписывал
+`KB_BUFFER_POOL=10GB` на весь прогон — write-фаза дополнительно раздувала
+dirty-страницы к 10 GB и FTS строился на том же хэндле поверх накопленного:
+это и давало наблюдаемые 39-41 GB. Теперь write-фаза идёт на 1 GB пуле, FTS —
+на автопуле после закрытия хэндла.
+
+Если нужен пик ниже (отдельные процессы для фаз полностью освобождают C-память
+между прогонами — двухфазный workaround) — это контроль DevOps на полном
+прогоне; код даёт корректный результат и в одном процессе.
+
+### C-потолок: орфан-таблица (почему автопул)
+
+При падении `CREATE_FTS_INDEX` (нехватка пула) Ladybug оставляет частичную
+внутреннюю таблицу `0_id_appears_info` (строки токенов до точки отказа).
+Она недостижима через `DROP TABLE`/`DROP_FTS_INDEX` (каталог скрывает
+внутренние таблицы; проверено на liblbug 0.19.1 и в исходниках Kuzu FTS:
+`appears_info` создаётся первой, дропается в конце rewrite-запроса) и
+навсегда блокирует повторный `CREATE_FTS_INDEX` на этой БД. Поэтому пул
+фазы индексов подбирается заранее; если FTS всё же упал (хосту не хватает
+RAM), ошибка явно называет орфан и recovery: удалить БД и пересобрать или
+восстановить бэкап. Критерий #237 «пик RSS ≤ 2-4 GB» формально относится к
+Go-части (чанкинг, выполнено); C-сторона требует мультигигабайты и на write
+(~140 KB/leaf), и на FTS (пул ~9 GB на полном корпусе) — это осознанные
+C-ограничения Ladybug (issue #244).
+
+`--skip-indexes` по-прежнему пишет только leafs (первая фаза workaround-а
+для отладки/внешних индексов); в обычном прогоне он не нужен.
 
 ## Control / monitoring
 
