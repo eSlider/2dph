@@ -235,6 +235,29 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 
 Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.
 
+## 2026-09-02 — L-9.4: git-commits → Commit/Person/AUTHORED граф (gitea #233, epic #229)
+
+Goal: заполнить Commit/Person/AUTHORED (InitSchema write.go:130-133 уже создаёт
+таблицы, писателя не было) из git-истории репо git.produktor.io — источник
+фактов «кто над чем работал, когда» для аудита L-9 и оси проекта сети #234.
+Дизайн: [docs/brain/graph-git-commits.md](docs/brain/graph-git-commits.md).
+
+| Item | Status |
+|------|--------|
+| Канон git-коммита: `(repo, sha)`, `Commit.id = <repo>:<sha>` (repo = RepoName origin-remote); чтение — `gitlog.Log` (go-git, тот же канон, что premises-корпус: merge пропущены, автор = Author, дата RFC3339) | done |
+| `internal/gitgraph` (cgo-free): Resolve (root-скан/--repo), ReadAll, ToInputs (email lowercase — Person.id канон mail D-1 #257, dedup, сортировка по дате ASC), ComputeStats, WeakSubject | done |
+| `internal/brain/commitplan.go` (cgo-free): CommitInput, MERGE-запросы commit/AUTHORED, commitAuthor (Person.id=email); `gitcommit.go` (cgo): UpsertCommit/UpsertCommits (транзакция, идемпотентно) | done |
+| CLI `bin/git/graph.go`: dry-run/--commit, --repo/--root/--since/--limit, --skip-existing, live-holder guard, батчи; отчёт before→after Commit/Person/AUTHORED | done |
+| CLI `bin/git/facts.go` (read-only): факт-карточки «кто работал над repo когда» + audit card (claim/premises/inference/gaps/verdict; слабый subject → weaken+OPEN) | done |
+| TDD: юнит cgo-free (commitplan + gitgraph: канон/маппинг/dedup/Resolve/ReadAll/WeakSubject/GroupFacts/BuildFacts) + cgo на живой Ladybug (temp DB): запись/перечитывание, повтор = 0 дублей, Person mail↔git сопряжение, сосуществование с Leaf/Message | done |
+| Документация: docs/brain/graph-git-commits.md + шаблон audit card в docs/facts/audit-recipes.md | done |
+| Live-пилот: 2dph + gator dry-run → --commit в kb.lbug (бэкап, live-holder guard), idempotency-повтор, git-facts спот-чек | done |
+
+Verification: `go test ./...` + `go vet ./...` green (CI-режим);
+`bin/cgo/zig go test -tags system_ladybug ./internal/brain/` green (весь пакет);
+`bin/cgo/zig go vet -tags system_ladybug ./internal/brain/` green.
+Branch `feat/git-commits#233` off `main`.
+
 ## 2026-09-02 — D-1.2: Message/Person граф-схема + write-путь (gitea #259, epic #257)
 
 Goal: перенести conversation-канон ([#99](https://git.produktor.io/eSlider/2dph/issues/99),

@@ -44,6 +44,41 @@ reach the SSH tunnel on `127.0.0.1:5433`. (#53)
 
 ## Recipes
 
+### 0. Git-commits: «кто над чем работал, когда» (L-9.4 #233)
+
+Граф-слой Commit/Person/AUTHORED (пишет `bin/git/graph.go` из git-истории
+репо git.produktor.io, канон commit id = `repo:sha`) → дедуктивные факты
+`bin/git/facts.go` (read-only). Дедукция Vinogradov: посылка — commit-лист
+(`commit <sha> in <repo>`, `Author`, `Date`, subject/files) → вывод «<автор>
+работал над <repo> в <date>».
+
+```bash
+bin/git/graph.go --repo /x/2dph --dry-run        # сколько коммитов/Person до записи
+bin/git/graph.go --repo /x/2dph --commit         # MERGE в kb.lbug (идемпотентно)
+bin/git/facts.go --repo 2dph --since 2026-01-01  # факт-карточки
+bin/git/facts.go --author a@b.c --commits --json # детально + audit cards
+```
+
+**Шаблон audit card (commit-факт):** claim из repo+периода фактических дат
+коммитов; premises — commit id (`repo:sha`, первые 5 + счётчик остатка);
+inference = `deduction`; verdict:
+
+- `accept` — subject-ы содержательные («feat: mesh node», «fix: typo») → «что
+  сделал» как гипотеза из message/files;
+- `weaken` — весь subject-набор пустой/служебный («Update», WIP) → выводится
+  только «трогал файлы в <repo>», не «что именно»; gap `OPEN`;
+- частично слабый набор → `accept` + gap `OPEN` про число слабых коммитов.
+
+**Границы (иначе fallacy):**
+- «что сделал» — гипотеза из message/files, НЕ факт о намерении;
+- авторство по `Author:` коммита, не обязательно единственный автор: merge-
+  коммиты в граф не пишутся (gitlog.Log пропускает), co-author в теле
+  сообщения невидим — OPEN;
+- 1 коммит ≠ «вся неделя на X»: период берётся от фактических дат коммитов,
+  поспешная индукция не строится;
+- Leaf-коммиты (premises, source=git) не раздуваются — граф пишется
+  отдельным слоем Commit/Person/AUTHORED.
+
 ### 1. Dossier URL dedupe
 
 ```bash
