@@ -83,6 +83,18 @@ var (
 		"stepstone.de", "mailchimp.com", "sendgrid.net", "slack.com"}
 )
 
+// isJunkDomain reports whether domain (lowercase) is a junk/machine domain or a
+// subdomain of one. Shared by IsMachineSender and the network classifier
+// (ClassifySender, classify.go) — one implementation for the domain list.
+func isJunkDomain(domain string) bool {
+	for _, d := range junkDomains {
+		if domain == d || strings.HasSuffix(domain, "."+d) {
+			return true
+		}
+	}
+	return false
+}
+
 // IsMachineSender reports whether the address is a machine/newsletter sender.
 func IsMachineSender(a ParsedAddress) bool {
 	if a.Email == "" || !strings.Contains(a.Email, "@") {
@@ -95,12 +107,7 @@ func IsMachineSender(a ParsedAddress) bool {
 			return true
 		}
 	}
-	for _, d := range junkDomains {
-		if domain == d || strings.HasSuffix(domain, "."+d) {
-			return true
-		}
-	}
-	return false
+	return isJunkDomain(domain)
 }
 
 // SplitPersonName derives (given, family) from a display name; single-token

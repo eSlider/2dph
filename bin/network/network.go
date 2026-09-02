@@ -14,10 +14,14 @@
 //	./bin/network/network.go --person eslider@gmail.com --json   # машиночитаемо
 //	./bin/network/network.go --person alice@x --project demo --since 2026-01-01
 //	./bin/network/network.go --person alice@x --accept-only      # экспорт в CRM
+//	./bin/network/network.go --person alice@x --exclude-services # без сервис-аккаунтов
 //	KB_ROOT=/path/to/2dph ...        # db default <root>/var/kb.lbug
 //
 // Экспорт в CRM (ADR-0012 §сеть связей п.4): только accept-вердикты, каждая
 // связь один раз (агрегат mail+git каналов) с premises на Message/Commit.
+// Сервис-аккаунты (kind=service, N-1.1 #268: GitLab/PayPal/LinkedIn/
+// markets-platform/трекеры/рассылки) в CRM-экспорт НЕ попадают; kind
+// (person|company|service) печатается у каждой связи.
 //
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
@@ -46,6 +50,7 @@ type netFlags struct {
 	person, project, since, until, db string
 	limit, depth                      int
 	jsonOut, acceptOnly, all          bool
+	excludeServices                   bool
 }
 
 // gitRepoRoot resolves the actual repository checkout (KB_ROOT may point the
@@ -70,7 +75,8 @@ func run(args []string) int {
 	p.Int(&v.limit, "", "limit", "max links (0 = all)")
 	p.Int(&v.depth, "", "depth", "reserved (1 = direct links; >1 not in pilot)")
 	p.Bool(&v.jsonOut, "", "json", "JSON output")
-	p.Bool(&v.acceptOnly, "", "accept-only", "export only accept verdicts (CRM, ADR-0012)")
+	p.Bool(&v.acceptOnly, "", "accept-only", "export only accept verdicts (CRM, ADR-0012); service links (kind=service) excluded (N-1.1 #268)")
+	p.Bool(&v.excludeServices, "", "exclude-services", "drop service links (kind=service: GitLab/PayPal/LinkedIn/…, N-1.1 #268)")
 	p.Bool(&v.all, "", "all", "include weaken links in text output (default: accept only)")
 	if err := cliparse.Parse(p, args); err != nil {
 		return cliparse.Fail(err)
@@ -120,10 +126,13 @@ func run(args []string) int {
 	if v.limit > 0 && len(links) > v.limit {
 		links = links[:v.limit]
 	}
+	if v.excludeServices {
+		links = dropServices(links)
+	}
 	if v.jsonOut {
 		out := links
 		if v.acceptOnly {
-			out = acceptOnly(links)
+			out = dropServices(acceptOnly(links))
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
@@ -134,7 +143,7 @@ func run(args []string) int {
 		return 0
 	}
 	if v.acceptOnly {
-		links = acceptOnly(links)
+		links = dropServices(acceptOnly(links))
 		if len(links) == 0 {
 			fmt.Println("2dph network: no accept links to export")
 			return 0
@@ -160,7 +169,7 @@ func printLink(l *network.Link) {
 	if l.Name != "" {
 		who = l.Name + " <" + l.Person + ">"
 	}
-	fmt.Printf("link person=%s\n", who)
+	fmt.Printf("link person=%s kind=%s\n", who, l.Kind)
 	fmt.Printf("  claim: %s\n", claim(l))
 	fmt.Printf("  через: %d писем, %d тредов, %d общих получателей, %d ответов (вес %.2f)\n",
 		l.Msgs, l.Threads, l.SharedCC, l.Replies, l.Weight)
@@ -204,6 +213,18 @@ func acceptOnly(links []network.Link) []network.Link {
 	return out
 }
 
+// dropServices отбрасывает сервис-аккаунты/подсистемы/рассылки
+// (kind=service, N-1.1 #268) — они не деловые контакты, в CRM не идут.
+func dropServices(links []network.Link) []network.Link {
+	var out []network.Link
+	for _, l := range links {
+		if l.Kind != "service" {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
 // printCRM — YAML-экспорт accept-связей (CRM/маркетинг, ADR-0012 §сеть
 // связей п.4): только проверенные связи, без дублей (агрегат mail+git).
 // Premises в CRM-выводе ограничены (первые 5 + счётчик) — полный список в
@@ -217,6 +238,7 @@ type crmDoc struct {
 type crmLink struct {
 	Person   string            `yaml:"person"`
 	Name     string            `yaml:"name,omitempty"`
+	Kind     string            `yaml:"kind"` // person | company (сервисы исключены, N-1.1 #268)
 	Msgs     int               `yaml:"msgs"`
 	Threads  int               `yaml:"threads"`
 	Replies  int               `yaml:"replies"`
@@ -235,7 +257,7 @@ func printCRM(target string, links []network.Link) int {
 	doc := crmDoc{Target: target, Links: []crmLink{}, Source: "2dph graph mail+git (L-9.5 #234)"}
 	for _, l := range links {
 		cl := crmLink{
-			Person: l.Person, Name: l.Name, Msgs: l.Msgs, Threads: l.Threads,
+			Person: l.Person, Name: l.Name, Kind: l.Kind, Msgs: l.Msgs, Threads: l.Threads,
 			Replies: l.Replies, Period: l.Period,
 		}
 		for _, pr := range l.Projects {

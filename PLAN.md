@@ -829,3 +829,25 @@ D-1.2 (#259) и коннектору D-1.1 (#258). Доказать связку
 | спот-чек: folder INBOX 3143 / Sent 479 / INBOX/Unmatched 362 (сверка с gator), Person andriy.oblivantsev@wheregroup.com, gator_ref `kind=mail#v-<hash8>`, REPLY_TO-цепи, thread_id заполнен | done |
 
 Verification: `go vet ./internal/...` + `go test -race ./internal/mailgraph/ ./internal/config/ ./pkg/duckdb/ ./internal/canon/` green; cgo `go test -tags system_ladybug ./internal/mailgraph/` green (gcc); CLI dry-run/commit/повтор на live. Branch `feat/graph-import-wheregroup#260` off `main`.
+
+## 2026-09-03 — N-1.1: фильтр «люди/компании vs сервис-аккаунты» для accept-сетей (gitea #268, epic #267)
+
+Goal: детерминированный классификатор адреса сети (L-9.5 #234) —
+`person | company | service` — чтобы CRM-экспорт (`--accept-only`) не тащил
+сервис-аккаунты/подсистемы/рассылки (GitLab/PayPal/LinkedIn/
+markets-platform/chiliproject@trac), а реальные люди и компании-контекст
+проходили. База — sender-эвристики `mailconv.IsMachineSender`
+(junkDomains/junkLocalParts). Правила: docs/brain/crm-network-filter.md.
+
+| Item | Status |
+|------|--------|
+| `internal/mailconv/classify.go` (cgo-free): `ClassifySender(ParsedAddress)` → kind; каскад: релеи людей (linkedin hit-reply/inmail-hit-reply) → person; junk-домены mailconv (общий `isJunkDomain`, одна реализация) + сервис-домены сети (gitlab/paypal/markets-platform/xing/djinni/wellfound/…); local-автоматы (noreply/mailer-daemon/robot/рассылки/security); tool-имена подсистем (chiliproject/projeqtor/trac/wiki/…) в local и левом лейбле домена; `*-request`/`*-owner`/`lists.*` списки; имя-эвристика (Title/ALLCAPS/инициалы/частицы, org/role-слова); fallback first.last@домен; иначе company | done |
+| `internal/network`: поле `Link.Kind` в BuildLinks (аддитивно, #234 API не ломает) | done |
+| `bin/network`: `--exclude-services` + `--accept-only` исключает kind=service; kind в text/YAML/JSON | done |
+| TDD: юнит классификатора (домены/паттерны/границы noreply@люди, robots.txt в имени, релеи) + сети (Kind проставляется, сервисы не в accept-экспорте) | done — зелёные |
+| Live-пилот на kb.lbug (read-only): гдеgroup top-60 accept = 44 person / 5 company / 11 service; eslider@ 1240 accept = 317 person / 494 company / 429 service; топ-сервисы eslider@ и chiliproject@trac — service, Astrid Emde/Ruby Rodriguez/Celine Schlindwein — person | done (таблица на #268) |
+| Документация: docs/brain/crm-network-filter.md (правила/границы OPEN) + graph-network.md + PLAN.md | done |
+
+Verification: `go test ./internal/mailconv/ ./internal/network/` + `go vet ./...`
+green; cgo `bin/cgo/zig go vet -tags system_ladybug,network_cli ./bin/network/`
+green. Branch `feat/network-human-filter#268` off `main`.

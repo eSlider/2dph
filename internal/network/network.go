@@ -26,6 +26,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/eSlider/2dph/internal/mailconv"
 )
 
 // MsgRow — одно письмо графа (Message-узел + роли участников).
@@ -93,6 +95,7 @@ type ProjectLink struct {
 type Link struct {
 	Person   string        `json:"person"` // email Q
 	Name     string        `json:"name"`
+	Kind     string        `json:"kind"`     // person | company | service (N-1.1 #268)
 	Msgs     int           `json:"msgs"`     // прямые письма (sender↔recipient)
 	SharedCC int           `json:"sharedCC"` // письма, где оба — получатели
 	Threads  int           `json:"threads"`  // треды с общими письмами
@@ -356,6 +359,7 @@ func BuildLinks(rows Rows, f Filter) []Link {
 			}
 		}
 		l.Verdict, l.Gaps = verdict(l)
+		l.Kind = mailconv.ClassifySender(mailconv.ParsedAddress{Name: l.Name, Email: l.Person})
 		if l.Period == "" {
 			for _, p := range l.Projects {
 				l.Period = mergePeriods(l.Period, p.Period)
