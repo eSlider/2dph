@@ -18,7 +18,7 @@
 |-------------|----------------|
 | CLI | `bin/brain/search.go "q" --json`, `bin/brain/get.go <id> --json`, `bin/brain/stats.go --json` |
 | HTTP | `GET /search?q=`, `GET /get?id=`, `GET /stats`, `GET /audit` (:8630) |
-| MCP | tools `search` / `get` / `stats` / `audit` (`POST /mcp`) |
+| MCP | tools `search` / `get` / `audit` (`POST /mcp`; `stats` — HTTP-only, минимальная MCP-поверхность D20) |
 | Клиент | SDK `pkg/brainclient`, CLI `bin/brain/client.go search|get|stats|audit` (P-9.5, раздел «Клиентский слой») |
 
 Все поверхности отдают один и тот же JSON (схемы ниже); HTTP/MCP — тонкий

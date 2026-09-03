@@ -73,7 +73,9 @@ bin/brain/client.go search "q" --root facts --as-of 2025-01-01        # D24 ва
 ## Corpus — what lives in the brain (#198/#199)
 
 `info` holds the WHOLE corpus, never just one root. Current composition
-(after the mail-corpus fix #199, ~313k leafs):
+(после полного rebuild 2026-09-02, P-9.3 content-address dedup:
+307,431 стримнутых mail-листов схлопнулись в 105,027 уникальных, #248;
+всего в БД 105,220 leafs — см. docs/brain/memory-adr.md §4.4):
 
 - **mail** — BOTH corpora index into the brain: live `var/corpus/mail`
   (inbox 50 + PST) AND legacy `var/mail` (215k message.md: tb-andriy-profile,
@@ -91,8 +93,11 @@ If a search misses mail that exists on disk: the brain was rebuilt WITHOUT
 `--with-mail`, or `var/mail` was never indexed. Fix:
 `bin/stack/sync.go --with-mail` (wave step `mail-index`) or
 `bin/brain/index.go --skip --with-mail` (resume/append, de-duped, idempotent).
-`bin/brain/stats.go` must show info ≥ ~200k on the ops host; anything less
-means a corpus is missing.
+`bin/brain/stats.go` on the ops host must show the post-rebuild baseline:
+**total 105,220 = info 105,199 (mail 105,027 + docs 172) + facts 21**
+(ANN 105,220; после полного rebuild 2026-09-02). Anything much less means a
+corpus is missing. The old rule «info ≥ ~200k» (и ориентир ~313k) сняты —
+P-9.3 dedup схлопнул дубликаты mail, актуальная модель — docs/brain/memory-adr.md.
 
 ## Corpus sources (P-9.3) — каждый корпус = адаптер
 

@@ -20,6 +20,7 @@ issue comments, not here.
 |------|-----|
 | howto (run) | [runbook](runbook.md) — build, config, serve/search/index |
 | explanation | [design](design.md) — two roots, deduction, versioning, read path |
+| reference | [brain/memory-adr](brain/memory-adr.md) — единая модель фактов/аудита/хранения, границы, карта потребителей (P-9.6) |
 | reference | [PLAN.md](../PLAN.md) — decisions D1–D25 |
 | howto (brain ops) | [brain/rebuild](brain/rebuild.md) — parallel write, resume |
 | reference | [brain/read-contract](brain/read-contract.md) — search/get/stats/audit formats, versioning (P-9.4) |
