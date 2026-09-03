@@ -32,6 +32,11 @@ RUN eval "$(./bin/cgo/zig env)" \
     && CGO_ENABLED=0 go build -o /out/mail-sync ./bin/mail/sync.go \
     && CGO_ENABLED=0 go build -o /out/runner ./bin/runner/run.go
 
+# Stage only the runtime .so symlink chain (liblbug.so -> liblbug.so.0 ->
+# liblbug.so.<ver>). cp -a keeps the symlinks; the shell glob defers the
+# version to whatever ensure_libs unpacked, so nothing is hardcoded here.
+RUN mkdir -p /out/liblbug && cp -a /src/lib-ladybug/liblbug.so* /out/liblbug/
+
 FROM debian:bookworm-slim AS api
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libssl3 ca-certificates wget \
@@ -46,11 +51,12 @@ COPY --from=api-build /out/seed-ext /usr/local/bin/seed-ext
 COPY --from=api-build /out/mail-import /usr/local/bin/mail-import
 COPY --from=api-build /out/mail-sync /usr/local/bin/mail-sync
 COPY --from=api-build /out/runner /usr/local/bin/runner
-COPY --from=api-build /src/lib-ladybug/liblbug.so.0.19.1 /usr/local/lib/liblbug.so.0.19.1
+# liblbug version-agnostic: directory COPY preserves the symlink chain
+# (liblbug.so -> liblbug.so.0 -> liblbug.so.<ver>); BuildKit dereferences
+# symlinks for wildcard/single-file COPY, so we stage the chain above.
+COPY --from=api-build /out/liblbug/ /usr/local/lib/
 COPY scripts/docker-entrypoint /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint \
-    && ln -s liblbug.so.0.19.1 /usr/local/lib/liblbug.so.0 \
-    && ln -s liblbug.so.0 /usr/local/lib/liblbug.so \
     && ldconfig
 RUN mkdir -p /data \
     && HOME=/data /usr/local/bin/seed-ext \
