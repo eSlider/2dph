@@ -873,3 +873,31 @@ Verification: `go test ./internal/network/ ./internal/mailconv/ ./internal/ooimp
 + `go vet ./...` green; integration `go test -tags=integration ./internal/ooimport/`
 green (live OO); CLI dry-run на fixture — report-only, ничего не пишет.
 Branch `feat/oo-crm-connector#269` off `main`.
+
+## 2026-09-03 — N-1.4: компания-группировка по домену + дописывание тега/about matched (gitea #271, epic #267)
+
+Goal: по итогам пилота N-1.3 (#270) довести гдеgroup-импорт до структуры
+«деловой контакт»: (1) role-ящики/компании гдеgroup сгруппировать под
+компанией по домену email; (2) существующим matched-контактам (32 из #270,
+в т.ч. топ-5 из #85) **аддитивно** дописать тег `2dph:network:<target>` +
+about-premises-сводку (решение владельца #267); (3) дедуп — только report
+(реальных дублей пилот не выявил, мульти-адреса — YAGNI эпика).
+
+| Item | Status |
+|------|--------|
+| `internal/ooimport`: поле `Contact.Kind` (класс связи манифеста person/company; service отфильтрован) — основа для группировки | done |
+| `company.go`: `CompanyRule` (домен→компания), `ParseCompanies` (YAML, валидация: домен с точкой, не email, без повторов; сорт), `EmailDomain`, `GroupCompanyLinks` (только kind=company → компания по домену; person-kind не трогаем; company без правила — unmapped; два домена → одна компания схлопываются) | done |
+| `RunCompanies` (write/dry-run): FindCompany → если нет CreateCompany → GetContact + UpdatePerson с companyId; повтор = 0 изменений (found/already); роль-ящик не в CRM — notfound | done |
+| `backfill.go`: `BackfillChanges` (тег если нет; about-сводка только если about пуст/пробельный — ручные правки не перезаписываем), `RunBackfill` (hasTag по ListContactsByTag, about/имена GetContact; dry-run Would; CreateContactTag идемпотентно; повтор = 0 Updated) | done |
+| CLI `import-network.go`: флаги `--backfill`, `--companies <yaml|->` (после Run; оба идемпотентны; отчёты updated/would/unchanged + found/created/linked/already/unmapped) | done |
+| Косметика: `mailconv.SplitPersonName` снимает трейлинговую « (Org)»-декорацию («Astrid Emde (FOSSGIS e.V.)» → Astrid/Emde; пилот #270: given «Astrid Emde (FOSSGIS»/family «e.V.)») | done |
+| TDD офлайн: mailconv SplitPersonName (декорация/без/вложенная/вся-в-скобках → fallback), ParseCompanies (сорт/трим/ошибки), GroupCompanyLinks (role-ящики/сорт/unmapped/person-kind не трогаем), BackfillChanges (аддитивность: ручной about цел, пробельный about — сводка) | done — зелёные |
+| Интеграция с живым OO (`//go:build integration`, без creds — skip): role-ящик → компания создана+слинкован → повтор already=1; matched: тег+about дописаны, ручной about B не перезаписан, повтор = 0 Updated | done (office.produktor.io) |
+| Документация: docs/brain/oo-network-import.md (N-1.4: --backfill/--companies, границы: person-kind не линкуем, Name маппинга = display name компании CRM) + PLAN.md | done |
+
+Verification: `go test ./internal/mailconv/ ./internal/ooimport/ ./internal/network/`
++ `go vet ./...` green; integration `go test -tags=integration ./internal/ooimport/`
+green (live OO); CLI `go vet -tags=onlyoffice_import_network ./bin/onlyoffice/`.
+Дедуп: реальных дублей Person/компаний пилот не выявил — merge не
+применялся (только report; правило #271 «строго по явному списку»).
+Branch `feat/oo-crm-company#271` off `main`.
