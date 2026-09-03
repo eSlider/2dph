@@ -15,6 +15,7 @@
 //	./bin/network/network.go --person alice@x --project demo --since 2026-01-01
 //	./bin/network/network.go --person alice@x --accept-only      # экспорт в CRM
 //	./bin/network/network.go --person alice@x --exclude-services # без сервис-аккаунтов
+//	./bin/network/network.go --person eslider@gmail.com --accept-only --person-only  # только person (N-1.5 #275)
 //	KB_ROOT=/path/to/2dph ...        # db default <root>/var/kb.lbug
 //
 // Экспорт в CRM (ADR-0012 §сеть связей п.4): только accept-вердикты, каждая
@@ -37,6 +38,7 @@ import (
 
 	lbug "github.com/LadybugDB/go-ladybug"
 
+	"github.com/eSlider/2dph/internal/mailconv"
 	"github.com/eSlider/2dph/internal/network"
 	cliparse "github.com/eSlider/2dph/pkg/cli"
 	"gopkg.in/yaml.v3"
@@ -50,7 +52,7 @@ type netFlags struct {
 	person, project, since, until, db string
 	limit, depth                      int
 	jsonOut, acceptOnly, all          bool
-	excludeServices                   bool
+	excludeServices, personOnly       bool
 }
 
 // gitRepoRoot resolves the actual repository checkout (KB_ROOT may point the
@@ -77,6 +79,7 @@ func run(args []string) int {
 	p.Bool(&v.jsonOut, "", "json", "JSON output")
 	p.Bool(&v.acceptOnly, "", "accept-only", "export only accept verdicts (CRM, ADR-0012); service links (kind=service) excluded (N-1.1 #268)")
 	p.Bool(&v.excludeServices, "", "exclude-services", "drop service links (kind=service: GitLab/PayPal/LinkedIn/…, N-1.1 #268)")
+	p.Bool(&v.personOnly, "", "person-only", "keep only kind=person links (N-1.5 #275: eslider@ company 494 вне скоупа CRM)")
 	p.Bool(&v.all, "", "all", "include weaken links in text output (default: accept only)")
 	if err := cliparse.Parse(p, args); err != nil {
 		return cliparse.Fail(err)
@@ -134,6 +137,9 @@ func run(args []string) int {
 		if v.acceptOnly {
 			out = dropServices(acceptOnly(links))
 		}
+		if v.personOnly {
+			out = network.OnlyKind(out, mailconv.KindPerson)
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		if err := enc.Encode(out); err != nil {
@@ -144,6 +150,9 @@ func run(args []string) int {
 	}
 	if v.acceptOnly {
 		links = dropServices(acceptOnly(links))
+		if v.personOnly {
+			links = network.OnlyKind(links, mailconv.KindPerson)
+		}
 		if len(links) == 0 {
 			fmt.Println("2dph network: no accept links to export")
 			return 0

@@ -350,3 +350,28 @@ func TestMergePeriods(t *testing.T) {
 		}
 	}
 }
+
+// OnlyKind (N-1.5 #275): CRM-манифест eslider@ — только kind=person;
+// company (потребительские/торговые, 494) в CRM не идут, фильтр на входе.
+func TestOnlyKindFiltersByKind(t *testing.T) {
+	links := []Link{
+		{Person: "bob@example.com", Kind: "person"},
+		{Person: "info@wheregroup.com", Kind: "company"},
+		{Person: "gitlab@mg.gitlab.com", Kind: "service"},
+		{Person: "carol@example.com", Kind: "person"},
+	}
+	got := OnlyKind(links, "person")
+	if len(got) != 2 {
+		t.Fatalf("OnlyKind(person) = %d links, want 2", len(got))
+	}
+	if got[0].Person != "bob@example.com" || got[1].Person != "carol@example.com" {
+		t.Errorf("OnlyKind(person) order = %v, want bob,carol", got)
+	}
+	// пустой список / kind не найден — пусто, без паники
+	if got := OnlyKind(nil, "person"); len(got) != 0 {
+		t.Errorf("OnlyKind(nil) = %v, want empty", got)
+	}
+	if got := OnlyKind(links, "company"); len(got) != 1 || got[0].Person != "info@wheregroup.com" {
+		t.Errorf("OnlyKind(company) = %v, want info@wheregroup.com", got)
+	}
+}
