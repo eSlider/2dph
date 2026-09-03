@@ -235,6 +235,28 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 
 Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.
 
+## 2026-09-03 — L-9.3: формальные проверки URL: identity/contradiction/excluded-middle/sufficient-reason (gitea #232, epic #229)
+
+Goal: перевести эмпирические URL-рецепты (#56) в машинные проверки законов
+Vinogradov на уровне URL: identity (канонический URL — одно написание),
+contradiction (¬(P∧¬P) на одном URL), excluded middle (нечёткие claim → не
+FACT, а open_questions), sufficient reason (verdict accept только на
+FACT-/OPEN- premises). Ядро — cgo-free `internal/facts` (по образцу
+Adjudicate/CheckFactRow), CLI — подкоманда `bin/facts/audit.go formal`
+(JSON facts/cards на stdin → JSON-флаги, exit 0/1).
+
+| Item | Status |
+|------|--------|
+| `facts.CanonicalURL` — локальная канонизация URL по конвенции gator G-8.1 (lowercase scheme/host, default-port, utm_*/ref/gh_jid/token, сортировка query, без фрагмента/trailing slash); gator-модуль не импортируется | done |
+| `internal/facts/formal.go`: `URLFact` (id/url/claim/attr/neg/conf/from/to) + `CheckURLIdentity` (merge/flag weaken), `CheckURLContradiction` (reject; только confirmed, пересечение D24), `CheckExcludedMiddle` (weaken → open_questions), `CheckSufficientReason` (accept без FACT-/OPEN- premises → reject), `CheckFormal` (агрегат, детерминизм) | done |
+| CLI `bin/facts/audit.go formal` (shebang, hand-formatted): JSON {facts,cards} на stdin → {mode,ok,problems}; пример acceptance «вакансия активна» vs «вакансия closed» → contradiction verdict=reject | done |
+| TDD: `canonical_test.go` (кросс-канал/utm/детерминизм/нормализация/ошибки) + `formal_test.go` (identity merge, contradiction acceptance + не-противоречия: same polarity/разный attr/weak/disjoint D24, excluded-middle fuzzy→OPEN, sufficient-reason accept premises) | done — `go test -race ./internal/facts` green |
+| Совместимость с #56/#231: `go test ./internal/facts` + `bin/facts/audit.go self` зелёные (CI-гейт) | done |
+| Документация: docs/facts/audit-recipes.md §Формальные проверки URL (L-9.3 #232) + PLAN.md | done |
+
+Verification: `go test -race ./internal/facts/` green, `go vet ./internal/facts/` clean,
+`./bin/facts/audit.go self` ok. Branch `feat/facts-formal-checks#232` off `main`.
+
 ## 2026-09-02 — L-9.4: git-commits → Commit/Person/AUTHORED граф (gitea #233, epic #229)
 
 Goal: заполнить Commit/Person/AUTHORED (InitSchema write.go:130-133 уже создаёт

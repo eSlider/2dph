@@ -6,9 +6,10 @@
 //	./bin/facts/audit.go self         # repo lexicons (Go, no deps)
 //	./bin/facts/audit.go db           # evidence gate over var/kb.lbug (Go, via Zig)
 //	./bin/facts/audit.go contradict   # D16 adjudication (Go; JSON claim(s) on stdin)
+//	./bin/facts/audit.go formal       # L-9.3 URL-формальные проверки (Go; JSON facts on stdin)
 //
-// `self` and `contradict` run pure Go. `db` builds the ladybug read via
-// bin/facts/audit-db.go (bin/cgo/zig CGO toolchain).
+// `self`, `contradict` and `formal` run pure Go. `db` builds the ladybug read
+// via bin/facts/audit-db.go (bin/cgo/zig CGO toolchain).
 // Exit 0 = all checks pass, 1 = audit failures, 2 = could not evaluate.
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
@@ -30,7 +31,7 @@ import (
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "usage: bin/facts/audit.go self|db|contradict [--json]")
+		fmt.Fprintln(os.Stderr, "usage: bin/facts/audit.go self|db|contradict|formal [--json]")
 		os.Exit(2)
 	}
 	switch args[0] {
@@ -38,6 +39,8 @@ func main() {
 		os.Exit(auditSelf())
 	case "contradict":
 		os.Exit(auditContradict())
+	case "formal":
+		os.Exit(auditFormal())
 	case "db":
 		os.Exit(auditDB())
 	default:
@@ -143,6 +146,52 @@ func auditContradict() int {
 		return 2
 	}
 	fmt.Println(string(b))
+	return 0
+}
+
+// formalPayload — JSON-вход audit formal: факты с URL + (опционально)
+// аудит-карточки для закона достаточного основания.
+type formalPayload struct {
+	Facts []facts.URLFact   `json:"facts"`
+	Cards []facts.AuditCard `json:"cards,omitempty"`
+}
+
+func auditFormal() int {
+	raw, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "formal: read stdin:", err)
+		return 2
+	}
+	if strings.TrimSpace(string(raw)) == "" {
+		fmt.Fprintln(os.Stderr, "formal: empty stdin (JSON {facts:[...], cards:[...]})")
+		return 2
+	}
+	var in formalPayload
+	if err := json.Unmarshal(raw, &in); err != nil {
+		fmt.Fprintln(os.Stderr, "formal: invalid JSON:", err)
+		return 2
+	}
+	if in.Facts == nil {
+		in.Facts = []facts.URLFact{}
+	}
+	ps := facts.CheckFormal(in.Facts)
+	for _, c := range in.Cards {
+		ps = append(ps, facts.CheckSufficientReason(c)...)
+	}
+	out := map[string]any{
+		"mode":     "formal",
+		"ok":       len(ps) == 0,
+		"problems": ps,
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "formal: marshal:", err)
+		return 2
+	}
+	fmt.Println(string(b))
+	if len(ps) > 0 {
+		return 1
+	}
 	return 0
 }
 
