@@ -116,7 +116,7 @@ func backfillWrite(ctx context.Context, c *onlyoffice.Client, ct Contact, id str
 		}
 	}
 	if ch.SetAbout != "" {
-		if _, err := c.UpdatePerson(ctx, id, fieldString(full, "firstName"), fieldString(full, "lastName"), 0, "", ch.SetAbout); err != nil {
+		if _, err := c.UpdatePerson(ctx, id, nonEmptyName(fieldString(full, "firstName")), nonEmptyName(fieldString(full, "lastName")), 0, "", ch.SetAbout); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
