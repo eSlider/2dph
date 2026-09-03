@@ -23,6 +23,7 @@ bin/brain/get.go <id> --body                                        # full text 
 bin/facts/audit.go self                                             # repo lexicon (Go, no deps)
 bin/facts/audit.go db                                               # every root=facts leaf (two-source rule)
 bin/facts/audit.go contradict                                       # adjudicate stdin claim(s)
+bin/facts/audit-card.go --claim "…" --premises FACT-… --verdict …   # audit card → SoT audits[]
 ```
 
 HTTP (`bin/brain/serve.go`, :8630): `/search?q=&as_of=&n=`, `/get?id=&body=1`,
@@ -41,6 +42,30 @@ repo). Passwords come from `~/.config/ops/onlyoffice.env`, bootstrapped from the
 VM's `/etc/onlyoffice/documentserver/local.json` (dbUser/dbPass). The profile
 uses `network: host` so the docker psql client shares the host loopback and can
 reach the SSH tunnel on `127.0.0.1:5433`. (#53)
+
+## Audit cards (L-9.2 #231)
+
+Каждый вердикт любого рецепта ниже фиксируется карточкой Vinogradov в SoT
+`audits[]` (`var/audit/source-of-truth.yml`), а не «сам по себе»: рекомендация
+без card = нарушение. Карточка обязана опираться на FACT-/OPEN- premises.
+
+```bash
+# premises/gaps: флаг повторяемый или значения через запятую.
+# inference: deduction | induction | analogy | other; gaps опциональны.
+# counter: none или контр-аргумент; verdict: только accept | reject | weaken.
+bin/facts/audit-card.go \
+  --claim "demo2 подтверждён вторым источником" \
+  --premises FACT-9002,FACT-9001 \
+  --inference deduction \
+  --gaps OPEN-0001 \
+  --counter none \
+  --verdict weaken
+```
+
+CLI валидирует карточку (verdict/inference enum, claim/premises/counter
+обязательны), присваивает следующий `AUD-NNNN`, дописывает в `audits[]` и
+печатает карточку. Остальные секции SoT и комментарии не трогаются
+(правка на yaml-дереве). Формальная логика inference — L-9.3 (#232).
 
 ## Recipes
 
