@@ -14,12 +14,15 @@ bin/network/network.go --person X --accept-only > /tmp/net.yml   # манифе�
 ONLYOFFICE_URL/USER/PASS ./bin/onlyoffice/import-network.go --manifest /tmp/net.yml   # report only
 ./bin/onlyoffice/import-network.go --manifest /tmp/net.yml --dry-run                   # preview: lookups, ничего не пишет
 ./bin/onlyoffice/import-network.go --manifest /tmp/net.yml --write --limit 60          # создать до 60
+./bin/onlyoffice/import-network.go --manifest /tmp/net.yml --write --backfill          # + дописать тег/about matched (N-1.4)
+./bin/onlyoffice/import-network.go --manifest /tmp/net.yml --write --companies c.yml   # + role-ящики на компанию по домену (N-1.4)
 cat /tmp/net.yml | ./bin/onlyoffice/import-network.go --manifest - --write             # stdin
 ```
 
 Флаги: `--manifest <file|->` (обязателен), `--dry-run` (preview, ничего не
 пишет), `--write` (создавать; по умолчанию report-only), `--limit N`
-(макс. новых за прогон), `--tag` (default `2dph:network:<target-email>`).
+(макс. новых за прогон), `--tag` (default `2dph:network:<target-email>`),
+`--backfill`, `--companies <file|->` (оба — N-1.4 #271, идемпотентны).
 Отчёт: `created / matched / skipped / failed / pending`; сбои — списком
 (`failed` возвращает exit 1). Creds — `ONLYOFFICE_URL/USER/PASS`
 (go-onlyoffice `GetEnvironmentCredentials`), не логируются.
@@ -48,7 +51,8 @@ cat /tmp/net.yml | ./bin/onlyoffice/import-network.go --manifest - --write      
   имя = реальный человек (классификатор N-1.1: person);
 - **роль-ящики/компании** (`info@`/`alle@`, организации) — тоже контакт
   Person (fallback-имя из локальной части): компания-группировка по домену
-  и дедуп существующих — отдельный шаг N-1.4 #271.
+  (`--companies`, N-1.4 #271) линкует их на компанию; matched-существующие
+  получают тег/about аддитивно (`--backfill`, N-1.4 #271).
 
 ## Идемпотентность
 
@@ -59,20 +63,69 @@ cat /tmp/net.yml | ./bin/onlyoffice/import-network.go --manifest - --write      
 что созданный контакт удаляется (rollback) — «created» = полностью
 созданный контакт, повтор не заводит дубль.
 
+## N-1.4 #271: дописывание matched (--backfill) и компания-группировка (--companies)
+
+Шаги N-1.4 выполняются тем же инструментом ПОСЛЕ создания (см. примеры
+выше); каждый шаг идемпотентен, report-only/dry-run по умолчанию ничего не
+пишет.
+
+### Дописывание существующим matched (`--backfill`)
+
+Решение владельца (#267, вопрос 3): существующий по email контакт (в т.ч.
+импорт VCF/MAB #85) **не пропускается молча**, а получает аддитивно:
+
+- тег `2dph:network:<target>` — если у контакта его нет;
+- about-premises-сводку из манифеста — **только если about пуст** (ручные
+  правки, в т.ч. Org из #85 в about, не перезаписываются).
+
+Механизм по email-ключу от манифеста (не хардкод под id); переиспользуется
+N-1.5 #275 для eslider@. Состояние тега — множество id под тегом
+(`ListContactsByTag`), about/имена — `GetContact`. Повтор = 0 изменений
+(`updated=0 unchanged=N`). Отчёт: `updated / would (dry-run) / unchanged /
+missing / failed`.
+
+### Компания-группировка role-ящиков (`--companies`)
+
+Маппинг «домен email → компания» — YAML-файл, напр. `companies-wheregroup.yml`:
+
+```yaml
+wheregroup.com: WhereGroup
+```
+
+Линкуются **только role-ящики/организации манифеста** (`kind=company`:
+alle@, info@, wartung@…), чей домен есть в маппинге: `FindCompany` → если
+нет, `CreateCompany` (оба идемпотентны по нормализованному имени) →
+`UpdatePerson` с `companyId`. **person-kind не трогаем** (реальные люди — не
+«роль-ящик»); company-kind без правила остаётся Person-контактом как есть
+(`unmapped`, в пилоте #270 — events@suse). Повтор = 0 изменений (`found`,
+`already`, `unmapped`). Отчёт: `found / created / linked / already /
+notfound / unmapped / failed` (+ `missing / wouldlink` в dry-run).
+
+Компания ищется по нормализованному display name (без GmbH-суффиксов и
+слоганов, go-onlyoffice `CompanyGroupingKey`) — **значение Name в маппинге
+должно совпадать с реальной компанией CRM** (анализ — dry-run: found vs
+missing); при несовпадении имени dry-run покажет `missing`, и маппинг
+правится до `--write` (иначе CreateCompany заведёт дубль юрлица).
+
 ## Код и тесты
 
 - `internal/network/manifest.go` — контракт манифеста `network.Manifest`
   (общий у продюсера `bin/network` и коннектора; раньше — crmDoc/crmLink в
   bin/network);
 - `internal/ooimport` (cgo-free): `ParseManifest` → `BuildPlan` (маппинг,
-  фильтр сервисов, тег, about) → `Run` (lookups + создание, dry-run/limit);
+  фильтр сервисов, тег, about, kind связи) → `Run` (lookups + создание,
+  dry-run/limit); N-1.4: `RunBackfill` (дописывание matched, аддитивно) +
+  `RunCompanies` (`ParseCompanies`/`GroupCompanyLinks`, линковка role-ящиков
+  на компанию по домену);
 - CLI `bin/onlyoffice/import-network.go` (shebang, tag
   `onlyoffice_import_network`);
 - тесты: офлайн (`internal/ooimport/*_test.go` — план/маппинг/roundtrip
-  продюсер-консьюмер, split по existing: повтор = 0 новых) + интеграция
+  продюсер-консьюмер, split по existing: повтор = 0 новых; ParseCompanies,
+  GroupCompanyLinks, BackfillChanges аддитивность) + интеграция
   (`//go:build integration`, живой OO, creds из окружения, без creds —
-  skip; созданный тестовый контакт удаляется в конце; тег остаётся
-  0-count — API клиента не удаляет теги).
+  skip; созданные тестовые контакты удаляются в конце; тег остаётся
+  0-count — API клиента не удаляет теги); SplitPersonName-косметика
+  (mailconv) — трейлинговая « (Org)»-декорация снимается до разбора имени.
 
 ## Ссылки
 

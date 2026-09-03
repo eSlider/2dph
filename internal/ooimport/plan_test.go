@@ -169,6 +169,10 @@ func TestBuildPlanMapsPersonLink(t *testing.T) {
 	if p.Contacts[0].Email != "bob.builder@example.com" || p.Contacts[1].Email != "info@wheregroup.example" {
 		t.Errorf("contacts order = %q, %q", p.Contacts[0].Email, p.Contacts[1].Email)
 	}
+	// Kind связи сохраняется (компания-группировка N-1.4 #271 по kind=company)
+	if p.Contacts[0].Kind != "person" || p.Contacts[1].Kind != "company" {
+		t.Errorf("contact kinds = %q, %q; want person, company", p.Contacts[0].Kind, p.Contacts[1].Kind)
+	}
 	bob := p.Contacts[0]
 	if bob.Email != "bob.builder@example.com" {
 		t.Errorf("bob email = %q (должен быть lowercase)", bob.Email)

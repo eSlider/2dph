@@ -12,13 +12,15 @@
 //     Person↔Person в OO нет — не выдумываем); сила и premises — в about и
 //     теге; полный манифест — артефакт вне CRM;
 //   - kind=company (роль-ящики info@/alle@, организации) тоже становится
-//     Person-контактом: компания-группировка по домену — отдельный шаг
-//     (N-1.4 #271); linkedin-релеи людей (hit-reply@linkedin.com с реальным
-//     display name) — Person как есть: email = релей, имя = реальный человек;
+//     Person-контактом, а компания-группировка role-ящиков по домену —
+//     отдельным шагом RunCompanies (N-1.4 #271); linkedin-релеи людей
+//     (hit-reply@linkedin.com с реальным display name) — Person как есть:
+//     email = релей, имя = реальный человек;
 //   - kind=service (N-1.1 #268: GitLab/PayPal/LinkedIn/markets-platform/
 //     трекеры/рассылки) пропускается — в CRM не идёт;
 //   - идемпотентность: ключ = email (lowercase); существующие по email
-//     (включая импорт VCF/MAB #85) не перезаписываются — skip.
+//     (включая импорт VCF/MAB #85) не перезаписываются — skip при создании,
+//     аддитивное дописывание тега/about — RunBackfill (N-1.4 #271).
 //
 // cgo-free; тесты офлайн (план/чистая логика) + интеграция с живым OO под
 // //go:build integration (creds ONLYOFFICE_URL/USER/PASS, без creds — skip).
@@ -53,6 +55,7 @@ type Contact struct {
 	Given  string
 	Family string
 	About  string
+	Kind   string // класс связи манифеста: person|company (kind=service отфильтрован; пусто = person)
 }
 
 // Plan — результат маппинга манифеста: готовые кандидаты + тег источника.
@@ -91,6 +94,7 @@ func BuildPlan(m *network.Manifest, tagOverride string) (Plan, error) {
 			Given:  given,
 			Family: family,
 			About:  aboutText(&l, m.Source),
+			Kind:   l.Kind,
 		})
 	}
 	sort.Slice(p.Contacts, func(i, j int) bool { return p.Contacts[i].Email < p.Contacts[j].Email })
