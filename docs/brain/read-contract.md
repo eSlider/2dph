@@ -8,7 +8,9 @@
 Реализация схемы: `internal/contract/read.go` (cgo-free, версия
 `contract.ReadContractVersion`); продьюсеры ответов — `internal/brain`
 (search/get/stats/audit), HTTP-поверхность — `pkg/httpapi`
-(`bin/brain/serve.go`, :8630) + MCP (`POST /mcp`), CLI — `bin/brain/*.go --json`.
+(`bin/brain/serve.go`, :8630) + MCP (`POST /mcp`), CLI — `bin/brain/*.go --json`;
+сервисный клиент для потребителей — `pkg/brainclient` (P-9.5, раздел
+[«Как клиенту читать brain»](#клиентский-слой-p-95)).
 
 ## Поверхности чтения (один формат)
 
@@ -17,6 +19,7 @@
 | CLI | `bin/brain/search.go "q" --json`, `bin/brain/get.go <id> --json`, `bin/brain/stats.go --json` |
 | HTTP | `GET /search?q=`, `GET /get?id=`, `GET /stats`, `GET /audit` (:8630) |
 | MCP | tools `search` / `get` / `audit` (`POST /mcp`; `stats` — HTTP-only, минимальная MCP-поверхность D20) |
+| Клиент | SDK `pkg/brainclient`, CLI `bin/brain/client.go search|get|stats|audit` (P-9.5, раздел «Клиентский слой») |
 
 Все поверхности отдают один и тот же JSON (схемы ниже); HTTP/MCP — тонкий
 транспорт над теми же структурами. **Клиенты читают brain только через эти
@@ -195,6 +198,116 @@ read contract gate: http:http://127.0.0.1:8630 (contract_version=1.0)
   …
 gate: PASS
 ```
+
+## Клиентский слой (P-9.5)
+
+Единый клиентский слой поверх read-контракта, чтобы gator/cv/агенты/скрипты
+не звали HTTP/MCP/CLI каждый по-своему и не открывали `var/kb.lbug`:
+
+| Слой | Где | Что |
+|------|-----|-----|
+| SDK | `pkg/brainclient` (cgo-free) | typed-клиент: `Search`/`Get`/`Stats`/`Audit` → `internal/contract`-ответы; ответы валидируются контрактными валидаторами (формат + `contract_version`, несовместимый сервис — ошибка); «гейт facts» (`Gate`, `Facts`, `GateAudit`) |
+| CLI | `bin/brain/client.go` (shebang, `brain_client`) | подкоманды `search`/`get`/`stats`/`audit`, `--json`, `--root facts|info`, `--as-of`, `-n`, `--no-web`, `--base URL`, `--token T`; base по умолчанию из `internal/config` (host/port), иначе `127.0.0.1:8630` |
+
+Клиент ходит только через контракт (HTTP :8630, `bin/brain/serve.go`) — в
+коде клиента нет ни одного открытия kb.lbug, парсинга Ladybug-файла или
+запросов к внутренней схеме БД. Пакет cgo-free: тесты на httptest-фикстурах
+входят в обычный `go test ./...`.
+
+```bash
+# CLI-примеры
+./bin/brain/client.go search "onlyoffice postgres" --root facts --json
+./bin/brain/client.go get <id> --body
+./bin/brain/client.go stats
+./bin/brain/client.go audit
+```
+
+SDK-пример (агент/скрипт/сервис на Go):
+
+```go
+import "github.com/eSlider/2dph/pkg/brainclient"
+
+cl := brainclient.New(brainclient.Config{Base: "http://127.0.0.1:8630"})
+facts, err := cl.Facts(ctx, "where is the lexicon", brainclient.SearchOptions{})
+for _, f := range facts.Confirmed { /* безопасно цитировать как факт */ }
+for _, nf := range facts.NotConfirmed { /* (not confirmed): только с пометкой */ }
+```
+
+### Гейт facts
+
+Сервер отдаёт листья как они лежат в БД; за то, что **не подтверждённое не
+выдаётся за факт**, отвечает клиентский гейт (`pkg/brainclient`):
+
+- `Gate(root, confidence)` — вердикт для одного хита: `true` только для
+  `root=facts` с `confidence=confirmed` (пустое = legacy, по семантике выше).
+  `info`, `hypothesis`/`partial`/`estimated`/`inferred` → `false`.
+- `Client.Facts` = `search --root facts` + гейт: ответ разделяется на
+  `confirmed[]` (подтверждённые факты) и `not_confirmed[]` (отклонённое, с
+  полем `reason` — пометка `(not confirmed)`). 2v2-противоречия (D16) лежат
+  как `hypothesis` и в `confirmed` не попадают никогда.
+- `GateAudit` — гейт поверх `audit`-гистограммы: `confirmed_facts` vs
+  `not_confirmed_facts` на facts-корне. `not_confirmed_facts > 0` значит: на
+  facts-корне есть hypothesis/partial — такие листы нельзя подавать как
+  факты, пока их не разберёт `bin/facts/audit.go contradict` / audit-card
+  (L-9, #229–234). CLI `audit` в этом случае выходит с кодом 1.
+- Гейт — оборона на чтении; запись по-прежнему требует ≥2 независимых
+  источников (promote, `docs/brain/contract.md`). Клиент не «доверяет»
+  серверу: несовместимый формат/версия — ошибка, отклонённое — помечается.
+
+### Пример 1: search-факт через клиент
+
+```bash
+./bin/brain/client.go search "onlyoffice postgres" --root facts --json
+```
+
+```json
+{
+  "contract_version": "1.0",
+  "query": "onlyoffice postgres",
+  "root_filter": "facts",
+  "count": 1,
+  "confirmed": [
+    {
+      "id": "af77a292ba48f7f8be5c040c21e56dd5",
+      "text": "container 'onlyoffice' is running and declared in docker-compose.yml",
+      "root": "facts",
+      "confidence": "confirmed",
+      "score": 5.48,
+      "snippet": "container 'onlyoffice' is running and declared in docker-compose.yml"
+    }
+  ]
+}
+```
+
+Если на facts-корне встретится hypothesis/partial (например 2v2-лист до
+аудита), он уйдёт в `not_confirmed[]` с `reason`, а не в `confirmed[]` —
+агент не сможет процитировать его как факт. `get <id> --body` показывает
+двухисточниковый `source` («docker ps x compose:docker-compose.yml») —
+доказательство по write-контракту.
+
+### Пример 2: audit-карточка (гигиена facts-корня)
+
+```bash
+./bin/brain/client.go audit
+facts          confirmed        21
+info           confirmed    105199
+facts gate: confirmed=21 not_confirmed=0
+```
+
+`facts gate: not_confirmed=0` — facts-корень чист: все 21 факта confirmed.
+Если гейт покажет `not_confirmed > 0`, это сигнал для L-9-карточки:
+`bin/facts/audit.go contradict` (2v2-разбор) или `bin/facts/audit-card.go`
+(вердикт в `var/audit/source-of-truth.yml`) — до разбора такие листы остаются
+`(not confirmed)` и в ответах клиента фактами не считаются.
+
+### Кросс-репо потребители (gator/cv)
+
+`internal/contract` — внутренний пакет модуля, поэтому сегодня клиент
+импортируют 2dph-инструменты и скиллы. Чтобы gator/cv импортировали
+клиент как внешний go-модуль, нужен вынос типов read-контракта и клиента в
+публичный `go-*` модуль — это решает P-9.6 (общий ADR модели
+фактов/аудита/памяти, эпик #239); до него внешние потребители читают brain по
+этому документу (форматы) и через HTTP/MCP/CLI без дублирования логики.
 
 ## Cross-ref
 

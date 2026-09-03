@@ -923,3 +923,29 @@ green (live OO); CLI `go vet -tags=onlyoffice_import_network ./bin/onlyoffice/`.
 Дедуп: реальных дублей Person/компаний пилот не выявил — merge не
 применялся (только report; правило #271 «строго по явному списку»).
 Branch `feat/oo-crm-company#271` off `main`.
+
+## 2026-09-03 — P-9.5: сервисные клиенты поверх read-контракта (gitea #241, epic #239)
+
+Goal: единый клиентский слой чтения brain — typed-клиент поверх read-контракта
+(P-9.4 #240) вместо того, что каждый потребитель зовёт bin/brain/HTTP/MCP
+по-своему; плюс «гейт facts» (клиент не выдаёт not-confirmed как подтверждённое).
+Клиент читает только через контракт (HTTP :8630), kb.lbug напрямую не открывает.
+
+| Item | Status |
+|------|--------|
+| `pkg/brainclient` (cgo-free): `Client` (Config base/token/timeout, транспорт) + typed `Search`/`Get`/`Stats`/`Audit` → `internal/contract`-ответы; ответы валидируются контрактными валидаторами (формат + contract_version; несовместимый сервис — ошибка) | done |
+| Гейт facts: `Gate(root, confidence)` (confirmed только facts+confirmed/legacy-пустое), `Client.Facts` (search --root facts → confirmed[] / not_confirmed[] с reason), `GateAudit` (гистограмма facts-корня; not_confirmed>0 = нарушение). 2v2-противоречия (hypothesis, D16) в confirmed не попадают | done |
+| CLI `bin/brain/client.go` (shebang, brain_client, cgo-free): search/get/stats/audit, --json/--root facts\|info/--as-of/-n/--no-web/--base/--token; реализация в `pkg/brainclient/cli` (Run, покрыта тестами); audit при not_confirmed>0 → exit 1 | done |
+| TDD: gate-таблицы (facts+confirmed/legacy vs hypothesis/partial/info), GateSearch/GateAudit на фикстурах; httptest-клиент (typed-декод, валидация, ошибки HTTP, auth-header, root=facts параметр); CLI-проводка (флаги, JSON-формы, exit-коды) | done — `go test ./pkg/brainclient/...` зелёные |
+| Live на :8630 (db 105220 leafs): stats/audit (facts=21 confirmed, not_confirmed=0, exit 0), search --root facts (onlyoffice postgres → 1 confirmed), get --body (source «docker ps x compose:...»), info-хиты в default-режиме помечены (not confirmed) | done |
+| Документация: docs/brain/read-contract.md §«Клиентский слой (P-9.5)» (SDK/CLI, гейт, примеры search-факт + audit-карточка, кросс-репо путь через P-9.6) + skills/brain/SKILL.md §«Read через контракт» + PLAN.md | done |
+
+Кросс-репо (gator/cv): вынос read-контракта и клиента в публичный go-* модуль —
+P-9.6 (ADR, эпик #239); до него внешние потребители читают по форматам
+read-contract.md через HTTP/MCP/CLI.
+
+Verification: `go vet ./...` + `go test ./pkg/brainclient/...` green
+(CLI-логика в pkg/brainclient/cli входит в обычный ./...; bin/brain — shebang-
+mains за эксклюзивными тегами, по D14 компилируются пофайлово) —
+bin/brain/client.go собран и прогнан `go run -tags=brain_client`;
+`./bin/facts/audit.go self` ok. Branch `feat/brain-client#241` off `main`.
