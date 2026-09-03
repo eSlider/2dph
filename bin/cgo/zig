@@ -10,7 +10,7 @@ set -euo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
 ZIG_VERSION=0.14.1
-LBUG_VERSION=0.19.1
+LBUG_VERSION=0.20.2
 TOKENIZERS_VERSION=1.27.0
 
 arch="$(uname -m)"
@@ -20,7 +20,7 @@ case "$arch" in
     LBUG_ARCH=x86_64
     TOK_ARCH=x86_64
     ZIG_SHA=24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c
-    LBUG_SHA=ed263ae913f68cb0ddba0b98548b58edaac49929766d03bdaaa83be46c68847d
+    LBUG_SHA=c114087eb6587d7f49eb8579825fafd2507ddac6ca9dfb02f66b22e65432b0b7
     TOK_SHA=72556cdca798dd4ea7cdaba308e5f0d68a8cb93b67c96edf485b7a0edd7b07f4
     ;;
   aarch64|arm64)
@@ -28,7 +28,7 @@ case "$arch" in
     LBUG_ARCH=aarch64
     TOK_ARCH=aarch64
     ZIG_SHA=f7a654acc967864f7a050ddacfaa778c7504a0eca8d2b678839c21eea47c992b
-    LBUG_SHA=b07df2cd533c3976a2a3025866d6420a5f35514d0a822ecc4b2902d55b4725b7
+    LBUG_SHA=b8666d3b5adbcf63747c5f7860560d10dd107f928ed7072d3f449e2dc84ea563
     TOK_SHA=e96545ad05930c26f51f63d932ee6d3bbd32bbed149e102c5290d587a2293067
     ;;
   *)
