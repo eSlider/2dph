@@ -529,3 +529,19 @@ func spanDays(dates []string) string {
 	}
 	return first + ".." + last
 }
+
+// OnlyKind возвращает связи только заданного kind (person|company|service),
+// сохраняя порядок. CRM-манифест eslider@ (N-1.5 #275) — только person:
+// company (потребительские/торговые) и service в CRM не идут.
+func OnlyKind(links []Link, kind string) []Link {
+	if kind == "" {
+		return links
+	}
+	out := make([]Link, 0, len(links))
+	for _, l := range links {
+		if l.Kind == kind {
+			out = append(out, l)
+		}
+	}
+	return out
+}
