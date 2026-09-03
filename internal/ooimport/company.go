@@ -216,8 +216,8 @@ func RunCompanies(ctx context.Context, c *onlyoffice.Client, contacts []Contact,
 				rep.WouldLink++
 				continue
 			}
-			first := strings.TrimSpace(fmt.Sprint(full["firstName"]))
-			last := strings.TrimSpace(fmt.Sprint(full["lastName"]))
+			first := nonEmptyName(fmt.Sprint(full["firstName"]))
+			last := nonEmptyName(fmt.Sprint(full["lastName"]))
 			if _, err := c.UpdatePerson(ctx, id, first, last, companyID, "", ""); err != nil {
 				rep.Failed++
 				rep.Failures = append(rep.Failures, Failure{Email: email, Err: fmt.Sprintf("link company: %v", err)})
@@ -227,6 +227,18 @@ func RunCompanies(ctx context.Context, c *onlyoffice.Client, contacts []Contact,
 		}
 	}
 	return rep, nil
+}
+
+// nonEmptyName — имя для UpdatePerson (JSON-PUT): OnlyOffice отвергает
+// пустую строку firstName/lastName (400 "Value does not fall within the
+// expected range"), но пробел " " проходит и нормализуется в пустоту при
+// сохранении. Role-ящики с однословным именем (alle@, entwicklung@, info@)
+// имеют пустой lastName — без пробела линковка на компанию падает (#271).
+func nonEmptyName(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return " "
+	}
+	return s
 }
 
 // companyIDInt достаёт числовой id компании из строки-ответа OO.
