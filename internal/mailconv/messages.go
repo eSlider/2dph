@@ -63,7 +63,7 @@ func ParseAddress(raw string) ParsedAddress {
 		if i := strings.LastIndex(raw, "<"); i > 0 && strings.HasSuffix(raw, ">") {
 			return ParsedAddress{
 				Name:  strings.Trim(strings.TrimSpace(raw[:i]), `"`),
-				Email: strings.ToLower(strings.TrimSpace(raw[i+1:len(raw)-1])),
+				Email: strings.ToLower(strings.TrimSpace(raw[i+1 : len(raw)-1])),
 			}
 		}
 		return ParsedAddress{Email: strings.ToLower(strings.TrimSpace(raw))}
@@ -112,8 +112,11 @@ func IsMachineSender(a ParsedAddress) bool {
 
 // SplitPersonName derives (given, family) from a display name; single-token
 // names put everything into given and derive family from the email local part.
+// Трейлинговая скобочная декорация « (WhereGroup)»/« (FOSSGIS e.V.)» (N-1.4
+// #271) снимается до разбора — иначе уходит в given/family («Astrid Emde
+// (FOSSGIS»/«e.V.)», пилот N-1.3 #270).
 func SplitPersonName(name, email string) (given, family string) {
-	name = strings.TrimSpace(name)
+	name = stripOrgDecoration(strings.TrimSpace(name))
 	if name == "" {
 		local := email
 		if i := strings.IndexByte(local, '@'); i > 0 {
@@ -145,6 +148,39 @@ func SplitPersonName(name, email string) (given, family string) {
 			return strings.Join(fields[:len(fields)-1], " "), last
 		}
 		return strings.Join(fields[:len(fields)-1], " "), last
+	}
+}
+
+// stripOrgDecoration снимает завершающую скобочную декорацию display name:
+// «Astrid Emde (FOSSGIS e.V.)» → «Astrid Emde», «(WhereGroup)» целиком → «».
+// Снимается только сбалансированная пара скобок в КОНЦЕ строки после пробела
+// (или занимающая всю строку); повторяется, пока декорации не кончатся.
+// «name(org)» без пробела и несбалансированные скобки не трогаются.
+func stripOrgDecoration(name string) string {
+	for {
+		s := strings.TrimSpace(name)
+		if !strings.HasSuffix(s, ")") {
+			return s
+		}
+		open, depth := -1, 0
+		for i := len(s) - 1; i >= 0; i-- {
+			switch s[i] {
+			case ')':
+				depth++
+			case '(':
+				depth--
+				if depth == 0 {
+					open = i
+				}
+			}
+			if open >= 0 {
+				break
+			}
+		}
+		if open < 0 || (open > 0 && s[open-1] != ' ') {
+			return s
+		}
+		name = s[:open]
 	}
 }
 
