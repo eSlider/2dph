@@ -23,6 +23,7 @@ bin/brain/get.go <id> --body                                        # full text 
 bin/facts/audit.go self                                             # repo lexicon (Go, no deps)
 bin/facts/audit.go db                                               # every root=facts leaf (two-source rule)
 bin/facts/audit.go contradict                                       # adjudicate stdin claim(s)
+bin/facts/audit.go formal                                           # L-9.3 URL-формальные проверки (stdin JSON)
 bin/facts/audit-card.go --claim "…" --premises FACT-… --verdict …   # audit card → SoT audits[]
 ```
 
@@ -66,6 +67,41 @@ CLI валидирует карточку (verdict/inference enum, claim/premise
 обязательны), присваивает следующий `AUD-NNNN`, дописывает в `audits[]` и
 печатает карточку. Остальные секции SoT и комментарии не трогаются
 (правка на yaml-дереве). Формальная логика inference — L-9.3 (#232).
+
+## Формальные проверки URL (L-9.3 #232)
+
+Машинные проверки законов Vinogradov на уровне URL — поверх эмпирики #56.
+Ядро — `internal/facts` (cgo-free, `CanonicalURL` + `CheckFormal`):
+суждение = факт о ресурсе URL: `{id, url, claim, attr, neg, conf, from, to}`,
+где `attr` — предикат, `neg` — знак (P/¬P), `conf` — подтверждение leaf'а.
+Правила:
+
+| Закон | Код-правило | Флаг |
+|-------|-------------|------|
+| identity (тождество) | один канонический URL в разных написаниях → merge/flag | `weaken` |
+| contradiction (противоречие) | подтверждённые `P` и `¬P` об одном предикате одного URL с пересекающимися D24-интервалами | `reject` |
+| excluded middle (исключённого третьего) | hypothesis/partial или claim без предиката — не FACT, кандидат в `open_questions[]` | `weaken` |
+| sufficient reason (достаточного основания) | verdict `accept` только с FACT-/OPEN- premises; иначе — reject/weaken | `reject` |
+
+Пример — два факта на один URL с противоречивыми суждениями («вакансия
+активна» vs «вакансия closed»):
+
+```bash
+cat <<'EOF' | bin/facts/audit.go formal
+{"facts":[
+  {"id":"FACT-01","url":"https://jobs.example.com/vacancy/42","claim":"вакансия активна","attr":"вакансия открыта","neg":false,"conf":"confirmed"},
+  {"id":"FACT-02","url":"https://jobs.example.com/vacancy/42","claim":"вакансия closed","attr":"вакансия открыта","neg":true,"conf":"confirmed"}
+]}
+EOF
+# → contradiction verdict=reject; эквивалентная карточка пишется audit-card.go
+```
+
+Канонизация URL — локальная реализация конвенции gator G-8.1
+(`facts.CanonicalURL`: lowercase scheme/host, default-port, utm_*/ref/gh_jid/
+token-query, сортировка query, без фрагмента/trailing slash); gator-модуль не
+импортируется. Проверка sufficient-reason по карточкам идёт тем же
+подкомандой: `echo '{"cards":[{…}]}' | bin/facts/audit.go formal` — accept без
+FACT-/OPEN- premises возвращается как нарушение (reject/weaken).
 
 ## Recipes
 

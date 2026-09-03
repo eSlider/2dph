@@ -1,4 +1,6 @@
-// Package facts is cgo-free evidence rules (D16 contradictions).
+// Package facts is cgo-free evidence rules: D16 contradictions
+// (Adjudicate/CheckFactRow) and L-9.3 formal URL checks
+// (CheckFormal/CanonicalURL, identity/contradiction/excluded_middle).
 package facts
 
 import "strconv"

@@ -52,14 +52,14 @@ func (i Inference) Valid() bool {
 
 // AuditCard is one entry of the SoT audits[] section (AUD-NNNN).
 type AuditCard struct {
-	ID        string    `yaml:"id"`
-	Date      string    `yaml:"date"`
-	Claim     string    `yaml:"claim"`
-	Premises  []string  `yaml:"premises"`
-	Inference Inference `yaml:"inference"`
-	Gaps      []string  `yaml:"gaps,omitempty"`
-	Counter   string    `yaml:"counter"`
-	Verdict   Verdict   `yaml:"verdict"`
+	ID        string    `yaml:"id" json:"id"`
+	Date      string    `yaml:"date" json:"date"`
+	Claim     string    `yaml:"claim" json:"claim"`
+	Premises  []string  `yaml:"premises" json:"premises"`
+	Inference Inference `yaml:"inference" json:"inference"`
+	Gaps      []string  `yaml:"gaps,omitempty" json:"gaps,omitempty"`
+	Counter   string    `yaml:"counter" json:"counter"`
+	Verdict   Verdict   `yaml:"verdict" json:"verdict"`
 }
 
 // ValidateAuditCard returns human-readable problems; empty slice means the card
