@@ -42,6 +42,34 @@ Schema of a written leaf (source/external_id/observed_at/kind, dedup by
 ContentHash, versioning): see `docs/brain/contract.md` (P-9.2/P-9.3); audit
 compliance with `bin/brain/audit-contract.go`.
 
+## Read через контракт (клиент, P-9.5)
+
+`bin/brain/*.go` выше читают kb.lbug напрямую (нужна локальная БД + cgo).
+Для агентов/скриптов/gator/cv на любой машине с brain-сервисом (HTTP :8630,
+`bin/brain/serve.go`) есть сервисный клиент read-контракта — **тот же JSON,
+без kb.lbug и без cgo**:
+
+```bash
+bin/brain/client.go search "onlyoffice postgres" --root facts --json  # факты: гейт facts
+bin/brain/client.go search "onlyoffice postgres"                      # facts → info, info помечены (not confirmed)
+bin/brain/client.go get <id> --body                                   # полный текст + source (доказательства)
+bin/brain/client.go stats --json
+bin/brain/client.go audit                                             # гигиена facts-корня (exit 1 при hypothesis/partial)
+bin/brain/client.go search "q" --root facts --as-of 2025-01-01        # D24 валидность
+```
+
+- SDK: `pkg/brainclient` (typed `Search`/`Get`/`Stats`/`Audit`/`Facts`,
+  валидация ответов контрактом). CLI: `pkg/brainclient/cli` + shebang
+  `bin/brain/client.go`. Форматы и гейт — `docs/brain/read-contract.md`
+  (раздел «Клиентский слой (P-9.5)»).
+- **Гейт facts**: `--root facts` / `Client.Facts` возвращают только
+  `confidence=confirmed` (root=facts); всё остальное — `not_confirmed[]` с
+  пометкой `(not confirmed)`. 2v2-противоречия (hypothesis, D16) никогда не
+  выдаются как подтверждённые. `audit` с `not_confirmed_facts > 0` — код 1:
+  разбор через `bin/facts/audit.go contradict` / `audit-card` (L-9).
+- Не открывай kb.lbug из клиентского кода: read-контракт (форматы выше) —
+  единственный путь чтения для потребителей.
+
 ## Corpus — what lives in the brain (#198/#199)
 
 `info` holds the WHOLE corpus, never just one root. Current composition

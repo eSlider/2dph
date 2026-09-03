@@ -80,6 +80,11 @@ jobs:
       - name: brain ranking tests (no cgo / no ladybug)
         run: go test ./internal/brain/rank -count=1
 
+      - name: brain client (P-9.5, cgo-free SDK + CLI compile)
+        run: |
+          go test ./pkg/brainclient/... -count=1
+          go run -tags=brain_client ./bin/brain/client.go help >/dev/null
+
       - name: facts/audit self (lexicon consistency, no network)
         run: ./bin/facts/audit.go self
 
