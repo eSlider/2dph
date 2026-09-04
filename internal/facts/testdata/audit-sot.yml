@@ -1,0 +1,36 @@
+# source-of-truth.yml — фикстура для audit-card тестов (synthetic, L-9.2 #231).
+# Никаких реальных фактов/секретов: только demo-контейнер и fixture-вопрос.
+
+phase: draft
+
+paths:
+  sot: var/audit/source-of-truth.yml
+
+facts:
+  # docker/compose: fixture-факт в форме двух-источникового правила.
+  - id: FACT-9001     # fixture leaf demo
+    claim: "container 'demo' is running and declared in compose.yml"
+    source: "docker ps x compose:compose.yml"
+  - id: FACT-9002     # fixture leaf demo2
+    claim: "container 'demo2' is running and declared in compose.yml"
+    source: "docker ps x compose:compose.yml"
+
+open_questions:
+  - id: OPEN-9001
+    question: "fixture open question: где живёт канон demo-фактов?"
+
+audits:
+  - id: AUD-0001
+    date: "2026-09-03"
+    claim: "fixture audit claim: demo-контейнер подтверждён"
+    premises: ["FACT-9001"]
+    inference: deduction
+    gaps: ["OPEN-9001"]
+    counter: none
+    verdict: accept
+
+docs_index:
+  - path: docs/facts/audit-recipes.md
+    desc: "fixture docs entry"
+
+onlyoffice: {}

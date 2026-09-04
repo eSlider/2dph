@@ -1,0 +1,5 @@
+port: 9100
+search:
+  user: alice
+reasoner:
+  model: local-model

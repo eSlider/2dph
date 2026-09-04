@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# scripts/docker-entrypoint - run 2dph tools inside the API container.
+#
+# API image (Zig CGO binaries, Go write path):
+#   serve | search | index | add
+#
+# Usage comment starts at line 2 (self-describing convention).
+set -euo pipefail
+
+CMD="${1:-shell}"
+shift || true
+
+if [ -x /usr/local/bin/brain-serve ]; then
+	case "$CMD" in
+		shell) exec bash ;;
+		serve)
+			# The HTTP API's embedQuery calls a search daemon on KBSEARCH_PORT
+			# (default 17830). KBSEARCH_NO_DAEMON=1 embeds in-process instead,
+			# so only spawn the daemon when that is off: a brain-search that
+			# dies on startup (e.g. model not found) would otherwise become an
+			# unreaped zombie under brain-serve.
+			if [ "${KBSEARCH_NO_DAEMON:-0}" != "1" ]; then
+				port="${KBSEARCH_PORT:-17830}"
+				/usr/local/bin/brain-search serve "$port" &
+			fi
+			exec /usr/local/bin/brain-serve "$@" ;;
+		search) exec /usr/local/bin/brain-search "$@" ;;
+		index) exec /usr/local/bin/brain-index "$@" ;;
+		add) exec /usr/local/bin/brain-add "$@" ;;
+		*) echo "unknown command: $CMD (api: serve|search|index|add)" >&2; exit 2 ;;
+	esac
+fi
+
+exec bash

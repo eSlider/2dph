@@ -1,0 +1,276 @@
+{
+  "version": 1,
+  "source": "Sample golden-set for the 2dph search bench/eval gate: generic corpus topics (docs/facts/mail/git/ssh), RU+EN, no private data. Fragments are single tokens expected inside top-5 hits of a corpus indexed with bin/brain/index.go --rebuild (README + your own markdown).",
+  "queries": [
+    {
+      "q": "hybrid search fts and vector",
+      "topic": "docs",
+      "lang": "en",
+      "fragment": "BM25"
+    },
+    {
+      "q": "ladybugdb graph engine storage",
+      "topic": "docs",
+      "lang": "en",
+      "fragment": "LadybugDB"
+    },
+    {
+      "q": "почему сломан HNSW индекс",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "HNSW"
+    },
+    {
+      "q": "как пересобрать rebuild индекс brain",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "rebuild"
+    },
+    {
+      "q": "где лежит config конфиг brain",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "config"
+    },
+    {
+      "q": "healthcheck как проверить что brain жив",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "healthcheck"
+    },
+    {
+      "q": "mcp openapi описание tools",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "MCP"
+    },
+    {
+      "q": "recall gate оценка качества поиска",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "recall"
+    },
+    {
+      "q": "cgo zig тулчейн сборка",
+      "topic": "docs",
+      "lang": "ru",
+      "fragment": "Zig"
+    },
+    {
+      "q": "deduction search facts info web",
+      "topic": "docs",
+      "lang": "en",
+      "fragment": "deduction"
+    },
+    {
+      "q": "как фиксируются факты evidence",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "evidence"
+    },
+    {
+      "q": "что значит not confirmed",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "not confirmed"
+    },
+    {
+      "q": "detective method independent sources",
+      "topic": "facts",
+      "lang": "en",
+      "fragment": "independent sources"
+    },
+    {
+      "q": "confirmed как отличить подтверждённый факт",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "confirmed"
+    },
+    {
+      "q": "audit аудит фактов confidence",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "audit"
+    },
+    {
+      "q": "promote факта в уверенный",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "promote"
+    },
+    {
+      "q": "contradiction противоречие источников",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "contradiction"
+    },
+    {
+      "q": "формальные проверки url фактов",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "formal"
+    },
+    {
+      "q": "интервалы фактов временная свежесть",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "interval"
+    },
+    {
+      "q": "two sources правило подтверждения",
+      "topic": "facts",
+      "lang": "ru",
+      "fragment": "sources"
+    },
+    {
+      "q": "почтовый корпус mail leafs в brain",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "mail"
+    },
+    {
+      "q": "eml conversion canonical message",
+      "topic": "mail",
+      "lang": "en",
+      "fragment": "canonical"
+    },
+    {
+      "q": "mbox архив писем импорт",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "mbox"
+    },
+    {
+      "q": "вложения attachments разбор письма",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "attachment"
+    },
+    {
+      "q": "ocr сканы pdf из писем",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "ocr"
+    },
+    {
+      "q": "charset кодировки письма quoted printable",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "charset"
+    },
+    {
+      "q": "разбор заголовков from to cc",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "header"
+    },
+    {
+      "q": "pst outlook архив как импортировать",
+      "topic": "mail",
+      "lang": "ru",
+      "fragment": "pst"
+    },
+    {
+      "q": "git история коммитов в brain",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "commit"
+    },
+    {
+      "q": "author автор коммита hop",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "author"
+    },
+    {
+      "q": "hop глубина от листа граф",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "hop"
+    },
+    {
+      "q": "file has version commit связь",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "HAS_VERSION"
+    },
+    {
+      "q": "go-git без git binary чтение истории",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "go-git"
+    },
+    {
+      "q": "import git leafs upsert контент хэш",
+      "topic": "git",
+      "lang": "en",
+      "fragment": "leafs"
+    },
+    {
+      "q": "git log за какой период авторы",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "log"
+    },
+    {
+      "q": "branches теги семвер релизы",
+      "topic": "git",
+      "lang": "ru",
+      "fragment": "semver"
+    },
+    {
+      "q": "ssh config хосты сопоставление",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "ssh"
+    },
+    {
+      "q": "ssh tunnel доступ к сервису",
+      "topic": "ssh",
+      "lang": "en",
+      "fragment": "tunnel"
+    },
+    {
+      "q": "ключи ssh key agent аутентификация",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "key"
+    },
+    {
+      "q": "правило no sudo доступ",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "sudo"
+    },
+    {
+      "q": "ssh config docker хосты compose",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "config"
+    },
+    {
+      "q": "two factor ssh 2fa вход",
+      "topic": "ssh",
+      "lang": "ru",
+      "fragment": "factor"
+    },
+    {
+      "q": "docker api image сборка",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "docker"
+    },
+    {
+      "q": "runbook как начать работу",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "runbook"
+    },
+    {
+      "q": "что такое corpus brain источники",
+      "topic": "mixed",
+      "lang": "ru",
+      "fragment": "corpus"
+    }
+  ]
+}

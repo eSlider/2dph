@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# bin/cgo/zig — CGO toolchain: zig cc (not gcc) + pinned liblbug + libtokenizers.
+#
+#   eval "$(bin/cgo/zig env)"     # export CC/CXX/CGO_*
+#   bin/cgo/zig go build ...      # ensure, then exec with env
+#   bin/cgo/zig ./bin/brain/search.go "query"
+#
+# Pins live in this file. Downloads land in var/ (gitignored).
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
+ZIG_VERSION=0.14.1
+LBUG_VERSION=0.20.2
+TOKENIZERS_VERSION=1.27.0
+
+arch="$(uname -m)"
+case "$arch" in
+  x86_64|amd64)
+    ZIG_ARCH=x86_64
+    LBUG_ARCH=x86_64
+    TOK_ARCH=x86_64
+    ZIG_SHA=24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c
+    LBUG_SHA=c114087eb6587d7f49eb8579825fafd2507ddac6ca9dfb02f66b22e65432b0b7
+    TOK_SHA=72556cdca798dd4ea7cdaba308e5f0d68a8cb93b67c96edf485b7a0edd7b07f4
+    ;;
+  aarch64|arm64)
+    ZIG_ARCH=aarch64
+    LBUG_ARCH=aarch64
+    TOK_ARCH=aarch64
+    ZIG_SHA=f7a654acc967864f7a050ddacfaa778c7504a0eca8d2b678839c21eea47c992b
+    LBUG_SHA=b8666d3b5adbcf63747c5f7860560d10dd107f928ed7072d3f449e2dc84ea563
+    TOK_SHA=e96545ad05930c26f51f63d932ee6d3bbd32bbed149e102c5290d587a2293067
+    ;;
+  *)
+    echo "bin/cgo/zig: unsupported arch $arch" >&2
+    exit 2
+    ;;
+esac
+
+CACHE="$ROOT/var/cache"
+LIB="$ROOT/lib-ladybug"
+ZIG_DIR="$ROOT/var/zig-dist"
+ZIG_BIN="$ROOT/var/zig/zig"
+
+sha256of() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+fetch() {
+  local url="$1" dest="$2" expect="$3"
+  if [ -f "$dest" ] && [ "$(sha256of "$dest")" = "$expect" ]; then
+    return 0
+  fi
+  mkdir -p "$(dirname "$dest")"
+  echo "fetch $url" >&2
+  curl -fsSL "$url" -o "$dest"
+  local got
+  got="$(sha256of "$dest")"
+  if [ "$got" != "$expect" ]; then
+    echo "checksum mismatch $dest: got $got want $expect" >&2
+    rm -f "$dest"
+    exit 1
+  fi
+}
+
+ensure_zig() {
+  if [ -n "${ZIG:-}" ] && [ -x "$ZIG" ]; then
+    return 0
+  fi
+  if [ -x "$ZIG_BIN" ]; then
+    export ZIG="$ZIG_BIN"
+    return 0
+  fi
+  if command -v zig >/dev/null 2>&1; then
+    export ZIG
+    ZIG="$(command -v zig)"
+    return 0
+  fi
+  local tar="$CACHE/zig-${ZIG_ARCH}-linux-${ZIG_VERSION}.tar.xz"
+  fetch "https://ziglang.org/download/${ZIG_VERSION}/zig-${ZIG_ARCH}-linux-${ZIG_VERSION}.tar.xz" \
+    "$tar" "$ZIG_SHA"
+  mkdir -p "$CACHE"
+  rm -rf "$ZIG_DIR"
+  tar -xJf "$tar" -C "$CACHE"
+  mv "$CACHE/zig-${ZIG_ARCH}-linux-${ZIG_VERSION}" "$ZIG_DIR"
+  mkdir -p "$ROOT/var/zig"
+  ln -sfn "$ZIG_DIR/zig" "$ZIG_BIN"
+  export ZIG="$ZIG_BIN"
+}
+
+ensure_libs() {
+  mkdir -p "$LIB"
+  if [ ! -f "$LIB/liblbug.so" ]; then
+    local tar="$CACHE/liblbug-linux-${LBUG_ARCH}.tar.gz"
+    fetch "https://github.com/LadybugDB/ladybug/releases/download/v${LBUG_VERSION}/liblbug-linux-${LBUG_ARCH}.tar.gz" \
+      "$tar" "$LBUG_SHA"
+    tar -xzf "$tar" -C "$LIB"
+  fi
+  if [ ! -f "$LIB/libtokenizers.a" ]; then
+    local tar="$CACHE/libtokenizers.linux-${TOK_ARCH}.tar.gz"
+    fetch "https://github.com/daulet/tokenizers/releases/download/v${TOKENIZERS_VERSION}/libtokenizers.linux-${TOK_ARCH}.tar.gz" \
+      "$tar" "$TOK_SHA"
+    tar -xzf "$tar" -C "$LIB"
+  fi
+}
+
+print_env() {
+  printf 'export ZIG=%q\n' "$ZIG"
+  printf 'export CC=%q\n' "$ROOT/bin/cgo/zcc"
+  printf 'export CXX=%q\n' "$ROOT/bin/cgo/zc++"
+  printf 'export CGO_ENABLED=1\n'
+  printf 'export CGO_CFLAGS=%q\n' "-I$LIB"
+  printf 'export CGO_LDFLAGS=%q\n' "-L$LIB -Wl,-rpath,${CGO_RPATH:-$LIB}"
+}
+
+ensure_zig
+ensure_libs
+
+cmd="${1:-env}"
+if [ "$cmd" = "env" ]; then
+  print_env
+  exit 0
+fi
+
+eval "$(print_env)"
+exec "$@"

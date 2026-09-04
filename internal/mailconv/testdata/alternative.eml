@@ -1,0 +1,16 @@
+From: "Pat Sample" <pat@example.com>
+To: info@example.com
+Subject: Re: contract review
+Date: Tue, 19 Aug 2026 13:47:04 +0100
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+
+Please review the attached terms.
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<p>Please review the attached terms.</p>
+--ALT--

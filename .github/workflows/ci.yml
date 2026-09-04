@@ -1,0 +1,154 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Guard (paths, pycache)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: No hardcoded user/mount paths in Go sources
+        run: |
+          # split literals so this line cannot match its own pattern
+          # Container-only paths (/home/<appuser> in Dockerfile) are exempt:
+          # the guard covers host paths that leak into committed code.
+          re="/m""nt/|/h""ome/[a-z]+/|/U""sers/"
+          if git grep -nE "$re" -- '*.go'; then
+            echo "::error::hardcoded absolute path(s) above; use env vars (\$HOME, \$PROJECTS_ROOT)" >&2
+            exit 1
+          fi
+
+      - name: No __pycache__ under bin/
+        run: |
+          if find bin -type d -name __pycache__ | grep -q .; then
+            echo "::error::__pycache__ directories found under bin/:" >&2
+            find bin -type d -name __pycache__
+            exit 1
+          fi
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v4
+        with:
+          go-version-file: go.mod
+
+      - name: Shell syntax check
+        run: |
+          bash -n scripts/docker-entrypoint
+          bash -n bin/cgo/zig
+          sh -n bin/cgo/zcc
+          sh -n bin/cgo/zc++
+
+      - name: Go tests (root module, default tags — no ladybug CGO)
+        run: |
+          go vet ./...
+          go test ./... -count=1
+
+      - name: brain ranking tests (no cgo / no ladybug)
+        run: go test ./internal/brain/rank -count=1
+
+      - name: brain client (cgo-free SDK + CLI compile)
+        run: |
+          go test ./pkg/brainclient/... -count=1
+          go run -tags=brain_client ./bin/brain/client.go help >/dev/null
+
+      - name: CGO via Zig (compile brain search/serve/index/add/eval/bench/ann)
+        run: |
+          chmod +x bin/cgo/zig bin/cgo/zcc bin/cgo/zc++
+          bin/cgo/zig go build -tags system_ladybug -o /tmp/brain-search ./bin/brain/search.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_serve' -o /tmp/brain-serve ./bin/brain/serve.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_index' -o /tmp/brain-index ./bin/brain/index.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_add' -o /tmp/brain-add ./bin/brain/add.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_eval' -o /tmp/brain-eval ./bin/brain/eval.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_bench' -o /tmp/brain-bench ./bin/brain/bench.go
+          bin/cgo/zig go build -tags 'system_ladybug,brain_ann' -o /tmp/brain-ann ./bin/brain/ann.go
+
+      - name: Go write-path tests (Zig CGO ladybug, in-process)
+        run: bin/cgo/zig go test -tags system_ladybug ./internal/brain/... -count=1
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gitleaks (full tree on root commit, diff after)
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          chmod +x /tmp/gitleaks
+          /tmp/gitleaks detect --source "$GITHUB_WORKSPACE" --redact --verbose
+
+  docker:
+    name: Docker (api image)
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        run: |
+          REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "tags=$REPO:api,$REPO:$GITHUB_REF_NAME,$REPO:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=$REPO:api,$REPO:sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          target: api
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

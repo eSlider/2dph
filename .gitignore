@@ -1,0 +1,32 @@
+.venv/
+var/
+__pycache__/
+*.pyc
+*.lbug
+*.lbug.*
+.cache/
+.DS_Store
+*.env
+.env
+# testdata fixtures may ship .env (committed, not secrets)
+!internal/config/testdata/**/.env
+.secrets/
+lib-ladybug/
+go.work.local
+models/
+
+# local compiled binaries dropped in repo root (go run -o . / go build)
+/bin-build/
+/brain
+/contacts
+/web
+
+# machine-local config overrides (never committed; CI guard on absolute paths)
+etc/brain/config.local.yml
+
+# IDE config, not a project file
+.opencode/
+.cursorignore
+
+# showcase manifest (artifact, not part of the snapshot)
+/PUBLISH_MANIFEST.md

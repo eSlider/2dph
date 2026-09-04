@@ -1,0 +1,19 @@
+# gitleaks config for 2dph.
+#
+# The default rules are fine for code; the only false positive in practice is
+# go.sum: module checksum lines (module version h1:<hash>) trip the generic
+# key rules because of entropy. Those 44-char base64 hashes are dependency
+# hashes, not secrets — allowlist exactly that shape (gitleaks matches the
+# allowlist regexes against the secret value, so the line pattern cannot be
+# used in --pipe mode).
+
+title = "2dph gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "go.sum h1: checksums (dependency hashes, not secrets)"
+regexes = [
+  '''^[A-Za-z0-9+/]{43}={0,2}$''',
+]
