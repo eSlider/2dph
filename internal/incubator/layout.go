@@ -68,3 +68,26 @@ func headerHasOwner(h mail.Header, field, owner string) bool {
 	}
 	return false
 }
+
+// FromMatches reports whether the From header of a raw message contains any
+// of the given sender addresses — the same matching rules as headerHasOwner
+// (addr-spec compare, case-insensitive, display names never match, substring
+// fallback for unparseable legacy values). It backs the sender filter of
+// gator #101 (Options.SkipFrom): marketing mailings (e.g. the Loewe
+// gewinnspiel@loewe.de sweep — 92% of viscreation@gmx_de) are dropped before
+// dedup and never reach the manifest or the mailbox.
+func FromMatches(raw []byte, addrs []string) (bool, error) {
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return false, fmt.Errorf("incubator: parse eml header: %w", err)
+	}
+	for _, a := range addrs {
+		if a == "" {
+			continue
+		}
+		if headerHasOwner(msg.Header, "From", a) {
+			return true, nil
+		}
+	}
+	return false, nil
+}

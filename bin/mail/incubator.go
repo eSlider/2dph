@@ -85,16 +85,19 @@ func run(args []string) int {
 			owner = ownerFlag
 		}
 		o := incubator.Options{
-			Root:      imp.Source,
-			User:      imp.User,
-			Owner:     owner,
-			State:     impState(cfg, imp),
-			Docker:    cfg.Incubator.Docker,
-			Container: cfg.Incubator.Container,
-			Limit:     limit,
-			Folders:   folders,
-			Force:     force,
-			Dry:       dry,
+			Root:        imp.Source,
+			User:        imp.User,
+			Owner:       owner,
+			OwnerStrict: imp.OwnerStrict,
+			SkipState:   imp.SkipState,
+			SkipFrom:    imp.SkipFrom,
+			State:       impState(cfg, imp),
+			Docker:      cfg.Incubator.Docker,
+			Container:   cfg.Incubator.Container,
+			Limit:       limit,
+			Folders:     folders,
+			Force:       force,
+			Dry:         dry,
 		}
 		st, err := incubator.Run(ctx, o)
 		if err != nil {
@@ -108,11 +111,20 @@ func run(args []string) int {
 		}
 		line := fmt.Sprintf("mail/incubator: %s: found=%d unique=%d no-id=%d window=%d new=%d already=%d dup=%d (%s, user=%s)",
 			imp.Label, st.Scanned, st.Unique, st.NoID, st.Window, st.Imported, st.Already, st.DupInRun, mode, imp.User)
+		if st.AlreadyOther > 0 {
+			line += fmt.Sprintf(", already-other=%d (global dedup vs imported sources)", st.AlreadyOther)
+		}
+		if st.Filtered > 0 {
+			line += fmt.Sprintf(", filtered=%d (skip_from)", st.Filtered)
+		}
 		if st.Rejected > 0 {
 			line += fmt.Sprintf(", rejected=%d (server refused; not in manifest, re-run retries)", st.Rejected)
 		}
 		if o.Owner != "" {
 			line += fmt.Sprintf(", layout-owner=%s", o.Owner)
+			if o.OwnerStrict {
+				line += fmt.Sprintf(" [strict: foreign=%d skipped to the sibling owner's pass]", st.Foreign)
+			}
 		}
 		fmt.Println(line)
 		printMailboxMap(st)

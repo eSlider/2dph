@@ -129,7 +129,25 @@ Trash/Junk, как у обычного ящика). A1-ящик `wheregroup@prod
    (проверено live, 2026-09-02) — на doveadm не полагаемся. Чекпойнт пишется
    атомарно каждые 25 импортов (crash-resume). `--force` пересоздаёт манифест
    (перекладка после смены аккаунта/модели).
-5. **Импорт**: `docker exec -i mailserver doveadm save -u <user> -m <mb>` с
+5. **Глобальный дедуп vs уже импортированных источников** (gator #101):
+   `import.skip_state` — список read-only манифестов, ключи которых считаются
+   уже импортированными (гдеgroup+gmail уже в gator kind=mail; плюс соседние
+   срезы того же корпуса). Импорт пропускает канон Message-ID, уже
+   пришедший из другого канала (двух одинаковых raw в разных каналах нет);
+   счётчик `already-other` в отчёте. В `--force` чужие ключи НЕ сбрасываются —
+   пере-импорт одного среза не дублирует письмо, уже лежащее в gator из
+   другого канала.
+6. **Фильтр отправителя**: `import.skip_from` — письма с From этих адресов
+   (addr-spec, регистронезависимо) пропускаются до дедупа: не импортируются и
+   не пишутся в манифест (счётчик `filtered`) — Loewe-рассылка
+   `gewinnspiel@loewe.de` (92% viscreation@gmx_de), решение владельца
+   2026-09-05.
+7. **Multi-owner проходы**: `import.owner_strict` — письмо, где owner нет ни в
+   From/To/Cc/Delivered-To, не уходит в INBOX/Unmatched, а пропускается
+   (счётчик `foreign`) — его импортирует проход соседнего владельца того же
+   дерева (defacto/Local_Folders: eslider@gmail.com + viscreation@gmail.com
+   двумя проходами, раскладка по Delivered-To).
+8. **Импорт**: `docker exec -i mailserver doveadm save -u <user> -m <mb>` с
    .eml на stdin — **bind-mount legacy-корпуса в контейнер не нужен** (решение
    открытого вопроса #250/Q3). Целевые папки создаются `doveadm mailbox
    create` (doveadm save не автосоздаёт папку — проверено live); после импорта
@@ -151,3 +169,49 @@ Trash/Junk, как у обычного ящика). A1-ящик `wheregroup@prod
 переложено 1000 (Sent/INBOX/INBOX-Unmatched — раскладка в отчёте #252);
 повторный прогон → 0 новых. Проверка: `doveadm search -u
 andriy.oblivantsev@wheregroup.com mailbox INBOX ALL` (счёт).
+
+### defacto (много-owner + глобальный дедуп, gator #101)
+
+Манифест импорта 4-х account-директорий (`var/mail/archive/defacto/`, решение
+владельца 2026-09-05): viscreation@gmx_de (19 994 eml, unique 19 649) →
+ящик viscreation@gmx.de c `skip_from: [gewinnspiel@loewe.de]`;
+andriy_oblivantsev@gridfactor_de (671, unique 542) → andriy.oblivantsev@gridfactor.de;
+Local_Folders (19 594, unique 15 014, mixed) → **два строгих прохода** —
+eslider@gmail.com и viscreation@gmail.com (`owner_strict: true`, раскладка по
+Delivered-To); pska2160@gmail_com (90) — чужой аккаунт, не импортируется.
+Каждый срез дополнительно дедуплицирует против `skip_state` = манифесты
+гдеgroup + gmail + соседних срезов defacto — eslider-письма из gmail-канала
+повторно не импортируются (глобальный дедуп, критерий Эпика C).
+
+```yaml
+# etc/brain/config.local.yml (machine-local пути, #79; НЕ коммитить)
+incubator:
+  imports:
+    - {label: defacto-viscreation-gmx, source: "<defacto>/viscreation@gmx_de",
+       user: viscreation@gmx.de, owner: viscreation@gmx.de,
+       skip_from: [gewinnspiel@loewe.de],
+       skip_state: ["<state>/incubator-wheregroup.json", "<state>/incubator-gmail.json"]}
+    - {label: defacto-gridfactor, source: "<defacto>/andriy_oblivantsev@gridfactor_de",
+       user: andriy.oblivantsev@gridfactor.de, owner: andriy.oblivantsev@gridfactor.de,
+       skip_state: ["<state>/incubator-wheregroup.json", "<state>/incubator-gmail.json",
+                    "<state>/incubator-defacto-viscreation-gmx.json"]}
+    - {label: defacto-local-eslider, source: "<defacto>/Local_Folders",
+       user: eslider@gmail.com, owner: eslider@gmail.com, owner_strict: true,
+       skip_state: ["<state>/incubator-wheregroup.json", "<state>/incubator-gmail.json",
+                    "<state>/incubator-defacto-viscreation-gmx.json",
+                    "<state>/incubator-defacto-gridfactor.json"]}
+    - {label: defacto-local-viscreation, source: "<defacto>/Local_Folders",
+       user: viscreation@gmail.com, owner: viscreation@gmail.com, owner_strict: true,
+       skip_state: ["<state>/incubator-wheregroup.json", "<state>/incubator-gmail.json",
+                    "<state>/incubator-defacto-viscreation-gmx.json",
+                    "<state>/incubator-defacto-gridfactor.json",
+                    "<state>/incubator-defacto-local-eslider.json"]}
+```
+
+```bash
+./bin/mail/incubator.go --dry-run   # план всех срезов (цифры после #101 — в отчёте issue)
+```
+
+Порядок live-импорта: gmail/гдеgroup уже в gator → viscreation-gmx (фильтр
+Loewe) → gridfactor → Local_Folders eslider → Local_Folders viscreation
+(каждый следующий срез кладёт свой манифест в `skip_state` следующих).

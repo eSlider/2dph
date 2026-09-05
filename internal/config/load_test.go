@@ -96,12 +96,24 @@ func TestLoadStack_DeepMergeAndPriority(t *testing.T) {
 		t.Fatalf("reasoner.device = %q, want default cpu", cfg.Reasoner.Device)
 	}
 	// Incubator: import list from config.yml, container keeps the default.
-	if len(cfg.Incubator.Imports) != 1 {
-		t.Fatalf("incubator.imports = %+v, want 1 import", cfg.Incubator.Imports)
+	if len(cfg.Incubator.Imports) != 2 {
+		t.Fatalf("incubator.imports = %+v, want 2 imports", cfg.Incubator.Imports)
 	}
 	imp := cfg.Incubator.Imports[0]
 	if imp.Label != "wheregroup" || imp.User != "wheregroup@example.com" || imp.Source != "/srv/mail/archive/wheregroup" {
 		t.Fatalf("incubator import wrong: %+v", imp)
+	}
+	// defacto multi-owner knobs (gator #101): underscore yaml keys normalize
+	// to the typed single-token fields.
+	defacto := cfg.Incubator.Imports[1]
+	if defacto.Label != "defacto-local-eslider" || defacto.Owner != "eslider@gmail.com" || !defacto.OwnerStrict {
+		t.Fatalf("defacto import wrong: %+v", defacto)
+	}
+	if len(defacto.SkipFrom) != 1 || defacto.SkipFrom[0] != "gewinnspiel@loewe.de" {
+		t.Fatalf("defacto skip_from = %v, want [gewinnspiel@loewe.de]", defacto.SkipFrom)
+	}
+	if len(defacto.SkipState) != 2 || defacto.SkipState[0] != "/srv/2dph/var/state/incubator-wheregroup.json" {
+		t.Fatalf("defacto skip_state = %v, want the wheregroup + sibling manifests", defacto.SkipState)
 	}
 	if cfg.Incubator.Container != "mailserver" {
 		t.Fatalf("incubator.container = %q, want default mailserver", cfg.Incubator.Container)

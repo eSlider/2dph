@@ -12,3 +12,13 @@ incubator:
     - label: wheregroup
       source: /srv/mail/archive/wheregroup
       user: wheregroup@example.com
+    - label: defacto-local-eslider
+      source: /srv/mail/archive/defacto/Local_Folders
+      user: eslider@gmail.com
+      owner: eslider@gmail.com
+      owner_strict: true
+      skip_from:
+        - gewinnspiel@loewe.de
+      skip_state:
+        - /srv/2dph/var/state/incubator-wheregroup.json
+        - /srv/2dph/var/state/incubator-defacto-local-viscreation.json

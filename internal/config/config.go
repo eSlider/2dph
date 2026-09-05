@@ -183,13 +183,29 @@ type IncubatorConfig struct {
 // (the historical address matched in headers; empty = User). When Owner is
 // set, messages are routed by recipient: From=owner → Sent,
 // To/CC/Delivered-To=owner → INBOX, owner nowhere → INBOX/Unmatched
-// (decision 2026-09-02, #252).
+// (decision 2026-09-02, #252). The multi-owner/marketing knobs below serve
+// the defacto import of gator #101 (single tree → one pass per historical
+// owner; global dedup vs already-imported channels; Loewe filter).
 type IncubatorImport struct {
 	Label  string `mapstructure:"label"`
 	Source string `mapstructure:"source"`
 	User   string `mapstructure:"user"`
 	// Owner is the historical owner address for recipient routing; empty = User.
 	Owner string `mapstructure:"owner"`
+	// OwnerStrict drops messages whose owner is in none of
+	// From/To/Cc/Delivered-To instead of quarantining them into
+	// INBOX/Unmatched — the sibling owner's pass of the same tree imports
+	// them (Local_Folders ×2, gator #101).
+	OwnerStrict bool `mapstructure:"ownerstrict"`
+	// SkipFrom drops messages From these sender addresses before dedup
+	// (marketing filter, e.g. gewinnspiel@loewe.de); addr-spec match,
+	// case-insensitive. Filtered mail is never imported nor manifested.
+	SkipFrom []string `mapstructure:"skipfrom"`
+	// SkipState lists additional read-only manifests whose keys count as
+	// already imported — the global dedup key-store vs already-imported
+	// sources (гдеgroup/gmail, sibling slices of the same corpus; gator
+	// #101). Paths are absolute, like State.
+	SkipState []string `mapstructure:"skipstate"`
 	// State overrides the manifest path; empty = <root>/var/state/incubator-<label>.json.
 	State string `mapstructure:"state"`
 }

@@ -47,6 +47,25 @@ type Options struct {
 	// To/CC/Delivered-To → INBOX, owner nowhere → INBOX/Unmatched. Empty =
 	// legacy flat/folder routing (Mailbox / Folders).
 	Owner string
+	// OwnerStrict tightens recipient routing for multi-owner corpora (gator
+	// #101, defacto/Local_Folders): a message whose owner appears in NONE of
+	// From/To/Cc/Delivered-To is NOT quarantined into INBOX/Unmatched — it is
+	// skipped (Stats.Foreign), because the sibling owner's pass imports it.
+	// Requires Owner. Without it the layout behaves exactly as before.
+	OwnerStrict bool
+	// SkipState lists additional read-only manifests whose keys count as
+	// already imported — the global dedup of gator #101. Each defacto import
+	// lists the manifests of the already-imported channels (гдеgroup/gmail)
+	// plus the sibling slices of the same multi-owner corpus, so a canonical
+	// Message-ID already present in gator is never imported twice. Read-only:
+	// entries are never appended here (the run writes only Options.State).
+	SkipState []string
+	// SkipFrom lists sender addresses (From header, case-insensitive
+	// addr-spec) whose messages are dropped before dedup and import — the
+	// marketing filter of gator #101 (viscreation@gmx_de is 92%
+	// gewinnspiel@loewe.de). Filtered messages are not imported, never
+	// written to the manifest and counted in Stats.Filtered.
+	SkipFrom []string
 	// State is the manifest path (var/state/incubator-<label>.json).
 	State string
 	// Docker is the docker binary; empty = PATH lookup.
@@ -72,14 +91,17 @@ type Options struct {
 
 // Stats report what one run did (issue #252 acceptance numbers).
 type Stats struct {
-	Scanned   int            // messages found in the tree (attachments excluded)
-	Unique    int            // distinct dedup keys in the whole scan
-	NoID      int            // id-less messages (body-hash fallback keys)
-	Window    int            // messages considered this run (limit window)
-	Already   int            // in window, key already in the manifest
-	DupInRun  int            // in window, key already imported earlier this run
-	Imported  int            // saved to the mailbox (or planned, in dry-run)
-	ByMailbox map[string]int // window size per source folder (issue п.3 карта)
+	Scanned      int            // messages found in the tree (attachments excluded)
+	Unique       int            // distinct dedup keys in the scan (after the sender filter)
+	NoID         int            // id-less messages (body-hash fallback keys)
+	Filtered     int            // dropped by Options.SkipFrom before dedup (marketing, gator #101)
+	Window       int            // messages considered this run (limit window)
+	Already      int            // in window, key already in this source's manifest
+	AlreadyOther int            // in window, key already imported by another source (Options.SkipState)
+	DupInRun     int            // in window, key already imported earlier this run
+	Foreign      int            // dropped by strict-owner routing: another pass's message (gator #101)
+	Imported     int            // saved to the mailbox (or planned, in dry-run)
+	ByMailbox    map[string]int // window size per source folder (issue п.3 карта)
 	// Targets counts the save targets of imported messages — the routing
 	// result of layout mode (Sent/INBOX/INBOX/Unmatched, #252).
 	Targets map[string]int
@@ -116,6 +138,9 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 	if o.Folders && o.Owner != "" {
 		return st, errors.New("incubator: recipient layout (Owner) and Folders are mutually exclusive")
 	}
+	if o.OwnerStrict && o.Owner == "" {
+		return st, errors.New("incubator: Options.OwnerStrict requires Options.Owner")
+	}
 	layoutMode := o.Owner != ""
 
 	manifest, err := LoadManifest(o.State)
@@ -136,8 +161,32 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 		return st, err
 	}
 	st.Scanned = len(msgs)
+
+	// Sender filter (SkipFrom, gator #101): marketing mailings are dropped
+	// BEFORE dedup counting — they are not corpus for this import at all
+	// (never imported, never manifested). Filtered messages stay out of
+	// Unique/NoID/ByMailbox and of the limit window.
+	if len(o.SkipFrom) > 0 {
+		kept := make([]Message, 0, len(msgs))
+		for _, m := range msgs {
+			raw, err := os.ReadFile(filepath.Join(o.Root, filepath.FromSlash(m.Rel)))
+			if err != nil {
+				return st, fmt.Errorf("incubator: read %s: %w", m.Rel, err)
+			}
+			drop, err := FromMatches(raw, o.SkipFrom)
+			if err != nil {
+				return st, fmt.Errorf("incubator: filter %s: %w", m.Rel, err)
+			}
+			if drop {
+				st.Filtered++
+				continue
+			}
+			kept = append(kept, m)
+		}
+		msgs = kept
+	}
+
 	st.ByMailbox = make(map[string]int, 16)
-	seen := make(map[string]struct{}, len(manifest.Entries))
 	uniq := make(map[string]struct{}, len(msgs))
 	for _, m := range msgs {
 		st.ByMailbox[m.Mailbox]++
@@ -147,8 +196,25 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 		}
 	}
 	st.Unique = len(uniq)
+	// seen = this source's own manifest (re-run idempotency, cleared by
+	// Force — the operator wiped the target mailbox).
+	seen := make(map[string]struct{}, len(manifest.Entries))
 	for _, e := range manifest.Entries {
 		seen[e.Key] = struct{}{}
+	}
+	// otherSeen = the global key-store of gator #101: manifests of the
+	// already-imported sources (Options.SkipState). Never cleared by Force —
+	// a forced re-import of one slice must not duplicate a letter that is
+	// already in gator from another channel.
+	otherSeen := make(map[string]struct{})
+	for _, p := range o.SkipState {
+		sm, err := LoadManifest(p) // missing file = not yet imported (empty)
+		if err != nil {
+			return st, fmt.Errorf("incubator: skip-state %s: %w", p, err)
+		}
+		for _, e := range sm.Entries {
+			otherSeen[e.Key] = struct{}{}
+		}
 	}
 
 	window := msgs
@@ -177,6 +243,11 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 				continue
 			}
 		}
+		if _, ok := otherSeen[m.Key]; ok {
+			// already in gator from another channel (global dedup, #101)
+			st.AlreadyOther++
+			continue
+		}
 		if _, ok := inRun[m.Key]; ok {
 			st.DupInRun++
 			continue
@@ -191,6 +262,13 @@ func Run(ctx context.Context, o Options) (Stats, error) {
 			}
 			if mb, err = LayoutOf(raw, o.Owner); err != nil {
 				return st, fmt.Errorf("incubator: layout %s: %w", m.Rel, err)
+			}
+			if o.OwnerStrict && mb == LayoutUnmatched {
+				// Not this owner's message: the sibling pass of the
+				// multi-owner corpus imports it — never quarantined, never
+				// imported here (gator #101, defacto/Local_Folders).
+				st.Foreign++
+				continue
 			}
 		} else if !o.Folders {
 			mb = target

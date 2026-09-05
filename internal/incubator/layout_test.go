@@ -112,3 +112,77 @@ func TestLayoutOfRequiresOwner(t *testing.T) {
 		t.Fatal("LayoutOf with empty owner must fail")
 	}
 }
+
+// TestFromMatches proves the sender filter matching (gator #101): a message
+// is filtered when its From header contains one of the configured addresses.
+// Rules mirror headerHasOwner: addr-spec compare, case-insensitive, display
+// names never match, substring fallback for unparseable legacy values.
+func TestFromMatches(t *testing.T) {
+	loewe := []string{"gewinnspiel@loewe.de"}
+	tests := []struct {
+		name  string
+		raw   []byte
+		addrs []string
+		want  bool
+	}{
+		{
+			name:  "bare sender address matches",
+			raw:   eml("From: gewinnspiel@loewe.de", "To: prizes@example.com"),
+			addrs: loewe,
+			want:  true,
+		},
+		{
+			name:  "quoted display + address matches",
+			raw:   eml("From: \"gewinnspiel@loewe.de\" <gewinnspiel@loewe.de>", "To: prizes@example.com"),
+			addrs: loewe,
+			want:  true,
+		},
+		{
+			name:  "uppercase sender matches (case-insensitive)",
+			raw:   eml("From: GEWINNSPIEL@LOEWE.DE", "To: prizes@example.com"),
+			addrs: loewe,
+			want:  true,
+		},
+		{
+			name:  "sender only in display name → no match",
+			raw:   eml("From: \"gewinnspiel@loewe.de\" <boss@example.com>", "To: prizes@example.com"),
+			addrs: loewe,
+			want:  false,
+		},
+		{
+			name:  "other sender → no match",
+			raw:   eml("From: boss@example.com", "To: prizes@example.com"),
+			addrs: loewe,
+			want:  false,
+		},
+		{
+			name:  "unparseable From with sender substring → substring fallback",
+			raw:   eml("From: <@relay1.example.com:gewinnspiel@loewe.de>", "To: prizes@example.com"),
+			addrs: loewe,
+			want:  true,
+		},
+		{
+			name:  "empty addrs entries are ignored",
+			raw:   eml("From: boss@example.com", "To: prizes@example.com"),
+			addrs: []string{"", "boss@example.com"},
+			want:  true,
+		},
+		{
+			name:  "empty addrs list → no match",
+			raw:   eml("From: gewinnspiel@loewe.de", "To: prizes@example.com"),
+			addrs: nil,
+			want:  false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FromMatches(tc.raw, tc.addrs)
+			if err != nil {
+				t.Fatalf("FromMatches: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("FromMatches = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
