@@ -81,6 +81,9 @@ incubator:
   docker: ""             # docker binary override; empty = PATH lookup
   container: "mailserver" # docker-mailserver container name
   imports: []            # e.g. [{label: wheregroup, source: "<profile root, see #79>", user: "andriy.oblivantsev@wheregroup.com", owner: "andriy.oblivantsev@wheregroup.com", state: ""}]
+                         # multi-owner/marketing knobs (defacto, gator #101): owner_strict: true (foreign mail skipped to the sibling owner's pass),
+                         # skip_state: ["<absolute>/incubator-gmail.json", ...] (global dedup vs already-imported sources),
+                         # skip_from: ["gewinnspiel@loewe.de"] (sender filter, never imported/manifested).
 
 # Vector ANN index (issues #204/#206): IVF (k-means + exact cosine over the
 # probed cells) outside liblbug (whose own HNSW crashes on grown graphs,
