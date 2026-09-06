@@ -215,3 +215,22 @@ incubator:
 Порядок live-импорта: gmail/гдеgroup уже в gator → viscreation-gmx (фильтр
 Loewe) → gridfactor → Local_Folders eslider → Local_Folders viscreation
 (каждый следующий срез кладёт свой манифест в `skip_state` следующих).
+
+**Результат заливки (2026-09-06, live, gator #101):** импортировано **15 708**
+писем (сумма манифестов `incubator-defacto-*.json`, doveadm-счёт по ящикам
+совпадает):
+
+| срез | scanned | filtered (Loewe) | new/imported | already-other | foreign (strict) | rejected → импортированы |
+|---|---|---|---|---|---|---|
+| defacto-viscreation-gmx | 19 994 | 18 332 | **1 350** | 0 | — | 0 |
+| defacto-gridfactor | 671 | 0 | **546** | 0 | — | 6 → 0 (после лимита 200M) |
+| defacto-local-eslider | 19 594 | 0 | **7 400** | 881 | 8 911 | 8 → 0 |
+| defacto-local-viscreation | 19 594 | 0 | **6 412** | 10 753 | 775 | 4 → 0 |
+
+Rejected: письма >10M (DMS-дефолт `quota_max_mail_size`) — лимит поднят до
+200M (`POSTFIX_MESSAGE_SIZE_LIMIT` в mail-server compose), повторный прогон
+импортировал их, re-run = new 0 (идемпотентно). Чужих обоим Local-owner'ам
+(ни eslider, ни viscreation; gridfactor/RPF-эра вне каталога
+`andriy_oblivantsev@gridfactor_de`) — **775**, скипнуты `owner_strict`
+(в манифест не попали, в gator нет). pska2160@gmail.com не тронут.
+Повторный прогон инкубатора (после заливки): все 4 среза new=0, rejected=0.
