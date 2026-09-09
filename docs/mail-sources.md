@@ -234,3 +234,30 @@ Rejected: письма >10M (DMS-дефолт `quota_max_mail_size`) — лим�
 `andriy_oblivantsev@gridfactor_de`) — **775**, скипнуты `owner_strict`
 (в манифест не попали, в gator нет). pska2160@gmail.com не тронут.
 Повторный прогон инкубатора (после заливки): все 4 среза new=0, rejected=0.
+
+### tb-2010 RPF-эра (gator #110, решение владельца 2026-09-09)
+
+`tb-2010-zip/pop_osn_de` = RPF-рабочий ящик 2007. Owner-адрес: **ao@rpf.de** —
+короткий AO-адрес Andriy Oblivantsev (831 письмо To/Cc/Delivered-To ao@rpf.de,
+0 From как ao; `rpf30@pop.osn.de` — POP-доставка, Delivered-To 839). Письма
+коллег RPF на eslider@gmail.com (139) и чужие рассылки (wlgore/Gore-Tex)
+скипнуты `owner_strict` (foreign 228) — eslider-часть покрыта gmail-каналом /
+отложенным gmail_lenovo.
+
+```yaml
+    # etc/brain/config.local.yml
+    - label: tb2010-pop-osn
+      source: "<archive>/tb-2010-zip/pop_osn_de"
+      user: "ao@rpf.de"
+      owner: "ao@rpf.de"
+      owner_strict: true
+      state: "<state>/incubator-tb2010-pop-osn.json"
+      skip_state: [ ... все 6 манифестов гдеgroup/gmail/defacto-* ... ]
+```
+
+**Результат заливки (2026-09-09, live):** new=619 (doveadm INBOX messages=619,
+повторный прогон new=0). gator канал `rpf` (shared/ao@rpf.de): full scan
+records=619 **written=563** (56 = content-hash дубли с gmail-каналом),
+ETL Done=563 (gator_status). mail_google_de (ранний gmail viscreation/eslider
+2006-07) и visauto — входят в отложенный gmail_lenovo суперсет (#110), не
+импортированы.
