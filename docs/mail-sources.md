@@ -259,5 +259,34 @@ Rejected: письма >10M (DMS-дефолт `quota_max_mail_size`) — лим�
 повторный прогон new=0). gator канал `rpf` (shared/ao@rpf.de): full scan
 records=619 **written=563** (56 = content-hash дубли с gmail-каналом),
 ETL Done=563 (gator_status). mail_google_de (ранний gmail viscreation/eslider
-2006-07) и visauto — входят в отложенный gmail_lenovo суперсет (#110), не
-импортированы.
+2006-07) и visauto — входят в gmail_lenovo суперсет, импортированы вместе с ним.
+
+### gmail_lenovo суперсет (gator #111, решение владельца 2026-09-09)
+
+5 account-директорий `var/mail/archive/gmail_lenovo/`, по одному срезу на
+исторический адрес; глобальный дедуп через `skip_state` против всех уже
+импортированных манифестов + соседних срезов:
+
+| label | source | owner (ящик) | new |
+|---|---|---|---|
+| gmail-lenovo-eslider | `imap_gmail_com` | eslider@gmail.com | 22 195 |
+| gmail-lenovo-wheregroup | `192_168_2_10` | andriy.oblivantsev@wheregroup.com | 5 276 |
+| gmail-lenovo-viscreation | `imap_gmail-1_com` | viscreation@gmail.com | 1 416 |
+| gmail-lenovo-andriy-gmail | `imap_gmail-2_com` | andriy.oblivantsev@gmail.com (новый) | 808 |
+| gmail-lenovo-viscreation-de | `imap_viscreation_de` | viscreation@viscreation.de (новый) | 0 (2 deduped) |
+
+**Результат заливки (2026-09-10, live):** ~29 695 новых писем; повторный
+dry-run всех срезов new=0 (идемпотентно). Новые ящики
+andriy.oblivantsev@gmail.com и viscreation@viscreation.de созданы в DMS
+(пароли в `.env`, shared-ACL через user-patches `INCUBATOR_OWNERS`). gator
+kind=mail: gmail 25 414→47 603, wheregroup 3 985→9 261, viscreation-gmail
+6 412→7 828, новый канал `andriy-gmail` 808; корпус 38 569→**68 258**.
+Первый прогон прервался на eslider (14 533/22 195) — манифест пишется
+инкрементально, повторный прогон доимпортировал остаток без дублей.
+
+**Bugfix pack (gator #111):** COPY ... `PARTITION_BY (source, channel, dt)` на
+mail-корпусе (68k писем, 10 714 dt-партиций) падал OOM даже с memory_limit —
+DuckDB держал буферы всех партиций. Фикс в `internal/pack/pack.go`:
+`preserve_insertion_order=false`, `threads=4`, `memory_limit='24GB'`,
+`temp_directory` (spill), `partitioned_write_flush_threshold=1000`,
+`partitioned_write_max_open_files=50` — COPY ~13с.
