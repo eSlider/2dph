@@ -40,9 +40,9 @@ func main() {
 }
 
 type indexFlags struct {
-	db, factsJSON, withChats, since, gitRoot, gatorHive                                   string
+	db, factsJSON, withChats, since, gitRoot                                            string
 	corpus                                                                              []string
-	rebuild, noDefaults, withMail, withGatorMail, withFacts, dryRun, skipIndexes, jsonOut, skip, force bool
+	rebuild, noDefaults, withMail, withFacts, dryRun, skipIndexes, jsonOut, skip, force bool
 	limit, workers, batch, chunk, progress                                              int
 }
 
@@ -65,9 +65,6 @@ func sources(v indexFlags, root string) []contract.Source {
 	}
 	if v.withMail {
 		ss = append(ss, corpus.Mail{Root: root, Since: v.since})
-	}
-	if v.withGatorMail {
-		ss = append(ss, corpus.GatorMail{Hive: v.gatorHive, Since: v.since})
 	}
 	if v.withChats != "" {
 		ss = append(ss, corpus.Chats{Root: root, Dir: v.withChats})
@@ -94,8 +91,6 @@ func run(args []string) int {
 	p.Bool(&v.rebuild, "", "rebuild", "fresh db + indexes")
 	p.Bool(&v.noDefaults, "", "no-defaults", "skip README/docs/skills")
 	p.Bool(&v.withMail, "", "with-mail", "include var/corpus/mail + legacy var/mail message.md leafs")
-	p.Bool(&v.withGatorMail, "", "with-gator-mail", "include gator parquet kind=mail → searchable Leaf (ADR-0013)")
-	p.String(&v.gatorHive, "", "gator-hive", "gator parquet/mail hive root (with --with-gator-mail; default config gator.mailhive / GATOR_MAIL_HIVE)")
 	p.Bool(&v.withFacts, "", "with-facts", "facts/extract --json --dry-run")
 	p.String(&v.factsJSON, "", "facts-json", "JSON facts file")
 	p.String(&v.withChats, "", "with-chats", "chat markdown dir (empty=off; bare flag via const path)")
@@ -119,17 +114,6 @@ func run(args []string) int {
 	if hasBareWithChats(args) && v.withChats == "" {
 		v.withChats = filepath.Join(brain.RepoRoot(), "var", "corpus", "chats", "md")
 	}
-	if v.withGatorMail && v.gatorHive == "" {
-		if cfg.Gator.MailHive != "" {
-			v.gatorHive = cfg.Gator.MailHive
-		} else if h := os.Getenv("GATOR_MAIL_HIVE"); h != "" {
-			v.gatorHive = h
-		} else {
-			fmt.Fprintln(os.Stderr, "brain/index: --with-gator-mail requires --gator-hive, gator.mailhive, or GATOR_MAIL_HIVE")
-			return 1
-		}
-	}
-
 	root := brain.RepoRoot()
 	dbpath := v.db
 	if dbpath == "" {

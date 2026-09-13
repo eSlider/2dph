@@ -40,7 +40,8 @@ RUN eval "$(./bin/cgo/zig env)" \
 RUN CGO_ENABLED=1 CC=gcc CXX=g++ \
     CGO_CFLAGS="-I/src/lib-ladybug" \
     CGO_LDFLAGS="-L/src/lib-ladybug -Wl,-rpath,/usr/local/lib" \
-    go build -tags system_ladybug,mail_graph -o /out/mail-graph ./bin/mail/graph.go
+    go build -tags system_ladybug,mail_graph -o /out/mail-graph ./bin/mail/graph.go \
+    && go build -tags system_ladybug,mail_graph -o /out/mail-leaf ./bin/mail/leaf.go
 
 # Stage only the runtime .so symlink chain (liblbug.so -> liblbug.so.0 ->
 # liblbug.so.<ver>). cp -a keeps the symlinks; the shell glob defers the
@@ -62,6 +63,7 @@ COPY --from=api-build /out/mail-import /usr/local/bin/mail-import
 COPY --from=api-build /out/mail-sync /usr/local/bin/mail-sync
 COPY --from=api-build /out/runner /usr/local/bin/runner
 COPY --from=api-build /out/mail-graph /usr/local/bin/mail-graph
+COPY --from=api-build /out/mail-leaf /usr/local/bin/mail-leaf
 COPY --from=api-build /out/index-loop /usr/local/bin/index-loop
 # liblbug version-agnostic: directory COPY preserves the symlink chain
 # (liblbug.so -> liblbug.so.0 -> liblbug.so.<ver>); BuildKit dereferences
