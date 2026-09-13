@@ -141,6 +141,14 @@ services:
     # Same host-uid alignment as brain/mail-sync (#195): kb.lbug must stay
     # writable by the host tools that open it.
     user: "${KB_UID:-1000}:${KB_GID:-1000}"
+    # A container started with an explicit `user:` does not inherit the host
+    # user's supplementary groups, so the mounted /var/run/docker.sock (group
+    # `docker`, mode 660) is not accessible and the quiesce step fails with
+    # "connect: permission denied". Add the socket's group explicitly.
+    # Override DOCKER_GID on hosts where it differs from 991:
+    #   stat -c '%g' /var/run/docker.sock
+    group_add:
+      - "${DOCKER_GID:-991}"
     environment:
       <<: *env
       # The cycle quiesces brain itself; allow the sanctioned swap+restart
@@ -160,6 +168,11 @@ services:
     command: ["index-loop", "--interval", "1h"]
     depends_on:
       - brain
+    # The image HEALTHCHECK probes brain's :8630/health; this service serves
+    # nothing on that port, so without disabling it the loop is perpetually
+    # "unhealthy" (failing wget) even while cycling correctly.
+    healthcheck:
+      disable: true
     read_only: true
     tmpfs:
       - /tmp

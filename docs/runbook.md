@@ -362,7 +362,12 @@ Requirements:
   inside the container is `/gator/parquet/mail`.
 - `/var/run/docker.sock` is mounted: the cycle stops/starts the sibling
   `brain` container. `index-sync` therefore has Docker control — keep it on
-  the local host only.
+  the local host only. Because the container runs with an explicit `user:`,
+  it does not inherit the host's supplementary `docker` group; set
+  `DOCKER_GID` (default 991) to the socket's group so the added `group_add`
+  grants access, otherwise the quiesce step fails with
+  `dial unix /var/run/docker.sock: connect: permission denied`
+  (`stat -c '%g' /var/run/docker.sock`).
 - The container runs as the host uid (`KB_UID`/`KB_GID`) so `kb.lbug` stays
   writable by host tools (#195).
 
