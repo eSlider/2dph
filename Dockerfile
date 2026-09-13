@@ -9,7 +9,7 @@
 FROM golang:1.26-bookworm AS api-build
 WORKDIR /src
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl xz-utils ca-certificates \
+    && apt-get install -y --no-install-recommends curl xz-utils ca-certificates g++ \
     && rm -rf /var/lib/apt/lists/*
 
 COPY bin/cgo ./bin/cgo
@@ -31,19 +31,9 @@ RUN eval "$(./bin/cgo/zig env)" \
     && CGO_ENABLED=0 go build -tags mail_import -o /out/mail-import ./bin/mail/import.go \
     && CGO_ENABLED=0 go build -o /out/mail-sync ./bin/mail/sync.go \
     && CGO_ENABLED=0 go build -o /out/runner ./bin/runner/run.go \
-    && CGO_ENABLED=0 go build -tags index_loop -o /out/index-loop ./bin/stack/index-loop.go
-
-# mail-graph links DuckDB's static C++ bindings: zig cc's libstdc++ does not
-# resolve the __cxx11 ABI symbols, so this one binary is built with the image
-# gcc (same toolchain gator uses). libstdc++6/libgcc_s1 are already present in
-# the runtime (liblbug needs them).
-# ensure_libs (via zig env) — lib-ladybug is .dockerignore'd, so the prior zig
-# RUN layer may not retain it in the build cache; fetch again in this layer.
-RUN ./bin/cgo/zig env >/dev/null \
-    && CGO_ENABLED=1 CC=gcc CXX=g++ \
-    CGO_CFLAGS="-I/src/lib-ladybug" \
-    CGO_LDFLAGS="-L/src/lib-ladybug -Wl,-rpath,/usr/local/lib" \
-    go build -tags system_ladybug,mail_graph -o /out/mail-graph ./bin/mail/graph.go \
+    && CGO_ENABLED=0 go build -tags index_loop -o /out/index-loop ./bin/stack/index-loop.go \
+    && export CC=gcc CXX=g++ \
+    && go build -tags system_ladybug,mail_graph -o /out/mail-graph ./bin/mail/graph.go \
     && go build -tags system_ladybug,mail_graph -o /out/mail-leaf ./bin/mail/leaf.go
 
 # Stage only the runtime .so symlink chain (liblbug.so -> liblbug.so.0 ->
