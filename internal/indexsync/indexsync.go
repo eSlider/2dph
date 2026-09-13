@@ -149,11 +149,16 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 
 	// Corpus index first: --rebuild deletes the db, so the graph import must
 	// follow it; --skip preserves an existing graph and only adds new leafs.
-	idxArgs := []string{"--with-mail"}
+	// Gator parquet → searchable Leaf (ADR-0013, #297); legacy --with-mail is
+	// not used in the automatic loop.
+	idxArgs := []string{"--with-gator-mail"}
 	if cfg.Rebuild {
 		idxArgs = append(idxArgs, "--rebuild")
 	} else {
 		idxArgs = append(idxArgs, "--skip")
+	}
+	if cfg.Hive != "" {
+		idxArgs = append(idxArgs, "--gator-hive", cfg.Hive)
 	}
 	if cfg.DB != "" {
 		idxArgs = append(idxArgs, "--db", cfg.DB)

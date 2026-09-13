@@ -135,7 +135,9 @@ func TestCycleImportsAllChannelsAndQuiesces(t *testing.T) {
 	}
 	got := string(logs)
 	for _, want := range []string{
-		"brain-index --with-mail --skip",
+		"brain-index --with-gator-mail",
+		"--gator-hive " + cfg.Hive,
+		"--skip",
 		"mail-graph --channel gmail --commit --skip-existing --force",
 		"mail-graph --channel wheregroup --commit --skip-existing --force",
 	} {

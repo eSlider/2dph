@@ -339,7 +339,8 @@ closed by the compose service **`index-sync`** (profile `index`). No systemd.
 
 One cycle: discover gator mail channels (`<hive>/source=mail/channel=*`) →
 stop the `brain` container (Ladybug is single-writer) → `brain-index --skip
---with-mail` → `mail-graph --commit` per channel (idempotent MERGE) → ANN
+--with-gator-mail` (gator parquet → searchable Leaf, #297) → `mail-graph
+--commit` per channel (idempotent MERGE) → ANN
 `ensure` (only if `--ann` is set) → start brain and wait healthy → write
 freshness state. A cycle is skipped when `kb.lbug` is already newer than the
 newest gator pack and the last run did not error, so brain is not bounced for
