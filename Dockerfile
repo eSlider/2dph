@@ -37,7 +37,10 @@ RUN eval "$(./bin/cgo/zig env)" \
 # resolve the __cxx11 ABI symbols, so this one binary is built with the image
 # gcc (same toolchain gator uses). libstdc++6/libgcc_s1 are already present in
 # the runtime (liblbug needs them).
-RUN CGO_ENABLED=1 CC=gcc CXX=g++ \
+# ensure_libs (via zig env) — lib-ladybug is .dockerignore'd, so the prior zig
+# RUN layer may not retain it in the build cache; fetch again in this layer.
+RUN ./bin/cgo/zig env >/dev/null \
+    && CGO_ENABLED=1 CC=gcc CXX=g++ \
     CGO_CFLAGS="-I/src/lib-ladybug" \
     CGO_LDFLAGS="-L/src/lib-ladybug -Wl,-rpath,/usr/local/lib" \
     go build -tags system_ladybug,mail_graph -o /out/mail-graph ./bin/mail/graph.go \
