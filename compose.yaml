@@ -3,6 +3,7 @@
 #   scripts/stack/start / start-assistant / status / stop
 #   docker compose up -d brain                  # API (Zig CGO serve)
 #   docker compose --profile index run --rm index   # Go rebuild (zig cgo)
+#   docker compose --profile index up -d index-sync # periodic gator→graph→index (#292)
 #   docker compose --profile picoclaw up -d     # brain-mcp + CPU reasoner + PicoClaw gateway
 #   docker compose --profile reasoner up -d reasoner   # CPU Ollama :11435
 #   docker compose --profile searxng up -d
@@ -93,8 +94,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
-  # Go write path (Ladybug rebuild, brain-index Zig binary). Same api image.
-  #   docker compose --profile index run --rm index
+  # Go write path (Ladybug full rebuild, brain-index Zig binary). Same api image.
+  #   docker compose --profile index run --rm index --rebuild --with-mail
+  # For the periodic incremental cycle (gator graph + index) use index-sync below.
   index:
     profiles: ["index"]
     image: ghcr.io/eslider/2dph:api
@@ -115,6 +117,54 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+
+  # Periodic cycle that closes the chain gator sync→etl→pack → 2dph
+  # import(graph) → index(kb.lbug) (issue #292). It is the ONLY automatic
+  # writer: every interval it discovers the gator mail channels, stops the
+  # `brain` container (Ladybug is single-writer), runs `brain-index --skip
+  # --with-mail` + `mail-graph --commit` per channel, then starts brain again.
+  # A cycle is skipped when kb.lbug is already newer than the newest gator
+  # pack, so the brain is not bounced for nothing. systemd is not used.
+  #
+  #   docker compose --profile index up -d index-sync
+  #   docker compose --profile index run --rm index-sync --once   # manual control
+  #
+  # Host gator var path is machine-local: GATOR_VAR_HOST in .env (gitignored).
+  # The docker socket is required to stop/start the sibling `brain` container.
+  index-sync:
+    profiles: ["index"]
+    image: ghcr.io/eslider/2dph:api
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    # Same host-uid alignment as brain/mail-sync (#195): kb.lbug must stay
+    # writable by the host tools that open it.
+    user: "${KB_UID:-1000}:${KB_GID:-1000}"
+    environment:
+      <<: *env
+      # The cycle quiesces brain itself; allow the sanctioned swap+restart
+      # flow (compose `index`) to run its rebuild guard too.
+      KB_INDEX_ALLOW_LIVE: "1"
+      # Hive root INSIDE the container (the host path is GATOR_VAR_HOST below).
+      GATOR_MAIL_HIVE: "/gator/parquet/mail"
+      DOCKER_HOST: "unix:///var/run/docker.sock"
+    volumes:
+      - ./var:/data/var
+      - ./etc/brain:/data/etc/brain:ro
+      - ~/.config/brain:/secret:ro
+      # gator canon (read-only). Set GATOR_VAR_HOST=<gator repo>/var/gator in
+      # .env; the default keeps `docker compose config` valid on a fresh clone.
+      - ${GATOR_VAR_HOST:-./var/gator}:/gator:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["index-loop", "--interval", "1h"]
+    depends_on:
+      - brain
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    stop_grace_period: 60s
 
   # mail-sync ETL: download (existing mailsync binary) → bounded runner
   # pipeline import (#98) every 300s into shared var, with a per-run stats YAML.

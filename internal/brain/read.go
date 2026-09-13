@@ -101,6 +101,10 @@ func MainStats(args []string) int {
 		{"by_root", byRoot},
 		{"db", s["db"]},
 		{"model", s["model"]},
+		{"index_at", s["index_at"]},
+		{"import_at", s["import_at"]},
+		{"kb_mtime", s["kb_mtime"]},
+		{"stale", s["stale"]},
 	}
 	fmt.Print(toYAML(out, 0))
 	return 0
@@ -242,11 +246,19 @@ func leafStats() (map[string]any, error) {
 		byRoot[fmt.Sprint(vals[0])] = n
 		total += n
 	}
+	fresh := ViewFreshnessForDB(dbPath())
 	return map[string]any{
 		"total":            total,
 		"by_root":          byRoot,
 		"db":               dbPath(),
 		"model":            ModelID,
+		"index_at":         fresh.IndexAt,
+		"import_at":        fresh.ImportAt,
+		"kb_mtime":         fresh.KBMtime,
+		"pack_mtime":       fresh.PackMtime,
+		"stale":            fresh.Stale,
+		"stale_after":      fresh.StaleAfter,
+		"last_error":       fresh.LastError,
 		"contract_version": contract.ReadContractVersion,
 	}, nil
 }
