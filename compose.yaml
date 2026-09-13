@@ -168,6 +168,11 @@ services:
     command: ["index-loop", "--interval", "1h"]
     depends_on:
       - brain
+    # The image HEALTHCHECK probes brain's :8630/health; this service serves
+    # nothing on that port, so without disabling it the loop is perpetually
+    # "unhealthy" (failing wget) even while cycling correctly.
+    healthcheck:
+      disable: true
     read_only: true
     tmpfs:
       - /tmp
