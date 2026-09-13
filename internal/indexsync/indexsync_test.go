@@ -108,6 +108,7 @@ func setup(t *testing.T) (Config, string, *fakeDocker, *dockerctl.Client) {
 		Root:          root,
 		Hive:          hive,
 		DB:            db,
+		MailLeafBin:   writeScript(t, binDir, "mail-leaf", logPath, "", false),
 		MailGraphBin:  writeScript(t, binDir, "mail-graph", logPath, "", false),
 		BrainIndexBin: writeScript(t, binDir, "brain-index", logPath, db, false),
 		Quiesce:       true,
@@ -135,9 +136,9 @@ func TestCycleImportsAllChannelsAndQuiesces(t *testing.T) {
 	}
 	got := string(logs)
 	for _, want := range []string{
-		"brain-index --with-gator-mail",
-		"--gator-hive " + cfg.Hive,
-		"--skip",
+		"mail-leaf --commit --skip --force",
+		"--hive " + cfg.Hive,
+		"brain-index --skip",
 		"mail-graph --channel gmail --commit --skip-existing --force",
 		"mail-graph --channel wheregroup --commit --skip-existing --force",
 	} {

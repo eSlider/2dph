@@ -37,6 +37,7 @@ type Config struct {
 	Hive          string
 	DB            string
 	MailGraphBin  string
+	MailLeafBin   string
 	BrainIndexBin string
 	AnnBin        string
 	Interval      time.Duration
@@ -58,6 +59,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.MailGraphBin == "" {
 		c.MailGraphBin = "mail-graph"
+	}
+	if c.MailLeafBin == "" {
+		c.MailLeafBin = "mail-leaf"
 	}
 	if c.BrainIndexBin == "" {
 		c.BrainIndexBin = "brain-index"
@@ -147,18 +151,26 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 		defer release()
 	}
 
-	// Corpus index first: --rebuild deletes the db, so the graph import must
-	// follow it; --skip preserves an existing graph and only adds new leafs.
-	// Gator parquet → searchable Leaf (ADR-0013, #297); legacy --with-mail is
-	// not used in the automatic loop.
-	idxArgs := []string{"--with-gator-mail"}
+	// Gator parquet → searchable Leaf (ADR-0013, #297) via mail-leaf (gcc+DuckDB).
+	// brain-index --skip follows: docs corpus + FTS/HNSW indexes on new leafs.
+	leafArgs := []string{"--commit", "--skip", "--force"}
+	if cfg.Hive != "" {
+		leafArgs = append(leafArgs, "--hive", cfg.Hive)
+	}
+	if cfg.DB != "" {
+		leafArgs = append(leafArgs, "--db", cfg.DB)
+	}
+	if out, err := runner(ctx, cfg.MailLeafBin, leafArgs...); err != nil {
+		rep.Err = fmt.Sprintf("mail-leaf: %v (%s)", err, lastLine(out))
+		saveError(cfg, rep.Err)
+		return rep, fmt.Errorf("%s", rep.Err)
+	}
+
+	idxArgs := []string{}
 	if cfg.Rebuild {
 		idxArgs = append(idxArgs, "--rebuild")
 	} else {
 		idxArgs = append(idxArgs, "--skip")
-	}
-	if cfg.Hive != "" {
-		idxArgs = append(idxArgs, "--gator-hive", cfg.Hive)
 	}
 	if cfg.DB != "" {
 		idxArgs = append(idxArgs, "--db", cfg.DB)

@@ -1,3 +1,5 @@
+//go:build mail_graph
+
 package corpus
 
 import (
@@ -12,7 +14,8 @@ import (
 
 // GatorMail streams searchable Leaf records from the gator kind=mail parquet
 // hive (ADR-0013). Unlike corpus.Mail (legacy var/mail filesystem), this reads
-// the live gator canon that autosync updates.
+// the live gator canon that autosync updates. Built only into mail-leaf
+// (mail_graph tag) — brain-index must not link DuckDB (zig ABI).
 type GatorMail struct {
 	Hive  string // parquet/mail hive root (…/var/gator/parquet/mail)
 	Since string // YYYY-MM-DD: only messages on/after this day
