@@ -30,7 +30,17 @@ RUN eval "$(./bin/cgo/zig env)" \
     && CGO_ENABLED=0 go build -tags brain_watch -o /out/brain-watch ./bin/brain/watch.go \
     && CGO_ENABLED=0 go build -tags mail_import -o /out/mail-import ./bin/mail/import.go \
     && CGO_ENABLED=0 go build -o /out/mail-sync ./bin/mail/sync.go \
-    && CGO_ENABLED=0 go build -o /out/runner ./bin/runner/run.go
+    && CGO_ENABLED=0 go build -o /out/runner ./bin/runner/run.go \
+    && CGO_ENABLED=0 go build -tags index_loop -o /out/index-loop ./bin/stack/index-loop.go
+
+# mail-graph links DuckDB's static C++ bindings: zig cc's libstdc++ does not
+# resolve the __cxx11 ABI symbols, so this one binary is built with the image
+# gcc (same toolchain gator uses). libstdc++6/libgcc_s1 are already present in
+# the runtime (liblbug needs them).
+RUN CGO_ENABLED=1 CC=gcc CXX=g++ \
+    CGO_CFLAGS="-I/src/lib-ladybug" \
+    CGO_LDFLAGS="-L/src/lib-ladybug -Wl,-rpath,/usr/local/lib" \
+    go build -tags system_ladybug,mail_graph -o /out/mail-graph ./bin/mail/graph.go
 
 # Stage only the runtime .so symlink chain (liblbug.so -> liblbug.so.0 ->
 # liblbug.so.<ver>). cp -a keeps the symlinks; the shell glob defers the
@@ -51,6 +61,8 @@ COPY --from=api-build /out/seed-ext /usr/local/bin/seed-ext
 COPY --from=api-build /out/mail-import /usr/local/bin/mail-import
 COPY --from=api-build /out/mail-sync /usr/local/bin/mail-sync
 COPY --from=api-build /out/runner /usr/local/bin/runner
+COPY --from=api-build /out/mail-graph /usr/local/bin/mail-graph
+COPY --from=api-build /out/index-loop /usr/local/bin/index-loop
 # liblbug version-agnostic: directory COPY preserves the symlink chain
 # (liblbug.so -> liblbug.so.0 -> liblbug.so.<ver>); BuildKit dereferences
 # symlinks for wildcard/single-file COPY, so we stage the chain above.

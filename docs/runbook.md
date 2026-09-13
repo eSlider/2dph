@@ -332,6 +332,52 @@ The wave also quiesces the compose brain container around write steps
 (`docker compose stop brain` → writes → `start brain`), so `git-brain` does
 not collide with the running serve process holding `kb.lbug`.
 
+### index-sync — gator→graph→index cycle (#292)
+
+The chain `gator sync→etl→pack → 2dph import(graph) → index(kb.lbug)` is
+closed by the compose service **`index-sync`** (profile `index`). No systemd.
+
+One cycle: discover gator mail channels (`<hive>/source=mail/channel=*`) →
+stop the `brain` container (Ladybug is single-writer) → `brain-index --skip
+--with-mail` → `mail-graph --commit` per channel (idempotent MERGE) → ANN
+`ensure` (only if `--ann` is set) → start brain and wait healthy → write
+freshness state. A cycle is skipped when `kb.lbug` is already newer than the
+newest gator pack and the last run did not error, so brain is not bounced for
+nothing.
+
+```bash
+scripts/stack/start-index-sync                 # compose up -d index-sync (loop, 1h)
+docker compose --profile index up -d index-sync
+docker compose --profile index run --rm index-sync --once   # one manual cycle
+docker compose --profile index logs -f index-sync
+```
+
+Requirements:
+
+- API image rebuilt with `mail-graph` + `index-loop`
+  (`docker compose --profile index build index-sync`); the older
+  `ghcr.io/eslider/2dph:api` lacks them.
+- `GATOR_VAR_HOST=<gator repo>/var/gator` in `.env` (gitignored) — the host
+  gator canon is bind-mounted read-only at `/gator`. `GATOR_MAIL_HIVE`
+  inside the container is `/gator/parquet/mail`.
+- `/var/run/docker.sock` is mounted: the cycle stops/starts the sibling
+  `brain` container. `index-sync` therefore has Docker control — keep it on
+  the local host only.
+- The container runs as the host uid (`KB_UID`/`KB_GID`) so `kb.lbug` stays
+  writable by host tools (#195).
+
+Freshness is observable: the state file is `<root>/var/state/index-freshness.yml`,
+`/stats` returns `index_at`/`import_at`/`kb_mtime`/`pack_mtime`/`stale`/
+`stale_after`, and `scripts/stack/status` prints the same (stale from `/stats`
+when the brain answers, otherwise `unknown` — the on-disk state stays readable
+while the brain is down).
+
+```bash
+curl -s localhost:8630/stats | yq '.index_at,.import_at,.kb_mtime,.stale'
+scripts/stack/status | yq '.freshness'
+ls -la --time-style=full-iso var/kb.lbug      # mtime newer than the gator pack
+```
+
 ### OnlyOffice CRM tools
 
 OnlyOffice CRM tools need `ONLYOFFICE_URL`/`ONLYOFFICE_USER`/`ONLYOFFICE_PASS`

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# scripts/stack/start-index-sync - compose up the periodic gator→graph→index cycle (#292).
+#
+#   scripts/stack/start-index-sync
+#
+# Long-running compose service (restart: unless-stopped, NO systemd): every
+# interval it discovers the gator mail channels, stops the brain (Ladybug is
+# single-writer), runs `brain-index --skip --with-mail` + `mail-graph --commit`
+# per channel, restarts the brain, and persists freshness for /stats + status.
+# Needs the host gator var mounted (GATOR_VAR_HOST in .env) and the docker
+# socket (to stop/start the sibling brain container). Requires the api image
+# rebuilt with the mail-graph + index-loop binaries.
+set -euo pipefail
+
+STACK_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+# shellcheck source=lib.sh
+source "$STACK_DIR/lib.sh"
+case "${1:-}" in
+-h | --help)
+	stack_usage "$0"
+	exit 0
+	;;
+esac
+stack_start_index_sync "$@"
+stack_status

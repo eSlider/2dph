@@ -130,8 +130,12 @@ func (HTTP) Stats(context.Context) ([]byte, error) {
 		byRoot[fmt.Sprint(vals[0])] = n
 		total += n
 	}
+	fresh := ViewFreshnessForDB(dbPath())
 	return json.Marshal(map[string]any{
 		"total": total, "by_root": byRoot, "db": dbPath(), "ann": annStatsJSON(),
+		"index_at": fresh.IndexAt, "import_at": fresh.ImportAt, "kb_mtime": fresh.KBMtime,
+		"pack_mtime": fresh.PackMtime, "stale": fresh.Stale, "stale_after": fresh.StaleAfter,
+		"last_error":       fresh.LastError,
 		"contract_version": contract.ReadContractVersion,
 	})
 }

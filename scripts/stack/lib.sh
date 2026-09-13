@@ -147,6 +147,36 @@ mail_sync_running() {
 	compose ps --status running --services 2>/dev/null | grep -qx mail-sync
 }
 
+# stack_freshness prints the last import/index timestamps and kb.lbug mtime
+# from the cycle state (issue #292). `stale` comes from the brain /stats when
+# it answers; otherwise it is shown as `unknown` (the on-disk state stays
+# readable even when the brain is down — that is exactly when staleness
+# matters).
+stack_freshness() {
+	local state="$ROOT/var/state/index-freshness.yml"
+	local import_at index_at kb_mtime stale=unknown body
+	import_at=$(sed -n 's/^import_at:[[:space:]]*\(.*\)$/\1/p' "$state" 2>/dev/null | head -n1)
+	index_at=$(sed -n 's/^index_at:[[:space:]]*\(.*\)$/\1/p' "$state" 2>/dev/null | head -n1)
+	kb_mtime=""
+	if [[ -e "$ROOT/var/kb.lbug" ]]; then
+		kb_mtime=$(date -u -r "$ROOT/var/kb.lbug" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
+	fi
+	if body=$(http_get "$BRAIN_URL/stats" 5); then
+		case "$body" in
+		*'"stale":true'*) stale=true ;;
+		*'"stale":false'*) stale=false ;;
+		esac
+	fi
+	cat <<EOF
+freshness:
+  import_at: ${import_at:-}
+  index_at: ${index_at:-}
+  kb_mtime: ${kb_mtime:-}
+  stale: $stale
+  state: $state
+EOF
+}
+
 stack_status() {
 	local bh=down mcp=down ph=down present=false ms=down
 	health_ok "$BRAIN_URL/health" && bh=ok
@@ -159,6 +189,9 @@ brain:
   url: $BRAIN_URL
   health: $bh
   mcp: $mcp
+EOF
+	stack_freshness
+	cat <<EOF
 reasoner:
   url: $REASONER_URL
   model: $REASONER_MODEL
@@ -179,6 +212,11 @@ stack_start() {
 stack_start_mail_sync() {
 	echo "mail-sync: compose up (ETL sync→import; index only if MAIL_SYNC_INDEX=1)" >&2
 	compose up -d mail-sync
+}
+
+stack_start_index_sync() {
+	echo "index-sync: compose up --profile index (periodic gator→graph→index, #292)" >&2
+	compose --profile index up -d index-sync
 }
 
 stack_attach_agent() {
@@ -243,6 +281,6 @@ stack_stop() {
 		return 0
 		;;
 	esac
-	echo "stack: stop brain brain-mcp reasoner picoclaw mail-sync (volumes kept)" >&2
-	compose --profile picoclaw --profile reasoner stop picoclaw brain-mcp reasoner brain mail-sync
+	echo "stack: stop brain brain-mcp reasoner picoclaw mail-sync index-sync (volumes kept)" >&2
+	compose --profile picoclaw --profile reasoner --profile index stop picoclaw brain-mcp reasoner brain mail-sync index-sync
 }
