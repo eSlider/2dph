@@ -128,6 +128,60 @@ func TestRowToLeafDistinctExternalID(t *testing.T) {
 	}
 }
 
+func TestRowToLeafBodyAppends(t *testing.T) {
+	r := Row{Source: "portals", ExternalID: "ext-1", Title: "Rechnung",
+		Filename: "r.pdf", OOPath: "external/o2/r.pdf"}
+	lf, ok := RowToLeafBody(r, "  Betrag 123,45 EUR  ", 0)
+	if !ok {
+		t.Fatal("want leaf")
+	}
+	want := "Rechnung\n\nr.pdf\n\nexternal/o2/r.pdf\n\nBetrag 123,45 EUR"
+	if lf.Text != want {
+		t.Fatalf("text = %q, want %q", lf.Text, want)
+	}
+	// Identity and loc are unchanged by the body.
+	if lf.ExternalID != "ext-1" || lf.Loc != "" {
+		t.Fatalf("identity = %+v", lf)
+	}
+}
+
+func TestRowToLeafBodyEmptyMatchesMetadata(t *testing.T) {
+	r := Row{Source: "portals", ExternalID: "ext-1", Title: "N", Filename: "n.pdf"}
+	meta, _ := RowToLeaf(r)
+	for _, body := range []string{"", "   ", "\n"} {
+		withBody, ok := RowToLeafBody(r, body, 16)
+		if !ok {
+			t.Fatalf("body %q: want leaf", body)
+		}
+		if withBody != meta {
+			t.Fatalf("empty body must not change the leaf: %+v vs %+v", withBody, meta)
+		}
+	}
+}
+
+func TestRowToLeafBodyClamp(t *testing.T) {
+	r := Row{Source: "portals", ExternalID: "ext-1", Title: "N"}
+	lf, ok := RowToLeafBody(r, "0123456789", 4)
+	if !ok {
+		t.Fatal("want leaf")
+	}
+	if lf.Text != "N\n\n0123" {
+		t.Fatalf("clamped text = %q", lf.Text)
+	}
+}
+
+func TestRowToLeafBodyClampKeepsUTF8Runes(t *testing.T) {
+	r := Row{Source: "portals", ExternalID: "ext-1", Title: "N"}
+	// "ä" is 2 bytes; limit 3 cuts in the middle of the second rune.
+	lf, ok := RowToLeafBody(r, "äää", 3)
+	if !ok {
+		t.Fatal("want leaf")
+	}
+	if lf.Text != "N\n\nä" {
+		t.Fatalf("clamped UTF-8 text = %q", lf.Text)
+	}
+}
+
 // TestMapRowRealColumns pins the mapper to the gator PR #140 read schema
 // (query.DocumentsColumns): exact column names, no name/url/content_type/
 // converted/fetched_at.

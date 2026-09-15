@@ -374,6 +374,17 @@ indexing both would duplicate).
   `mail-graph --commit` per channel.
 - The gator `parquet/documents` → `doc-leaf` step runs in **both** modes.
 
+**Document body text — T12 (`GATOR_DOC_TEXT`, default off).** `doc-leaf`
+indexes metadata only (`title` + `filename` + `oo_path`). With the flag the PDF
+is fetched from OnlyOffice by `oo_path` (or a `fileid` in `ref`) and its text is
+appended to `Leaf.Text` (capped, default 256 KiB). Enable with
+`--document-text` on `doc-leaf`/`index-loop` or `GATOR_DOC_TEXT=1`; requires
+`ONLYOFFICE_URL/USER/PASS` and `GATOR_DOC_ROOT_ID` (the Files folder rooting
+`oo_path`; optional `GATOR_DOC_ROOT_PREFIX`, default `external`), plus optional
+`GATOR_DOC_TEXT_LIMIT`. A fetch/extract failure keeps the metadata leaf. Body
+text changes the content hash, so the first enabled run writes a new version;
+extraction runs before the `--skip` dedup, so an enabled cycle re-fetches.
+
 ```bash
 scripts/stack/start-index-sync                 # compose up -d index-sync (loop, 1h)
 docker compose --profile index up -d index-sync

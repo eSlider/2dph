@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/eSlider/2dph/internal/contract"
 	"github.com/eSlider/2dph/internal/docgraph"
@@ -14,10 +15,16 @@ import (
 
 // GatorDoc streams searchable Leaf records from the gator kind=document parquet
 // hive (C1 #117, ADR-0013). Mirror of GatorMail for the parquet/documents tree:
-// document references (title/oo_path/sha256), no PDF body. Built only into
-// mail-leaf/doc-leaf (mail_graph tag) — brain-index must not link DuckDB.
+// document references (title/oo_path/sha256). Body (T12 #310): when Body is
+// set, the PDF body text is fetched/extracted and appended to leaf.Text
+// (BodyLimit bytes). Built only into mail-leaf/doc-leaf (mail_graph tag) —
+// brain-index must not link DuckDB.
 type GatorDoc struct {
 	Hive string // parquet/documents hive root (…/parquet/documents)
+	// Body, if non-nil, enriches each leaf with extracted PDF body text.
+	Body docgraph.BodyProvider
+	// BodyLimit caps appended body bytes (<=0 → docgraph.DefaultBodyLimit).
+	BodyLimit int
 }
 
 func (g GatorDoc) Name() string { return "gator-document" }
@@ -58,6 +65,15 @@ func (g GatorDoc) streamPartition(ctx context.Context, p docgraph.Partition, emi
 		lf, ok := docgraph.RowToLeaf(r)
 		if !ok {
 			continue
+		}
+		if g.Body != nil {
+			// Best-effort: a fetch/extract failure keeps the metadata leaf
+			// (document stays findable) instead of dropping it or aborting.
+			if body, err := g.Body.Body(ctx, r); err == nil && strings.TrimSpace(body) != "" {
+				if enriched, ok := docgraph.RowToLeafBody(r, body, g.BodyLimit); ok {
+					lf = enriched
+				}
+			}
 		}
 		if err := emit(lf); err != nil {
 			return err
