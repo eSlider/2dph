@@ -43,6 +43,8 @@ func run(args []string) int {
 	once := fs.Bool("once", false, "run a single cycle and exit")
 	interval := fs.Duration("interval", 0, "loop interval (default 1h)")
 	hive := fs.String("hive", "", "gator parquet/mail hive root (default config gator.mailhive / GATOR_MAIL_HIVE)")
+	hiveDoc := fs.String("hive-doc", "", "gator parquet/documents hive root (default config gator.documentshive / GATOR_DOCUMENTS_HIVE; empty = skip)")
+	docLeaf := fs.String("doc-leaf", "", "doc-leaf binary (default: same as mail-leaf)")
 	root := fs.String("root", "", "repo root (default: autodetect)")
 	db := fs.String("db", "", "kb.lbug path (default <root>/var/kb.lbug)")
 	mailGraph := fs.String("mail-graph", "", "mail-graph binary (default: PATH lookup)")
@@ -76,11 +78,23 @@ func run(args []string) int {
 		return 1
 	}
 
+	// Documents hive is optional: empty means the gator document tree is not
+	// imported (tree built in parallel, may not exist on every host).
+	docHiveRoot := *hiveDoc
+	if docHiveRoot == "" {
+		docHiveRoot = os.Getenv("GATOR_DOCUMENTS_HIVE")
+	}
+	if docHiveRoot == "" {
+		docHiveRoot = cfg.Gator.DocumentsHive
+	}
+
 	ic := indexsync.Config{
 		Root:          *root,
 		Hive:          hiveRoot,
+		DocumentsHive: docHiveRoot,
 		DB:            *db,
 		MailGraphBin:  *mailGraph,
+		DocLeafBin:    *docLeaf,
 		BrainIndexBin: *brainIndex,
 		AnnBin:        *annBin,
 		Interval:      *interval,

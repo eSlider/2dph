@@ -360,7 +360,9 @@ Requirements:
   `ghcr.io/eslider/2dph:api` lacks them.
 - `GATOR_VAR_HOST=<gator repo>/var/gator` in `.env` (gitignored) — the host
   gator canon is bind-mounted read-only at `/gator`. `GATOR_MAIL_HIVE`
-  inside the container is `/gator/parquet/mail`.
+  inside the container is `/gator/parquet/mail`; the same mount covers
+  `parquet/documents` (kind=document), set as `GATOR_DOCUMENTS_HIVE`
+  (`/gator/parquet/documents`). An absent/empty document tree is skipped.
 - `/var/run/docker.sock` is mounted: the cycle stops/starts the sibling
   `brain` container. `index-sync` therefore has Docker control — keep it on
   the local host only. Because the container runs with an explicit `user:`,

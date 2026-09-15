@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
+	"github.com/eSlider/2dph/internal/docgraph"
 	"github.com/eSlider/2dph/internal/dockerctl"
 	"github.com/eSlider/2dph/internal/mailgraph"
 	"github.com/eSlider/2dph/pkg/utils"
@@ -35,9 +36,11 @@ import (
 type Config struct {
 	Root          string
 	Hive          string
+	DocumentsHive string
 	DB            string
 	MailGraphBin  string
 	MailLeafBin   string
+	DocLeafBin    string
 	BrainIndexBin string
 	AnnBin        string
 	Interval      time.Duration
@@ -63,6 +66,9 @@ func (c Config) WithDefaults() Config {
 	if c.MailLeafBin == "" {
 		c.MailLeafBin = "mail-leaf"
 	}
+	if c.DocLeafBin == "" {
+		c.DocLeafBin = c.MailLeafBin
+	}
 	if c.BrainIndexBin == "" {
 		c.BrainIndexBin = "brain-index"
 	}
@@ -83,25 +89,26 @@ func (c Config) WithDefaults() Config {
 
 // Report is the outcome of one cycle.
 type Report struct {
-	StartedAt time.Time
-	Skipped   bool
-	Reason    string
-	Channels  []string
-	Imported  int
-	Indexed   bool
-	ANN       bool
-	Err       string
+	StartedAt     time.Time
+	Skipped       bool
+	Reason        string
+	Channels      []string
+	DocPartitions []string
+	Imported      int
+	Indexed       bool
+	ANN           bool
+	Err           string
 }
 
 // Summary renders one human-readable log line.
 func (r Report) Summary() string {
 	switch {
 	case r.Err != "":
-		return fmt.Sprintf("index-sync: error=%s channels=%v imported=%d indexed=%v", r.Err, r.Channels, r.Imported, r.Indexed)
+		return fmt.Sprintf("index-sync: error=%s channels=%v docs=%v imported=%d indexed=%v", r.Err, r.Channels, r.DocPartitions, r.Imported, r.Indexed)
 	case r.Skipped:
 		return fmt.Sprintf("index-sync: skip (%s)", r.Reason)
 	default:
-		return fmt.Sprintf("index-sync: ok channels=%v imported=%d indexed=%v ann=%v", r.Channels, r.Imported, r.Indexed, r.ANN)
+		return fmt.Sprintf("index-sync: ok channels=%v docs=%v imported=%d indexed=%v ann=%v", r.Channels, r.DocPartitions, r.Imported, r.Indexed, r.ANN)
 	}
 }
 
@@ -132,6 +139,13 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 	packNano, packErr := mailgraph.PackMtime(cfg.Hive)
 	if packErr != nil {
 		packNano = 0
+	}
+	// Document packs count as freshness too: a doc-only update must not be
+	// masked by a stale mail hive.
+	if cfg.DocumentsHive != "" {
+		if dn, derr := docgraph.PackMtime(cfg.DocumentsHive); derr == nil && dn > packNano {
+			packNano = dn
+		}
 	}
 	if skip := shouldSkip(cfg, packNano); skip != "" {
 		rep.Skipped = true
@@ -164,6 +178,30 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 		rep.Err = fmt.Sprintf("mail-leaf: %v (%s)", err, lastLine(out))
 		saveError(cfg, rep.Err)
 		return rep, fmt.Errorf("%s", rep.Err)
+	}
+
+	// Gator parquet/documents → searchable Leaf (kind=document). Separate step
+	// after mail-leaf so a missing/empty document tree never blocks mail.
+	// Sources/channels are discovered from the hive (no hardcoded registry).
+	if cfg.DocumentsHive != "" {
+		parts, derr := docgraph.Partitions(cfg.DocumentsHive)
+		if derr != nil {
+			rep.Err = fmt.Sprintf("doc partitions: %v", derr)
+			saveError(cfg, rep.Err)
+			return rep, fmt.Errorf("%s", rep.Err)
+		}
+		if len(parts) > 0 {
+			rep.DocPartitions = partitionStrings(parts)
+			docArgs := []string{"--document", "--commit", "--skip", "--force", "--hive-doc", cfg.DocumentsHive}
+			if cfg.DB != "" {
+				docArgs = append(docArgs, "--db", cfg.DB)
+			}
+			if out, err := runner(ctx, cfg.DocLeafBin, docArgs...); err != nil {
+				rep.Err = fmt.Sprintf("doc-leaf: %v (%s)", err, lastLine(out))
+				saveError(cfg, rep.Err)
+				return rep, fmt.Errorf("%s", rep.Err)
+			}
+		}
 	}
 
 	idxArgs := []string{}
@@ -303,6 +341,15 @@ func saveError(cfg Config, msg string) {
 	f.LastError = msg
 	f.StaleAfter = cfg.StaleAfter.String()
 	_ = brain.SaveFreshness(cfg.Root, f)
+}
+
+// partitionStrings renders docgraph partitions for the report ("source/channel").
+func partitionStrings(parts []docgraph.Partition) []string {
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		out = append(out, p.String())
+	}
+	return out
 }
 
 func lastLine(b []byte) string {

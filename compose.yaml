@@ -156,6 +156,8 @@ services:
       KB_INDEX_ALLOW_LIVE: "1"
       # Hive root INSIDE the container (the host path is GATOR_VAR_HOST below).
       GATOR_MAIL_HIVE: "/gator/parquet/mail"
+      # Same mount covers parquet/documents; empty/absent tree = doc step skipped.
+      GATOR_DOCUMENTS_HIVE: "/gator/parquet/documents"
       DOCKER_HOST: "unix:///var/run/docker.sock"
     volumes:
       - ./var:/data/var

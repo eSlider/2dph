@@ -94,6 +94,22 @@ func setup(t *testing.T) (Config, string, *fakeDocker, *dockerctl.Client) {
 		}
 	}
 
+	docHive := t.TempDir()
+	for _, p := range []struct{ src, ch string }{{"portals", "o2"}, {"portals", "dkv"}} {
+		d := filepath.Join(docHive, "source="+p.src, "channel="+p.ch, "dt=2026-09-13")
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		file := filepath.Join(d, "data_0.parquet")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now()
+		if err := os.Chtimes(file, now, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	binDir := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "calls.log")
 	fd := &fakeDocker{}
@@ -107,6 +123,7 @@ func setup(t *testing.T) (Config, string, *fakeDocker, *dockerctl.Client) {
 	cfg := Config{
 		Root:          root,
 		Hive:          hive,
+		DocumentsHive: docHive,
 		DB:            db,
 		MailLeafBin:   writeScript(t, binDir, "mail-leaf", logPath, "", false),
 		MailGraphBin:  writeScript(t, binDir, "mail-graph", logPath, "", false),
@@ -127,6 +144,9 @@ func TestCycleImportsAllChannelsAndQuiesces(t *testing.T) {
 	if rep.Skipped || rep.Imported != 2 || !rep.Indexed {
 		t.Fatalf("report = %+v", rep)
 	}
+	if len(rep.DocPartitions) != 2 || rep.DocPartitions[0] != "portals/dkv" || rep.DocPartitions[1] != "portals/o2" {
+		t.Fatalf("doc partitions = %v, want [portals/dkv portals/o2]", rep.DocPartitions)
+	}
 	if fd.stopped != 1 || fd.started != 1 {
 		t.Fatalf("quiesce stop=%d start=%d, want 1/1", fd.stopped, fd.started)
 	}
@@ -138,6 +158,7 @@ func TestCycleImportsAllChannelsAndQuiesces(t *testing.T) {
 	for _, want := range []string{
 		"mail-leaf --commit --skip --force",
 		"--hive " + cfg.Hive,
+		"mail-leaf --document --commit --skip --force --hive-doc " + cfg.DocumentsHive,
 		"brain-index --skip",
 		"mail-graph --channel gmail --commit --skip-existing --force",
 		"mail-graph --channel wheregroup --commit --skip-existing --force",
@@ -154,6 +175,27 @@ func TestCycleImportsAllChannelsAndQuiesces(t *testing.T) {
 	}
 	if v.ImportAt == "" || v.IndexAt == "" {
 		t.Fatalf("freshness times empty: %+v", v)
+	}
+}
+
+// TestCycleSkipsDocumentWhenHiveEmpty: an empty/absent document hive must not
+// invoke the doc import (the mail path keeps working).
+func TestCycleSkipsDocumentWhenHiveEmpty(t *testing.T) {
+	cfg, logPath, _, dc := setup(t)
+	cfg.DocumentsHive = t.TempDir() // no source= partitions
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	if len(rep.DocPartitions) != 0 {
+		t.Fatalf("doc partitions = %v, want empty", rep.DocPartitions)
+	}
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(logs), "--document") {
+		t.Fatalf("doc import ran on an empty hive:\n%s", logs)
 	}
 }
 

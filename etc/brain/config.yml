@@ -107,3 +107,4 @@ vector:
 # Empty = pass --hive or set GATOR_MAIL_HIVE.
 gator:
   mailhive: ""             # e.g. <gator var>/parquet/mail (machine-local, см. #79 inventory)
+  documentshive: ""         # e.g. <gator var>/parquet/documents (kind=document C1 #117); empty/absent = skip

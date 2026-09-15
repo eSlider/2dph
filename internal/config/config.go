@@ -100,6 +100,13 @@ type GatorConfig struct {
 	// source=mail/channel=*/dt=*/*.parquet. Empty = tools resolve it from
 	// env (GATOR_MAIL_HIVE) or fail with a config error.
 	MailHive string `mapstructure:"mailhive"`
+
+	// DocumentsHive is the hive root of the gator document canon: directory
+	// holding source=*/channel=*/dt=*/*.parquet (tree parquet/documents,
+	// PLURAL; source is the literal "portals", vendor — channel). Empty =
+	// tools resolve it from env (GATOR_DOCUMENTS_HIVE); empty there too means
+	// the document tree is not imported.
+	DocumentsHive string `mapstructure:"documentshive"`
 }
 
 // VectorConfig configures the vector search layer (issue #204).
