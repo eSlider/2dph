@@ -51,7 +51,7 @@ func run(args []string) int {
 	db := fs.String("db", "", "kb.lbug path (default <root>/var/kb.lbug)")
 	mailGraph := fs.String("mail-graph", "", "mail-graph binary (default: PATH lookup)")
 	brainIndex := fs.String("brain-index", "", "brain-index binary (default: PATH lookup)")
-	annBin := fs.String("ann", "", "brain-ann binary for ANN ensure (empty = skip)")
+	annBin := fs.String("ann", "", "brain-ann binary for ANN ensure (default: env ANN_BIN; empty = skip)")
 	quiesce := fs.Bool("quiesce", true, "stop/start the compose brain around the write")
 	noQuiesce := fs.Bool("no-quiesce", false, "do not touch the compose brain (already stopped)")
 	rebuild := fs.Bool("rebuild", false, "force a full --rebuild instead of --skip")
@@ -98,6 +98,13 @@ func run(args []string) int {
 		return 1
 	}
 
+	// ANN binary: flag → env (ANN_BIN, set by compose) → skip. Empty disables
+	// the ANN ensure step (vector search falls back to the linear scan).
+	annPath := *annBin
+	if annPath == "" {
+		annPath = os.Getenv("ANN_BIN")
+	}
+
 	// Documents hive is optional: empty means the gator document tree is not
 	// imported (tree built in parallel, may not exist on every host).
 	docHiveRoot := *hiveDoc
@@ -116,7 +123,8 @@ func run(args []string) int {
 		MailGraphBin:  *mailGraph,
 		DocLeafBin:    *docLeaf,
 		BrainIndexBin: *brainIndex,
-		AnnBin:        *annBin,
+		AnnBin:        annPath,
+		AnnIndex:      cfg.Vector.ANN.Index,
 		Interval:      *interval,
 		Quiesce:       *quiesce && !*noQuiesce,
 		Rebuild:       *rebuild,

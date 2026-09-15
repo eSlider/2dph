@@ -26,6 +26,7 @@ RUN eval "$(./bin/cgo/zig env)" \
     && go build -tags system_ladybug -o /out/brain-search ./bin/brain/search.go \
     && go build -tags system_ladybug,brain_index -o /out/brain-index ./bin/brain/index.go \
     && go build -tags system_ladybug,brain_add -o /out/brain-add ./bin/brain/add.go \
+    && go build -tags system_ladybug,brain_ann -o /out/brain-ann ./bin/brain/ann.go \
     && go build -tags system_ladybug -o /out/seed-ext ./bin/brain/seed-ext.go \
     && CGO_ENABLED=0 go build -tags brain_watch -o /out/brain-watch ./bin/brain/watch.go \
     && CGO_ENABLED=0 go build -tags mail_import -o /out/mail-import ./bin/mail/import.go \
@@ -51,6 +52,7 @@ COPY --from=api-build /out/brain-search /usr/local/bin/brain-search
 COPY --from=api-build /out/brain-watch /usr/local/bin/brain-watch
 COPY --from=api-build /out/brain-index /usr/local/bin/brain-index
 COPY --from=api-build /out/brain-add /usr/local/bin/brain-add
+COPY --from=api-build /out/brain-ann /usr/local/bin/brain-ann
 COPY --from=api-build /out/seed-ext /usr/local/bin/seed-ext
 COPY --from=api-build /out/mail-import /usr/local/bin/mail-import
 COPY --from=api-build /out/mail-sync /usr/local/bin/mail-sync

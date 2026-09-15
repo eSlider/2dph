@@ -2,7 +2,7 @@
 # scripts/docker-entrypoint - run 2dph tools inside the container.
 #
 # API image (Zig CGO binaries, Go write path):
-#   serve | search | watch | index | add | mail-sync [N] | runner [N]
+#   serve | search | watch | index | add | ann | mail-sync [N] | runner [N]
 #   mail-graph --channel <ch> --commit   gator kind=mail → graph (D-1.3)
 #   mail-leaf --commit --skip            gator kind=mail → Leaf (#297)
 #   index-loop [--once] [--interval 1h]  periodic gator→graph→index cycle (#292)
@@ -34,6 +34,7 @@ if [ -x /usr/local/bin/brain-serve ]; then
 		watch) exec /usr/local/bin/brain-watch "$@" ;;
 		index) exec /usr/local/bin/brain-index "$@" ;;
 		add) exec /usr/local/bin/brain-add "$@" ;;
+		ann) exec /usr/local/bin/brain-ann "$@" ;;
 		mail-graph) exec /usr/local/bin/mail-graph "$@" ;;
 		mail-leaf) exec /usr/local/bin/mail-leaf "$@" ;;
 		index-loop)
@@ -84,7 +85,7 @@ if [ -x /usr/local/bin/brain-serve ]; then
 				sleep "$interval"
 			done
 			;;
-		*) echo "unknown command: $CMD (api: serve|search|watch|index|add|mail-sync|runner|mail-graph|index-loop)" >&2; exit 2 ;;
+		*) echo "unknown command: $CMD (api: serve|search|watch|index|add|ann|mail-sync|runner|mail-graph|index-loop)" >&2; exit 2 ;;
 	esac
 fi
 

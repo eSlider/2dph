@@ -335,6 +335,53 @@ func TestCycleIdempotentSkip(t *testing.T) {
 	}
 }
 
+// TestCycleAnnMissingPreventsSkip: with ANN wired (--ann/ANN_BIN) but no index
+// snapshot yet, an otherwise-fresh kb must NOT be skipped — the cycle has to
+// run `ann ensure` to build the index. Once the snapshot exists, the normal
+// freshness skip resumes.
+func TestCycleAnnMissingPreventsSkip(t *testing.T) {
+	cfg, logPath, fd, dc := setup(t)
+	if _, err := Cycle(context.Background(), cfg, dc); err != nil {
+		t.Fatal(err)
+	}
+	// Wire ANN after the first cycle: no var/state/vector.ann exists yet.
+	cfg.AnnBin = writeScript(t, t.TempDir(), "brain-ann", logPath, "", false)
+
+	before := fd.stopped
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Skipped {
+		t.Fatalf("cycle skipped while ANN index missing: %+v", rep)
+	}
+	if !rep.ANN {
+		t.Fatalf("ann ensure did not run: %+v", rep)
+	}
+	if fd.stopped == before {
+		t.Fatalf("brain not bounced for the ANN build")
+	}
+	logs, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(logs), "brain-ann ensure") {
+		t.Fatalf("ann ensure missing from calls:\n%s", logs)
+	}
+
+	// Index snapshot now exists: the next cycle may skip again.
+	if err := os.MkdirAll(filepath.Dir(cfg.annIndexPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.annIndexPath(), []byte("idx"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Skipped {
+		t.Fatalf("cycle not skipped after ANN index appeared: %+v", rep)
+	}
+}
+
 // TestCycleFailureSurfacesAndRestarts: a failing index step records the error
 // in freshness and still restarts the brain.
 func TestCycleFailureSurfacesAndRestarts(t *testing.T) {

@@ -340,10 +340,24 @@ closed by the compose service **`index-sync`** (profile `index`). No systemd.
 One cycle: discover the documents hive (`<hive-doc>/source=*/channel=*`) →
 stop the `brain` container (Ladybug is single-writer) → import the mail canon →
 `brain-index --skip` (docs corpus + indexes) → (gator mode only) `mail-graph
---commit` per channel (idempotent MERGE) → ANN `ensure` (only if `--ann` is
-set) → start brain and wait healthy → write freshness state. A cycle is skipped
-when `kb.lbug` is already newer than the newest upstream state and the last run
-did not error, so brain is not bounced for nothing.
+--commit` per channel (idempotent MERGE) → ANN `ensure` → start brain and wait
+healthy → write freshness state. A cycle is skipped when `kb.lbug` is already
+newer than the newest upstream state and the last run did not error, so brain is
+not bounced for nothing.
+
+**ANN index build/maintenance (#204/#206).** The IVF vector index is maintained
+by `bin/brain/ann.go ensure`, which `index-sync` runs at the end of every cycle.
+The binary is read from `ANN_BIN` (flag `--ann` wins; empty = skip). Compose
+sets `ANN_BIN=/usr/local/bin/brain-ann`; the `api-build` stage builds it with
+`-tags system_ladybug,brain_ann` and the `api` stage copies it, so no manual
+install is needed. `ensure` does a full k-means build only when the index is
+missing or stale (>10% behind the DB leaf count); steady-state growth is an
+incremental WAL-upsert (<1s, never a rebuild). The index path is
+`vector.ann.index`, default `<root>/var/state/vector.ann` (+ `.wal`); in the
+container `KB_ROOT=/data` and `./var` is mounted at `/data/var`, so the index
+lands in the host `var/state/` on the persistent volume. Empty/absent index is
+never fatal: serve/CLI fall back to the linear scan and `/stats` reports
+`ann.loaded:false`.
 
 **Mail canon — T10-A (`MAIL_SOURCE`, default `corpus`).** The info-corpus mail
 canon is the **local 2dph M365 corpus**, not the gator `parquet/mail` hive: the
@@ -371,9 +385,10 @@ docker compose --profile index logs -f index-sync
 
 Requirements:
 
-- API image rebuilt with `mail-graph` + `index-loop`
+- API image rebuilt with `mail-graph` + `index-loop` + `brain-ann`
   (`docker compose --profile index build index-sync`); the older
-  `ghcr.io/eslider/2dph:api` lacks them.
+  `ghcr.io/eslider/2dph:api` lacks them. Without `brain-ann` the ANN step
+  is skipped and vector search uses the linear scan.
 - In `corpus` mode the gator mail hive is not required; `./var` must be mounted
   at `/data/var` so `var/corpus/mail/m365` is visible (it is).
 - `GATOR_VAR_HOST=<gator repo>/var/gator` in `.env` (gitignored) — the host

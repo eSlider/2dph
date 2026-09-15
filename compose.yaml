@@ -128,7 +128,9 @@ services:
   #                      leaf+graph path is skipped (single canon).
   #   gator            — mail-leaf + mail-graph over the gator parquet/mail hive.
   # A cycle is skipped when kb.lbug is already newer than the newest upstream
-  # state, so the brain is not bounced for nothing. systemd is not used.
+  # state, so the brain is not bounced for nothing. When ANN_BIN is set, each
+  # cycle ends with `<ANN_BIN> ensure`, keeping the IVF vector index current
+  # (var/state/vector.ann) so /stats shows ann.loaded=true. systemd is not used.
   #
   #   docker compose --profile index up -d index-sync
   #   docker compose --profile index run --rm index-sync index-loop --once   # manual control
@@ -161,6 +163,13 @@ services:
       # T10-A mail canon: the local 2dph M365 corpus under ./var/corpus/mail
       # (mounted at /data/var/corpus/mail). gator mail leaf/graph is skipped.
       MAIL_SOURCE: "corpus"
+      # ANN index (vector.ann): index-loop reads ANN_BIN and runs
+      # `<ANN_BIN> ensure` at the end of every cycle after indexing (full build
+      # when missing/stale, incremental WAL-upsert otherwise). The binary is
+      # built into the api image; the index lands in /data/var/state/vector.ann
+      # (= the ./var mount) so it persists across cycles/restarts. Empty =
+      # skip and vector search falls back to the linear scan.
+      ANN_BIN: "/usr/local/bin/brain-ann"
       # Hive root INSIDE the container (the host path is GATOR_VAR_HOST below).
       GATOR_MAIL_HIVE: "/gator/parquet/mail"
       # Same mount covers parquet/documents; empty/absent tree = doc step skipped.
