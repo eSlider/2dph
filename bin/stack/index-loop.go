@@ -42,8 +42,10 @@ func run(args []string) int {
 	fs := flag.NewFlagSet("index-loop", flag.ExitOnError)
 	once := fs.Bool("once", false, "run a single cycle and exit")
 	interval := fs.Duration("interval", 0, "loop interval (default 1h)")
-	hive := fs.String("hive", "", "gator parquet/mail hive root (default config gator.mailhive / GATOR_MAIL_HIVE)")
+	hive := fs.String("hive", "", "gator parquet/mail hive root (default config gator.mailhive / GATOR_MAIL_HIVE; only used when --mail-source gator)")
 	hiveDoc := fs.String("hive-doc", "", "gator parquet/documents hive root (default config gator.documentshive / GATOR_DOCUMENTS_HIVE; empty = skip)")
+	mailSource := fs.String("mail-source", "", "mail canon: corpus (T10-A, default) | gator; env MAIL_SOURCE")
+	since := fs.String("since", "", "corpus mail: only messages >= YYYY-MM-DD; env MAIL_SINCE")
 	docLeaf := fs.String("doc-leaf", "", "doc-leaf binary (default: same as mail-leaf)")
 	root := fs.String("root", "", "repo root (default: autodetect)")
 	db := fs.String("db", "", "kb.lbug path (default <root>/var/kb.lbug)")
@@ -65,6 +67,24 @@ func run(args []string) int {
 		return 1
 	}
 
+	// Mail canon (T10-A): flag → env (container) → config, default corpus.
+	// corpus indexes the local 2dph M365 corpus via brain-index --with-mail and
+	// does not need the gator mail hive; gator keeps the parquet/mail path.
+	mailCanon := *mailSource
+	if mailCanon == "" {
+		mailCanon = os.Getenv("MAIL_SOURCE")
+	}
+	if mailCanon == "" {
+		mailCanon = cfg.MailSource
+	}
+	if mailCanon == "" {
+		mailCanon = "corpus"
+	}
+	cutoff := *since
+	if cutoff == "" {
+		cutoff = os.Getenv("MAIL_SINCE")
+	}
+
 	// Precedence: flag → env (container mount) → config (host CLI, #79).
 	hiveRoot := *hive
 	if hiveRoot == "" {
@@ -73,8 +93,8 @@ func run(args []string) int {
 	if hiveRoot == "" {
 		hiveRoot = cfg.Gator.MailHive
 	}
-	if hiveRoot == "" {
-		fmt.Fprintln(os.Stderr, "index-loop: gator mail hive is not configured: pass --hive, set gator.mailhive, or GATOR_MAIL_HIVE")
+	if hiveRoot == "" && mailCanon == "gator" {
+		fmt.Fprintln(os.Stderr, "index-loop: gator mail hive is not configured: pass --hive, set gator.mailhive, or GATOR_MAIL_HIVE (required for --mail-source gator)")
 		return 1
 	}
 
@@ -102,6 +122,8 @@ func run(args []string) int {
 		Rebuild:       *rebuild,
 		Project:       *project,
 		Service:       *service,
+		MailSource:    mailCanon,
+		Since:         cutoff,
 	}.WithDefaults()
 
 	var dc *dockerctl.Client
@@ -117,6 +139,7 @@ func run(args []string) int {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 				"started_at": rep.StartedAt.Format(time.RFC3339),
 				"skipped":    rep.Skipped, "reason": rep.Reason,
+				"mail_source": rep.MailSource, "corpus_mail": rep.CorpusMail,
 				"channels": rep.Channels, "imported": rep.Imported,
 				"indexed": rep.Indexed, "ann": rep.ANN, "error": rep.Err,
 			})
@@ -134,7 +157,7 @@ func run(args []string) int {
 		return 0
 	}
 
-	fmt.Fprintf(os.Stderr, "index-loop: interval=%s hive=%s db=%s\n", ic.Interval, ic.Hive, ic.DB)
+	fmt.Fprintf(os.Stderr, "index-loop: interval=%s mail=%s hive=%s db=%s\n", ic.Interval, ic.MailSource, ic.Hive, ic.DB)
 	err = indexsync.Run(ctx, ic, dc, emit)
 	if err != nil && ctx.Err() == nil {
 		fmt.Fprintf(os.Stderr, "index-loop: %v\n", err)

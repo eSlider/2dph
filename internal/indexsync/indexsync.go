@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain"
+	"github.com/eSlider/2dph/internal/corpus"
 	"github.com/eSlider/2dph/internal/docgraph"
 	"github.com/eSlider/2dph/internal/dockerctl"
 	"github.com/eSlider/2dph/internal/mailgraph"
@@ -50,6 +51,13 @@ type Config struct {
 	Project       string
 	Service       string
 	Channels      []string
+	// MailSource selects the mail canon (T10-A): "corpus" (default) indexes the
+	// local 2dph M365 corpus via brain-index --with-mail and skips the gator
+	// parquet/mail steps; "gator" keeps the mail-leaf + mail-graph path.
+	MailSource string
+	// Since is the optional corpus-mail cutoff (YYYY-MM-DD) passed to
+	// brain-index --since; ignored in gator mode.
+	Since string
 }
 
 // WithDefaults fills the standard 2dph layout (no host-absolute paths).
@@ -84,14 +92,24 @@ func (c Config) WithDefaults() Config {
 	if c.Service == "" {
 		c.Service = "brain"
 	}
+	if c.MailSource == "" {
+		c.MailSource = "corpus"
+	}
 	return c
 }
+
+// corpusMail reports whether the local 2dph M365 corpus is the mail canon
+// (T10-A). Only the literal "gator" selects the aggregator path; empty resolves
+// to "corpus" via WithDefaults.
+func (c Config) corpusMail() bool { return c.MailSource != "gator" }
 
 // Report is the outcome of one cycle.
 type Report struct {
 	StartedAt     time.Time
 	Skipped       bool
 	Reason        string
+	MailSource    string
+	CorpusMail    bool
 	Channels      []string
 	DocPartitions []string
 	Imported      int
@@ -104,11 +122,11 @@ type Report struct {
 func (r Report) Summary() string {
 	switch {
 	case r.Err != "":
-		return fmt.Sprintf("index-sync: error=%s channels=%v docs=%v imported=%d indexed=%v", r.Err, r.Channels, r.DocPartitions, r.Imported, r.Indexed)
+		return fmt.Sprintf("index-sync: error=%s mail=%s channels=%v docs=%v imported=%d indexed=%v", r.Err, r.MailSource, r.Channels, r.DocPartitions, r.Imported, r.Indexed)
 	case r.Skipped:
-		return fmt.Sprintf("index-sync: skip (%s)", r.Reason)
+		return fmt.Sprintf("index-sync: skip (%s) mail=%s", r.Reason, r.MailSource)
 	default:
-		return fmt.Sprintf("index-sync: ok channels=%v docs=%v imported=%d indexed=%v ann=%v", r.Channels, r.DocPartitions, r.Imported, r.Indexed, r.ANN)
+		return fmt.Sprintf("index-sync: ok mail=%s channels=%v docs=%v imported=%d indexed=%v ann=%v", r.MailSource, r.Channels, r.DocPartitions, r.Imported, r.Indexed, r.ANN)
 	}
 }
 
@@ -124,20 +142,31 @@ var runner = func(ctx context.Context, name string, args ...string) ([]byte, err
 func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, err error) {
 	cfg = cfg.WithDefaults()
 	rep.StartedAt = time.Now().UTC()
+	rep.MailSource = cfg.MailSource
+	corpusMode := cfg.corpusMail()
 
-	channels := cfg.Channels
-	if len(channels) == 0 {
-		channels, err = mailgraph.Channels(cfg.Hive)
-		if err != nil {
-			rep.Err = err.Error()
-			saveError(cfg, rep.Err)
-			return rep, err
+	// Mail canon (T10-A). corpus: the local 2dph M365 corpus is indexed by the
+	// brain-index --with-mail step below; the gator parquet/mail leaf+graph path
+	// is skipped entirely so the two canons cannot both write Leafs (local
+	// corpus ids are content-address, gator ids are message_id). gator: keep the
+	// legacy gator hive discovery + mail-leaf/mail-graph path unchanged.
+	var channels []string
+	if !corpusMode {
+		channels = cfg.Channels
+		if len(channels) == 0 {
+			channels, err = mailgraph.Channels(cfg.Hive)
+			if err != nil {
+				rep.Err = err.Error()
+				saveError(cfg, rep.Err)
+				return rep, err
+			}
 		}
 	}
 	rep.Channels = channels
 
 	// Document partitions are discovered the same way (single registry = the
-	// canon itself); an absent/empty tree yields none, not an error.
+	// canon itself); an absent/empty tree yields none, not an error. The
+	// document step stays active in BOTH mail modes.
 	var docs []docgraph.Partition
 	if cfg.DocumentsHive != "" {
 		docs, err = docgraph.Partitions(cfg.DocumentsHive)
@@ -149,17 +178,29 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 		rep.DocPartitions = partitionStrings(docs)
 	}
 
-	// Freshness is the newest pack across BOTH trees; a missing tree counts as
-	// zero and is not an error (one upstream may not be produced here yet).
-	packNano := newestPack(cfg)
+	// Corpus-mail freshness is the newest file mtime under var/corpus/mail; zero
+	// when the corpus is absent/empty (an upstream not produced yet, no error).
+	var corpusNano int64
+	if corpusMode {
+		corpusNano = corpusMailNewest(cfg.Root)
+		rep.CorpusMail = corpusNano > 0
+	}
 
-	// Neither upstream tree exists/is populated: nothing to import. This is a
-	// clean no-op, not a failure — an upstream without data yet is not an
-	// error. Persist success so a stale last_error from an earlier cycle (e.g.
-	// before mail was ever produced) is cleared.
-	if len(channels) == 0 && len(docs) == 0 {
+	// Freshness is the newest pack across the active trees; a missing tree
+	// counts as zero and is not an error (one upstream may not be produced yet).
+	packNano := newestPack(cfg, corpusMode, corpusNano)
+
+	mailPresent := len(channels) > 0
+	if corpusMode {
+		mailPresent = corpusNano > 0
+	}
+
+	// No upstream tree exists/is populated: nothing to import. This is a clean
+	// no-op, not a failure — an upstream without data yet is not an error.
+	// Persist success so a stale last_error from an earlier cycle is cleared.
+	if !mailPresent && len(docs) == 0 {
 		rep.Skipped = true
-		rep.Reason = "no gator packs (mail and documents absent)"
+		rep.Reason = "no mail canon or gator packs (mail and documents absent)"
 		saveSuccess(cfg, channels, packNano)
 		return rep, nil
 	}
@@ -183,10 +224,10 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 	}
 
 	// Gator parquet → searchable Leaf (ADR-0013, #297) via mail-leaf (gcc+DuckDB).
-	// brain-index --skip follows: docs corpus + FTS/HNSW indexes on new leafs.
+	// gator mode only: corpus mode gets its mail from brain-index --with-mail.
 	// Run only when the mail tree actually has channels: an absent/empty mail
 	// hive must neither fail the cycle nor block the document tree.
-	if len(channels) > 0 {
+	if !corpusMode && len(channels) > 0 {
 		leafArgs := []string{"--commit", "--skip", "--force"}
 		if cfg.Hive != "" {
 			leafArgs = append(leafArgs, "--hive", cfg.Hive)
@@ -201,9 +242,10 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 		}
 	}
 
-	// Gator parquet/documents → searchable Leaf (kind=document). Separate step
-	// after mail-leaf so a missing/empty document tree never blocks mail.
-	// Sources/channels are discovered from the hive (no hardcoded registry).
+	// Gator parquet/documents → searchable Leaf (kind=document). Active in both
+	// modes. Separate step after mail-leaf so a missing/empty document tree
+	// never blocks mail. Sources/channels come from the hive (no hardcoded
+	// registry).
 	if len(docs) > 0 {
 		docArgs := []string{"--document", "--commit", "--skip", "--force", "--hive-doc", cfg.DocumentsHive}
 		if cfg.DB != "" {
@@ -225,6 +267,14 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 	if cfg.DB != "" {
 		idxArgs = append(idxArgs, "--db", cfg.DB)
 	}
+	if corpusMode {
+		// Index the local mail corpus alongside the repo docs corpus. --since
+		// bounds it when configured.
+		idxArgs = append(idxArgs, "--with-mail")
+		if cfg.Since != "" {
+			idxArgs = append(idxArgs, "--since", cfg.Since)
+		}
+	}
 	if out, err := runner(ctx, cfg.BrainIndexBin, idxArgs...); err != nil {
 		rep.Err = fmt.Sprintf("index: %v (%s)", err, lastLine(out))
 		saveError(cfg, rep.Err)
@@ -232,7 +282,7 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 	}
 	rep.Indexed = true
 
-	// Graph import: idempotent MERGE per channel.
+	// Graph import: idempotent MERGE per channel. gator mode only.
 	for _, ch := range channels {
 		args := []string{"--channel", ch, "--commit", "--skip-existing", "--force"}
 		if cfg.Hive != "" {
@@ -283,12 +333,13 @@ func Run(ctx context.Context, cfg Config, dc *dockerctl.Client, onCycle func(Rep
 	}
 }
 
-// newestPack returns the newest parquet mtime across the mail and document
-// hives. A missing/empty tree contributes zero and is not an error: an upstream
-// that has not produced data yet must not make freshness fail.
-func newestPack(cfg Config) int64 {
+// newestPack returns the newest parquet mtime across the active hives plus the
+// local corpus-mail mtime in corpus mode. A missing/empty tree contributes zero
+// and is not an error: an upstream that has not produced data yet must not make
+// freshness fail.
+func newestPack(cfg Config, corpusMode bool, corpusNano int64) int64 {
 	var newest int64
-	if cfg.Hive != "" {
+	if !corpusMode && cfg.Hive != "" {
 		if n, err := mailgraph.PackMtime(cfg.Hive); err == nil && n > newest {
 			newest = n
 		}
@@ -297,6 +348,29 @@ func newestPack(cfg Config) int64 {
 		if n, err := docgraph.PackMtime(cfg.DocumentsHive); err == nil && n > newest {
 			newest = n
 		}
+	}
+	if corpusNano > newest {
+		newest = corpusNano
+	}
+	return newest
+}
+
+// corpusMailNewest returns the newest file mtime under the local 2dph mail
+// corpus roots (var/corpus/mail + legacy var/mail). Zero means the corpus is
+// absent/empty — an upstream not produced yet, not an error (T10-A). It is the
+// corpus-mode freshness signal so new mail is picked up by the periodic cycle.
+func corpusMailNewest(root string) int64 {
+	var newest int64
+	for _, r := range corpus.MailRoots(root) {
+		_ = filepath.Walk(r, func(_ string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			if n := info.ModTime().UnixNano(); n > newest {
+				newest = n
+			}
+			return nil
+		})
 	}
 	return newest
 }
