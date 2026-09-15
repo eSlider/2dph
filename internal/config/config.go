@@ -92,6 +92,13 @@ type Config struct {
 	// the shared data host). Machine-local path → config.local.yml,
 	// никогда не хардкодится в коде.
 	Gator GatorConfig `mapstructure:"gator"`
+
+	// MailSource selects the info-corpus mail canon for the periodic cycle
+	// (T10-A): "corpus" (default) = the local 2dph M365 corpus under
+	// var/corpus/mail, indexed by brain-index --with-mail; "gator" = the gator
+	// parquet/mail hive + mail-leaf/mail-graph. Env MAIL_SOURCE (read by
+	// bin/stack/index-loop.go) overrides this.
+	MailSource string `mapstructure:"mailsource"`
 }
 
 // GatorConfig configures read access to the gator aggregation platform canon.
@@ -100,6 +107,13 @@ type GatorConfig struct {
 	// source=mail/channel=*/dt=*/*.parquet. Empty = tools resolve it from
 	// env (GATOR_MAIL_HIVE) or fail with a config error.
 	MailHive string `mapstructure:"mailhive"`
+
+	// DocumentsHive is the hive root of the gator document canon: directory
+	// holding source=*/channel=*/dt=*/*.parquet (tree parquet/documents,
+	// PLURAL; source is the literal "portals", vendor — channel). Empty =
+	// tools resolve it from env (GATOR_DOCUMENTS_HIVE); empty there too means
+	// the document tree is not imported.
+	DocumentsHive string `mapstructure:"documentshive"`
 }
 
 // VectorConfig configures the vector search layer (issue #204).
@@ -238,6 +252,9 @@ func Defaults() Config {
 		Incubator: IncubatorConfig{
 			Container: "mailserver",
 		},
+		// T10-A: the local 2dph M365 corpus is the mail canon; gator stays
+		// documents-only. Override with MAIL_SOURCE=gator for the aggregator.
+		MailSource: "corpus",
 	}
 }
 

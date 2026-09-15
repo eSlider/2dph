@@ -120,14 +120,18 @@ services:
 
   # Periodic cycle that closes the chain gator sync→etl→pack → 2dph
   # import(graph) → index(kb.lbug) (issue #292). It is the ONLY automatic
-  # writer: every interval it discovers the gator mail channels, stops the
-  # `brain` container (Ladybug is single-writer), runs `brain-index --skip
-  # --with-mail` + `mail-graph --commit` per channel, then starts brain again.
-  # A cycle is skipped when kb.lbug is already newer than the newest gator
-  # pack, so the brain is not bounced for nothing. systemd is not used.
+  # writer: every interval it stops the `brain` container (Ladybug is
+  # single-writer), imports the document tree, indexes the mail canon, then
+  # starts brain again. Mail canon (T10-A) is selected by MAIL_SOURCE:
+  #   corpus (default) — brain-index --with-mail indexes var/corpus/mail/m365
+  #                      (the local 2dph M365 corpus); the gator parquet/mail
+  #                      leaf+graph path is skipped (single canon).
+  #   gator            — mail-leaf + mail-graph over the gator parquet/mail hive.
+  # A cycle is skipped when kb.lbug is already newer than the newest upstream
+  # state, so the brain is not bounced for nothing. systemd is not used.
   #
   #   docker compose --profile index up -d index-sync
-  #   docker compose --profile index run --rm index-sync --once   # manual control
+  #   docker compose --profile index run --rm index-sync index-loop --once   # manual control
   #
   # Host gator var path is machine-local: GATOR_VAR_HOST in .env (gitignored).
   # The docker socket is required to stop/start the sibling `brain` container.
@@ -154,8 +158,13 @@ services:
       # The cycle quiesces brain itself; allow the sanctioned swap+restart
       # flow (compose `index`) to run its rebuild guard too.
       KB_INDEX_ALLOW_LIVE: "1"
+      # T10-A mail canon: the local 2dph M365 corpus under ./var/corpus/mail
+      # (mounted at /data/var/corpus/mail). gator mail leaf/graph is skipped.
+      MAIL_SOURCE: "corpus"
       # Hive root INSIDE the container (the host path is GATOR_VAR_HOST below).
       GATOR_MAIL_HIVE: "/gator/parquet/mail"
+      # Same mount covers parquet/documents; empty/absent tree = doc step skipped.
+      GATOR_DOCUMENTS_HIVE: "/gator/parquet/documents"
       DOCKER_HOST: "unix:///var/run/docker.sock"
     volumes:
       - ./var:/data/var

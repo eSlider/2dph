@@ -1,11 +1,13 @@
 //usr/bin/env bash -c 'exec "${0%/*}/../cgo/zig" go run -tags=system_ladybug,mail_graph "$0" "$@"' "$0" "$@"; exit
 //go:build cgo && system_ladybug && mail_graph
 //
-// bin/mail/leaf.go - import gator kind=mail parquet into searchable Leaf nodes
-// (ADR-0013, issue #297). Built with gcc (DuckDB static lib), same as mail-graph.
+// bin/mail/leaf.go - import gator parquet into searchable Leaf nodes
+// (ADR-0013, issue #297; kind=document C1 #117). Built with gcc (DuckDB static
+// lib), same as mail-graph.
 //
 //	./bin/mail/leaf.go --dry-run --hive /gator/parquet/mail
 //	./bin/mail/leaf.go --commit --skip --hive /gator/parquet/mail
+//	./bin/mail/leaf.go --commit --skip --document --hive-doc /gator/parquet/documents
 //
 // NOTE: never run `gofmt -w` on this file — it breaks the shebang.
 package main
@@ -33,11 +35,12 @@ func main() {
 }
 
 type leafFlags struct {
-	hive, db, since string
-	dryRun, commit  bool
-	skip, force     bool
-	jsonOut         bool
-	chunk, workers, batch int
+	hive, hiveDoc, db, since string
+	dryRun, commit           bool
+	skip, force              bool
+	document                 bool
+	jsonOut                  bool
+	chunk, workers, batch    int
 }
 
 func gitRepoRoot() string {
@@ -61,6 +64,21 @@ func hiveRoot(cfg *config.Config, flagVal string) (string, error) {
 	return "", fmt.Errorf("gator mail hive root is not configured: pass --hive, set config gator.mailhive, or GATOR_MAIL_HIVE")
 }
 
+// docHiveRoot resolves the gator parquet/documents hive: flag --hive-doc →
+// config gator.documentshive → env GATOR_DOCUMENTS_HIVE.
+func docHiveRoot(cfg *config.Config, flagVal string) (string, error) {
+	if flagVal != "" {
+		return flagVal, nil
+	}
+	if cfg.Gator.DocumentsHive != "" {
+		return cfg.Gator.DocumentsHive, nil
+	}
+	if v := os.Getenv("GATOR_DOCUMENTS_HIVE"); v != "" {
+		return v, nil
+	}
+	return "", fmt.Errorf("gator documents hive root is not configured: pass --hive-doc, set config gator.documentshive, or GATOR_DOCUMENTS_HIVE")
+}
+
 func run(args []string) int {
 	cfg, err := config.Load(context.Background())
 	if err != nil {
@@ -72,6 +90,8 @@ func run(args []string) int {
 	v := leafFlags{dryRun: true}
 	p := cliparse.New("mail-leaf")
 	p.String(&v.hive, "", "hive", "gator parquet/mail hive root")
+	p.String(&v.hiveDoc, "", "hive-doc", "gator parquet/documents hive root (--document)")
+	p.Bool(&v.document, "", "document", "import the gator kind=document hive instead of kind=mail")
 	p.String(&v.db, "", "db", "path to kb.lbug")
 	p.String(&v.since, "", "since", "only messages >= YYYY-MM-DD")
 	p.Bool(&v.dryRun, "", "dry-run", "count leafs, write nothing (default)")
@@ -85,31 +105,43 @@ func run(args []string) int {
 	if err := cliparse.Parse(p, args); err != nil {
 		return cliparse.Fail(err)
 	}
+	name := "mail-leaf"
+	if v.document {
+		name = "doc-leaf"
+	}
 	if v.commit {
 		v.dryRun = false
 	}
 
-	hive, err := hiveRoot(cfg, v.hive)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "mail-leaf:", err)
-		return 1
+	var hive string
+	var src contract.Source
+	if v.document {
+		if hive, err = docHiveRoot(cfg, v.hiveDoc); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+			return 1
+		}
+		src = corpus.GatorDoc{Hive: hive}
+	} else {
+		if hive, err = hiveRoot(cfg, v.hive); err != nil {
+			fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+			return 1
+		}
+		src = corpus.GatorMail{Hive: hive, Since: v.since}
 	}
-
-	src := corpus.GatorMail{Hive: hive, Since: v.since}
 	ctx := context.Background()
 	start := time.Now()
 
 	if v.dryRun {
 		n := 0
 		if err := src.Stream(ctx, func(contract.Leaf) error { n++; return nil }); err != nil {
-			fmt.Fprintf(os.Stderr, "mail-leaf: stream: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s: stream: %v\n", name, err)
 			return 1
 		}
 		res := map[string]any{"hive": hive, "leafs": n, "read_ms": time.Since(start).Milliseconds()}
 		if v.jsonOut {
 			_ = json.NewEncoder(os.Stdout).Encode(res)
 		} else {
-			fmt.Printf("mail-leaf: dry-run hive=%s: %d leafs (%dms)\n", hive, n, res["read_ms"])
+			fmt.Printf("%s: dry-run hive=%s: %d leafs (%dms)\n", name, hive, n, res["read_ms"])
 		}
 		return 0
 	}
@@ -123,7 +155,7 @@ func run(args []string) int {
 		dbpath = filepath.Join(root, "var", "kb.lbug")
 	}
 	if err := ensureWritable(dbpath, root, cfg, v.force); err != nil {
-		fmt.Fprintf(os.Stderr, "mail-leaf: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		return 2
 	}
 
@@ -131,7 +163,7 @@ func run(args []string) int {
 	if !cfg.Vector.ANN.Enabled {
 		model, err = brain.LoadModel()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "mail-leaf: model: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s: model: %v\n", name, err)
 			return 1
 		}
 		defer model.Close()
@@ -139,20 +171,20 @@ func run(args []string) int {
 
 	db, conn, err := brain.OpenWritable(dbpath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mail-leaf: open %s: %v\n", dbpath, err)
+		fmt.Fprintf(os.Stderr, "%s: open %s: %v\n", name, dbpath, err)
 		return 1
 	}
 	defer db.Close()
 	defer conn.Close()
 	if err := brain.InitSchema(conn); err != nil {
-		fmt.Fprintf(os.Stderr, "mail-leaf: schema: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: schema: %v\n", name, err)
 		return 1
 	}
 
 	var existing map[string]bool
 	if v.skip {
 		if existing, err = brain.ExistingLeafIDSet(conn); err != nil {
-			fmt.Fprintf(os.Stderr, "mail-leaf: resume set: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s: resume set: %v\n", name, err)
 			return 1
 		}
 	}
@@ -165,7 +197,7 @@ func run(args []string) int {
 		})
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mail-leaf: write: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s: write: %v\n", name, err)
 		return 1
 	}
 
@@ -176,8 +208,8 @@ func run(args []string) int {
 	if v.jsonOut {
 		_ = json.NewEncoder(os.Stdout).Encode(res)
 	} else {
-		fmt.Printf("mail-leaf: committed hive=%s into %s: %d leafs written (%dms)\n",
-			hive, dbpath, written, res["write_ms"])
+		fmt.Printf("%s: committed hive=%s into %s: %d leafs written (%dms)\n",
+			name, hive, dbpath, written, res["write_ms"])
 	}
 	return 0
 }

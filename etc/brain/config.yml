@@ -107,3 +107,15 @@ vector:
 # Empty = pass --hive or set GATOR_MAIL_HIVE.
 gator:
   mailhive: ""             # e.g. <gator var>/parquet/mail (machine-local, см. #79 inventory)
+  documentshive: ""         # e.g. <gator var>/parquet/documents (kind=document C1 #117); empty/absent = skip
+
+# Mail canon for the periodic index cycle (T10-A). Decision: the local 2dph
+# M365 corpus is the info-corpus mail canon; gator stays documents-only (its
+# mail client is plain IMAP, the Edelweiss boxes are M365/OAuth synced by 2dph).
+#   corpus (default) — brain-index --with-mail indexes var/corpus/mail/m365
+#                      (content-address external_id); gator parquet/mail
+#                      leaf+graph is NOT used (single canon, no duplicate Leafs).
+#   gator            — legacy gator parquet/mail → mail-leaf + mail-graph.
+# Env MAIL_SOURCE (read by bin/stack/index-loop.go) overrides this. The
+# document tree (gator parquet/documents → doc-leaf) is imported in both modes.
+mail_source: "corpus"

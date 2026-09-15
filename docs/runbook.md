@@ -337,19 +337,35 @@ not collide with the running serve process holding `kb.lbug`.
 The chain `gator sync→etl→pack → 2dph import(graph) → index(kb.lbug)` is
 closed by the compose service **`index-sync`** (profile `index`). No systemd.
 
-One cycle: discover gator mail channels (`<hive>/source=mail/channel=*`) →
-stop the `brain` container (Ladybug is single-writer) → `mail-leaf --commit
---skip` (gator parquet → searchable Leaf, #297) → `brain-index --skip` (docs +
-indexes) → `mail-graph --commit` per channel (idempotent MERGE) → ANN
-`ensure` (only if `--ann` is set) → start brain and wait healthy → write
-freshness state. A cycle is skipped when `kb.lbug` is already newer than the
-newest gator pack and the last run did not error, so brain is not bounced for
-nothing.
+One cycle: discover the documents hive (`<hive-doc>/source=*/channel=*`) →
+stop the `brain` container (Ladybug is single-writer) → import the mail canon →
+`brain-index --skip` (docs corpus + indexes) → (gator mode only) `mail-graph
+--commit` per channel (idempotent MERGE) → ANN `ensure` (only if `--ann` is
+set) → start brain and wait healthy → write freshness state. A cycle is skipped
+when `kb.lbug` is already newer than the newest upstream state and the last run
+did not error, so brain is not bounced for nothing.
+
+**Mail canon — T10-A (`MAIL_SOURCE`, default `corpus`).** The info-corpus mail
+canon is the **local 2dph M365 corpus**, not the gator `parquet/mail` hive: the
+Edelweiss boxes are M365/OAuth and are synced by 2dph into `var/corpus/mail`
+(gator's mail client is plain IMAP). Selecting the canon keeps a single source
+of Leafs (local corpus ids are content-address, gator ids are `message_id`, so
+indexing both would duplicate).
+
+- `corpus` (default): `brain-index --with-mail` indexes `var/corpus/mail/m365`
+  (plus the legacy `var/mail`); the gator `parquet/mail` leaf+graph steps are
+  **skipped**. `--since YYYY-MM-DD` (env `MAIL_SINCE`) bounds the corpus mail if
+  set. Corpus-mail mtime drives freshness.
+- `gator`: unchanged legacy path — `mail-leaf` over `parquet/mail` plus
+  `mail-graph --commit` per channel.
+- The gator `parquet/documents` → `doc-leaf` step runs in **both** modes.
 
 ```bash
 scripts/stack/start-index-sync                 # compose up -d index-sync (loop, 1h)
 docker compose --profile index up -d index-sync
-docker compose --profile index run --rm index-sync --once   # one manual cycle
+docker compose --profile index run --rm index-sync index-loop --once   # one manual cycle
+# one-off canon override:
+docker compose --profile index run --rm index-sync index-loop --once --mail-source gator
 docker compose --profile index logs -f index-sync
 ```
 
@@ -358,9 +374,14 @@ Requirements:
 - API image rebuilt with `mail-graph` + `index-loop`
   (`docker compose --profile index build index-sync`); the older
   `ghcr.io/eslider/2dph:api` lacks them.
+- In `corpus` mode the gator mail hive is not required; `./var` must be mounted
+  at `/data/var` so `var/corpus/mail/m365` is visible (it is).
 - `GATOR_VAR_HOST=<gator repo>/var/gator` in `.env` (gitignored) — the host
   gator canon is bind-mounted read-only at `/gator`. `GATOR_MAIL_HIVE`
-  inside the container is `/gator/parquet/mail`.
+  inside the container is `/gator/parquet/mail` (used only in `gator` mode);
+  the same mount covers `parquet/documents` (kind=document), set as
+  `GATOR_DOCUMENTS_HIVE` (`/gator/parquet/documents`). An absent/empty document
+  tree is skipped.
 - `/var/run/docker.sock` is mounted: the cycle stops/starts the sibling
   `brain` container. `index-sync` therefore has Docker control — keep it on
   the local host only. Because the container runs with an explicit `user:`,
