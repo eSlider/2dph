@@ -35,8 +35,14 @@ func TestChannelsDiscoversHivePartitions(t *testing.T) {
 }
 
 func TestChannelsEmptyHive(t *testing.T) {
-	if _, err := Channels(t.TempDir()); err == nil {
-		t.Fatal("want error for a hive without source=mail")
+	// A hive where gator has not produced source=mail yet is not an error:
+	// the periodic cycle must keep running (documents-only) instead of failing.
+	got, err := Channels(t.TempDir())
+	if err != nil {
+		t.Fatalf("missing source=mail: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("Channels = %v, want empty", got)
 	}
 	if _, err := Channels(""); err == nil {
 		t.Fatal("want error for an empty hive root")

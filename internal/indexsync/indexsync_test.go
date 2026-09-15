@@ -199,6 +199,114 @@ func TestCycleSkipsDocumentWhenHiveEmpty(t *testing.T) {
 	}
 }
 
+// missingDir returns a path that does not exist (an upstream tree not yet
+// produced by gator). Must be nested under a real temp dir so cleanup works.
+func missingDir(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "not-produced-yet")
+}
+
+// TestCycleMailAbsentImportsDocuments: with the mail hive missing (mail not yet
+// produced on this host), the document tree must still be imported and the
+// cycle must succeed without touching last_error.
+func TestCycleMailAbsentImportsDocuments(t *testing.T) {
+	cfg, logPath, _, dc := setup(t)
+	cfg.Hive = missingDir(t)
+
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatalf("cycle with absent mail hive: %v", err)
+	}
+	if len(rep.Channels) != 0 {
+		t.Fatalf("channels = %v, want none", rep.Channels)
+	}
+	if len(rep.DocPartitions) != 2 {
+		t.Fatalf("doc partitions = %v, want 2", rep.DocPartitions)
+	}
+
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(logs)
+	if !strings.Contains(got, "mail-leaf --document --commit --skip --force --hive-doc "+cfg.DocumentsHive) {
+		t.Fatalf("doc import did not run on a mail-less cycle:\n%s", got)
+	}
+	// The mail leaf/graph steps must be skipped entirely, not failed.
+	if strings.Contains(got, "mail-leaf --commit") {
+		t.Fatalf("mail-leaf ran although the mail hive is absent:\n%s", got)
+	}
+	if strings.Contains(got, "mail-graph") {
+		t.Fatalf("mail-graph ran although the mail hive is absent:\n%s", got)
+	}
+
+	v := brain.ViewFreshness(cfg.Root, cfg.DB)
+	if v.LastError != "" {
+		t.Fatalf("absent mail hive set last_error: %q", v.LastError)
+	}
+	if v.Stale {
+		t.Fatalf("freshness stale after a documents-only cycle: %+v", v)
+	}
+}
+
+// TestCycleDocumentsAbsentKeepsMail: a missing document hive must not affect
+// the mail path or the cycle outcome.
+func TestCycleDocumentsAbsentKeepsMail(t *testing.T) {
+	cfg, logPath, _, dc := setup(t)
+	cfg.DocumentsHive = missingDir(t)
+
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatalf("cycle with absent documents hive: %v", err)
+	}
+	if rep.Imported != 2 || len(rep.DocPartitions) != 0 {
+		t.Fatalf("report = %+v, want 2 mail imports and no docs", rep)
+	}
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(logs)
+	if !strings.Contains(got, "mail-leaf --commit --skip --force") {
+		t.Fatalf("mail leaf did not run:\n%s", got)
+	}
+	if !strings.Contains(got, "mail-graph --channel gmail") {
+		t.Fatalf("mail graph did not run:\n%s", got)
+	}
+	if strings.Contains(got, "--document") {
+		t.Fatalf("doc import ran although the document hive is absent:\n%s", got)
+	}
+	if v := brain.ViewFreshness(cfg.Root, cfg.DB); v.LastError != "" || v.Stale {
+		t.Fatalf("freshness bad after mail-only cycle: %+v", v)
+	}
+}
+
+// TestCycleBothHivesAbsentIsNoop: nothing produced yet => clean no-op, no
+// brain bounce, no binaries, and a stale last_error is cleared.
+func TestCycleBothHivesAbsentIsNoop(t *testing.T) {
+	cfg, logPath, fd, dc := setup(t)
+	cfg.Hive = missingDir(t)
+	cfg.DocumentsHive = missingDir(t)
+	saveError(cfg, "previous cycle failed")
+
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatalf("both-absent cycle: %v", err)
+	}
+	if !rep.Skipped || rep.Err != "" {
+		t.Fatalf("report = %+v, want a clean skip", rep)
+	}
+	if fd.stopped != 0 || fd.started != 0 {
+		t.Fatalf("brain bounced on a no-op cycle (stop=%d start=%d)", fd.stopped, fd.started)
+	}
+	if logs, _ := os.ReadFile(logPath); len(logs) != 0 {
+		t.Fatalf("binaries ran on a no-op cycle:\n%s", logs)
+	}
+	if v := brain.ViewFreshness(cfg.Root, cfg.DB); v.LastError != "" || v.Stale {
+		t.Fatalf("no-op did not clear freshness: %+v", v)
+	}
+}
+
 // TestCycleIdempotentSkip: once the kb is newer than the gator pack and the
 // last cycle succeeded, a re-run must not bounce the brain again.
 func TestCycleIdempotentSkip(t *testing.T) {

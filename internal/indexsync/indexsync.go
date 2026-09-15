@@ -136,17 +136,34 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 	}
 	rep.Channels = channels
 
-	packNano, packErr := mailgraph.PackMtime(cfg.Hive)
-	if packErr != nil {
-		packNano = 0
-	}
-	// Document packs count as freshness too: a doc-only update must not be
-	// masked by a stale mail hive.
+	// Document partitions are discovered the same way (single registry = the
+	// canon itself); an absent/empty tree yields none, not an error.
+	var docs []docgraph.Partition
 	if cfg.DocumentsHive != "" {
-		if dn, derr := docgraph.PackMtime(cfg.DocumentsHive); derr == nil && dn > packNano {
-			packNano = dn
+		docs, err = docgraph.Partitions(cfg.DocumentsHive)
+		if err != nil {
+			rep.Err = fmt.Sprintf("doc partitions: %v", err)
+			saveError(cfg, rep.Err)
+			return rep, fmt.Errorf("%s", rep.Err)
 		}
+		rep.DocPartitions = partitionStrings(docs)
 	}
+
+	// Freshness is the newest pack across BOTH trees; a missing tree counts as
+	// zero and is not an error (one upstream may not be produced here yet).
+	packNano := newestPack(cfg)
+
+	// Neither upstream tree exists/is populated: nothing to import. This is a
+	// clean no-op, not a failure — an upstream without data yet is not an
+	// error. Persist success so a stale last_error from an earlier cycle (e.g.
+	// before mail was ever produced) is cleared.
+	if len(channels) == 0 && len(docs) == 0 {
+		rep.Skipped = true
+		rep.Reason = "no gator packs (mail and documents absent)"
+		saveSuccess(cfg, channels, packNano)
+		return rep, nil
+	}
+
 	if skip := shouldSkip(cfg, packNano); skip != "" {
 		rep.Skipped = true
 		rep.Reason = skip
@@ -167,40 +184,35 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 
 	// Gator parquet → searchable Leaf (ADR-0013, #297) via mail-leaf (gcc+DuckDB).
 	// brain-index --skip follows: docs corpus + FTS/HNSW indexes on new leafs.
-	leafArgs := []string{"--commit", "--skip", "--force"}
-	if cfg.Hive != "" {
-		leafArgs = append(leafArgs, "--hive", cfg.Hive)
-	}
-	if cfg.DB != "" {
-		leafArgs = append(leafArgs, "--db", cfg.DB)
-	}
-	if out, err := runner(ctx, cfg.MailLeafBin, leafArgs...); err != nil {
-		rep.Err = fmt.Sprintf("mail-leaf: %v (%s)", err, lastLine(out))
-		saveError(cfg, rep.Err)
-		return rep, fmt.Errorf("%s", rep.Err)
+	// Run only when the mail tree actually has channels: an absent/empty mail
+	// hive must neither fail the cycle nor block the document tree.
+	if len(channels) > 0 {
+		leafArgs := []string{"--commit", "--skip", "--force"}
+		if cfg.Hive != "" {
+			leafArgs = append(leafArgs, "--hive", cfg.Hive)
+		}
+		if cfg.DB != "" {
+			leafArgs = append(leafArgs, "--db", cfg.DB)
+		}
+		if out, err := runner(ctx, cfg.MailLeafBin, leafArgs...); err != nil {
+			rep.Err = fmt.Sprintf("mail-leaf: %v (%s)", err, lastLine(out))
+			saveError(cfg, rep.Err)
+			return rep, fmt.Errorf("%s", rep.Err)
+		}
 	}
 
 	// Gator parquet/documents → searchable Leaf (kind=document). Separate step
 	// after mail-leaf so a missing/empty document tree never blocks mail.
 	// Sources/channels are discovered from the hive (no hardcoded registry).
-	if cfg.DocumentsHive != "" {
-		parts, derr := docgraph.Partitions(cfg.DocumentsHive)
-		if derr != nil {
-			rep.Err = fmt.Sprintf("doc partitions: %v", derr)
+	if len(docs) > 0 {
+		docArgs := []string{"--document", "--commit", "--skip", "--force", "--hive-doc", cfg.DocumentsHive}
+		if cfg.DB != "" {
+			docArgs = append(docArgs, "--db", cfg.DB)
+		}
+		if out, err := runner(ctx, cfg.DocLeafBin, docArgs...); err != nil {
+			rep.Err = fmt.Sprintf("doc-leaf: %v (%s)", err, lastLine(out))
 			saveError(cfg, rep.Err)
 			return rep, fmt.Errorf("%s", rep.Err)
-		}
-		if len(parts) > 0 {
-			rep.DocPartitions = partitionStrings(parts)
-			docArgs := []string{"--document", "--commit", "--skip", "--force", "--hive-doc", cfg.DocumentsHive}
-			if cfg.DB != "" {
-				docArgs = append(docArgs, "--db", cfg.DB)
-			}
-			if out, err := runner(ctx, cfg.DocLeafBin, docArgs...); err != nil {
-				rep.Err = fmt.Sprintf("doc-leaf: %v (%s)", err, lastLine(out))
-				saveError(cfg, rep.Err)
-				return rep, fmt.Errorf("%s", rep.Err)
-			}
 		}
 	}
 
@@ -269,6 +281,24 @@ func Run(ctx context.Context, cfg Config, dc *dockerctl.Client, onCycle func(Rep
 		case <-time.After(cfg.Interval):
 		}
 	}
+}
+
+// newestPack returns the newest parquet mtime across the mail and document
+// hives. A missing/empty tree contributes zero and is not an error: an upstream
+// that has not produced data yet must not make freshness fail.
+func newestPack(cfg Config) int64 {
+	var newest int64
+	if cfg.Hive != "" {
+		if n, err := mailgraph.PackMtime(cfg.Hive); err == nil && n > newest {
+			newest = n
+		}
+	}
+	if cfg.DocumentsHive != "" {
+		if n, err := docgraph.PackMtime(cfg.DocumentsHive); err == nil && n > newest {
+			newest = n
+		}
+	}
+	return newest
 }
 
 // shouldSkip returns a non-empty reason when the projection is already at
