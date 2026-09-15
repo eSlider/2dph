@@ -44,13 +44,18 @@ type Config struct {
 	DocLeafBin    string
 	BrainIndexBin string
 	AnnBin        string
-	Interval      time.Duration
-	StaleAfter    time.Duration
-	Quiesce       bool
-	Rebuild       bool
-	Project       string
-	Service       string
-	Channels      []string
+	// AnnIndex is the vector ANN path (vector.ann.index). Empty resolves to
+	// <root>/var/state/vector.ann, the same default the ann tool uses. When
+	// AnnBin is set and this file is absent, the cycle must not skip so the
+	// index gets built (the pre-ANN freshness skip would otherwise starve it).
+	AnnIndex   string
+	Interval   time.Duration
+	StaleAfter time.Duration
+	Quiesce    bool
+	Rebuild    bool
+	Project    string
+	Service    string
+	Channels   []string
 	// MailSource selects the mail canon (T10-A): "corpus" (default) indexes the
 	// local 2dph M365 corpus via brain-index --with-mail and skips the gator
 	// parquet/mail steps; "gator" keeps the mail-leaf + mail-graph path.
@@ -375,11 +380,29 @@ func corpusMailNewest(root string) int64 {
 	return newest
 }
 
+// annIndexPath resolves the ANN snapshot path (vector.ann.index), the same
+// default the ann tool uses.
+func (c Config) annIndexPath() string {
+	if c.AnnIndex != "" {
+		return c.AnnIndex
+	}
+	return filepath.Join(c.Root, "var", "state", "vector.ann")
+}
+
 // shouldSkip returns a non-empty reason when the projection is already at
 // least as fresh as the newest gator pack and the last cycle did not error.
 func shouldSkip(cfg Config, packNano int64) string {
 	if cfg.Rebuild || packNano == 0 {
 		return ""
+	}
+	// ANN wired but its index absent: never skip, so the cycle runs the
+	// `ann ensure` step and builds it. Without this the freshness skip
+	// (kb newer than pack) would leave vector search on the linear scan
+	// forever — the index is built only inside a non-skipped cycle.
+	if cfg.AnnBin != "" {
+		if _, err := os.Stat(cfg.annIndexPath()); err != nil {
+			return ""
+		}
 	}
 	state := brain.LoadFreshness(cfg.Root)
 	if state.LastError != "" || state.IndexAt == "" {
