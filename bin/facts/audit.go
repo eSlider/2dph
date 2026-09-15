@@ -26,6 +26,7 @@ import (
 
 	"github.com/eSlider/2dph/pkg/repo"
 	"github.com/eSlider/2dph/internal/facts"
+	"github.com/eSlider/2dph/internal/skills"
 )
 
 func main() {
@@ -98,6 +99,13 @@ func auditSelf() int {
 	}
 	if reSearch.MatchString(readmeS) == false {
 		problems = append(problems, "README.md missing search/retrieval description")
+	}
+	if missing, err := skills.MissingBinRefs(root); err != nil {
+		problems = append(problems, "skills scan: "+err.Error())
+	} else {
+		for _, m := range missing {
+			problems = append(problems, "skill references missing tool: "+m)
+		}
 	}
 
 	if len(problems) == 0 {

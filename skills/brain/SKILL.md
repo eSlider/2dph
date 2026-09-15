@@ -33,8 +33,6 @@ bin/brain/stats.go                                     # index health
 bin/brain/eval.go                                      # recall@5 >= 0.95 gate (Go, via Zig CGO)
 ```
 
-`bin/kb/search` is a deprecated wrapper. `--hop N` walks
-`FROM_FILE` / `HAS_VERSION` / `AUTHORED` from each hit (1=File, 3=Person).
 `--as-of YYYY-MM-DD` keeps leafs whose `valid_from`/`valid_to` cover that day
 (empty interval = always; not D16 source staleness).
 
@@ -145,7 +143,7 @@ each implementing `contract.Source` (`Name()` + `Stream(ctx, emit(Leaf))`):
 - If recall looks wrong, run `bin/brain/eval.go`; it gates control questions and
   should stay at or above 95% recall@5.
 - Contradictions (≥2 yes vs ≥2 no) stay `(not confirmed)` until
-  `bin/facts/audit contradict` fires `temporal_freshness` or `authority_pairing`.
+  `bin/facts/audit.go contradict` fires `temporal_freshness` or `authority_pairing`.
 - Agents: `GET /openapi.json` and `POST /mcp` on `bin/brain/serve.go` (same
   handlers; tool names match paths `search`/`get`/`stats`/`audit`). Generated
   list: [tools.md](tools.md).
