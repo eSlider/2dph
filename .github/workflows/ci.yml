@@ -111,7 +111,8 @@ jobs:
           ./bin/cgo/zig env >/dev/null
           CC=gcc CXX=g++ \
             CGO_CFLAGS="-I$PWD/lib-ladybug" \
-            CGO_LDFLAGS="-L$PWD/lib-ladybug -llbug" \
+            CGO_LDFLAGS="-L$PWD/lib-ladybug -Wl,-rpath,$PWD/lib-ladybug -llbug" \
+            LD_LIBRARY_PATH="$PWD/lib-ladybug${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
             go test -tags system_ladybug ./internal/mailgraph/ -run TestImportCycle -count=1
 
       - uses: actions/cache@v4
