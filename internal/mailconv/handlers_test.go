@@ -23,6 +23,8 @@ func TestRoute(t *testing.T) {
 		{"application/json", ".json", structuredHandler},
 		{"application/xml", ".xml", structuredHandler},
 		{"application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx", officeHandler},
+		{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx", xlsxHandler},
+		{"application/vnd.openxmlformats-officedocument.presentationml.presentation", ".pptx", officeHandler},
 		{"application/msword", ".doc", legacyOfficeHandler},
 		{"application/octet-stream", ".eml", emlHandler},
 		{"application/octet-stream", ".bin", metadataHandler},

@@ -39,6 +39,9 @@ var registry = []handlerRoute{
 	{"application/json", "", structuredHandler},
 	{"application/xml", "", structuredHandler},
 	{"application/xhtml*", "", htmlHandler},
+	{"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "", xlsxHandler},
+	{"application/vnd.openxmlformats-officedocument.spreadsheetml.template", "", xlsxHandler},
+	{"application/vnd.ms-excel.sheet.macroEnabled.12", "", xlsxHandler},
 	{"application/vnd.openxmlformats-*", "", officeHandler},
 	{"application/msword", "", legacyOfficeHandler},
 	{"application/vnd.ms-*", "", legacyOfficeHandler},
@@ -164,7 +167,8 @@ func icalHandler(path, _, _ string, _ bool) (string, error) {
 	return strings.TrimSpace(b.String()), nil
 }
 
-// officeHandler is metadata-only for OOXML (docx/xlsx/pptx); v1 skips unzip.
+// officeHandler is metadata-only for OOXML (docx/pptx); v1 skips unzip.
+// Spreadsheets are not routed here — see xlsxHandler.
 func officeHandler(path, name, _ string, _ bool) (string, error) {
 	return metadata(path, name)
 }
