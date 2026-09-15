@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/config"
+	"github.com/eSlider/2dph/internal/docbody"
 	"github.com/eSlider/2dph/internal/dockerctl"
 	"github.com/eSlider/2dph/internal/indexsync"
 )
@@ -47,6 +48,7 @@ func run(args []string) int {
 	mailSource := fs.String("mail-source", "", "mail canon: corpus (T10-A, default) | gator; env MAIL_SOURCE")
 	since := fs.String("since", "", "corpus mail: only messages >= YYYY-MM-DD; env MAIL_SINCE")
 	docLeaf := fs.String("doc-leaf", "", "doc-leaf binary (default: same as mail-leaf)")
+	docText := fs.Bool("document-text", false, "extract PDF body text for document leafs (default: metadata-only; env GATOR_DOC_TEXT)")
 	root := fs.String("root", "", "repo root (default: autodetect)")
 	db := fs.String("db", "", "kb.lbug path (default <root>/var/kb.lbug)")
 	mailGraph := fs.String("mail-graph", "", "mail-graph binary (default: PATH lookup)")
@@ -132,6 +134,7 @@ func run(args []string) int {
 		Service:       *service,
 		MailSource:    mailCanon,
 		Since:         cutoff,
+		DocumentText:  docbody.Enabled(*docText),
 	}.WithDefaults()
 
 	var dc *dockerctl.Client

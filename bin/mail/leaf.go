@@ -27,6 +27,7 @@ import (
 	"github.com/eSlider/2dph/internal/config"
 	"github.com/eSlider/2dph/internal/contract"
 	"github.com/eSlider/2dph/internal/corpus"
+	"github.com/eSlider/2dph/internal/docbody"
 	cliparse "github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -38,7 +39,7 @@ type leafFlags struct {
 	hive, hiveDoc, db, since string
 	dryRun, commit           bool
 	skip, force              bool
-	document                 bool
+	document, documentText   bool
 	jsonOut                  bool
 	chunk, workers, batch    int
 }
@@ -92,6 +93,7 @@ func run(args []string) int {
 	p.String(&v.hive, "", "hive", "gator parquet/mail hive root")
 	p.String(&v.hiveDoc, "", "hive-doc", "gator parquet/documents hive root (--document)")
 	p.Bool(&v.document, "", "document", "import the gator kind=document hive instead of kind=mail")
+	p.Bool(&v.documentText, "", "document-text", "extract PDF body text into document leafs (default: metadata-only; env GATOR_DOC_TEXT)")
 	p.String(&v.db, "", "db", "path to kb.lbug")
 	p.String(&v.since, "", "since", "only messages >= YYYY-MM-DD")
 	p.Bool(&v.dryRun, "", "dry-run", "count leafs, write nothing (default)")
@@ -120,7 +122,17 @@ func run(args []string) int {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 			return 1
 		}
-		src = corpus.GatorDoc{Hive: hive}
+		gd := corpus.GatorDoc{Hive: hive}
+		if docbody.Enabled(v.documentText) {
+			prov, perr := docbody.FromEnv()
+			if perr != nil {
+				fmt.Fprintf(os.Stderr, "%s: %v\n", name, perr)
+				return 1
+			}
+			gd.Body = prov
+			gd.BodyLimit = docbody.LimitFromEnv()
+		}
+		src = gd
 	} else {
 		if hive, err = hiveRoot(cfg, v.hive); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)

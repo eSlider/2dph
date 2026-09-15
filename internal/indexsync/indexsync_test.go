@@ -186,6 +186,22 @@ func TestCycleImportsAllChannelsAndQuiesces(t *testing.T) {
 	}
 }
 
+func TestCycleDocumentTextFlag(t *testing.T) {
+	cfg, logPath, _, dc := setup(t)
+	cfg.DocumentText = true
+	if _, err := Cycle(context.Background(), cfg, dc); err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "--document --commit --skip --force --hive-doc " + cfg.DocumentsHive + " --document-text"
+	if !strings.Contains(string(logs), want) {
+		t.Fatalf("doc-leaf missing %q:\n%s", want, logs)
+	}
+}
+
 // TestCycleSkipsDocumentWhenHiveEmpty: an empty/absent document hive must not
 // invoke the doc import (the mail path keeps working).
 func TestCycleSkipsDocumentWhenHiveEmpty(t *testing.T) {

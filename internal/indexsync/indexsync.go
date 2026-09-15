@@ -63,6 +63,9 @@ type Config struct {
 	// Since is the optional corpus-mail cutoff (YYYY-MM-DD) passed to
 	// brain-index --since; ignored in gator mode.
 	Since string
+	// DocumentText enables PDF body-text extraction for the document tree
+	// (T12 #310): doc-leaf --document-text. Default false = metadata-only.
+	DocumentText bool
 }
 
 // WithDefaults fills the standard 2dph layout (no host-absolute paths).
@@ -253,6 +256,9 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 	// registry).
 	if len(docs) > 0 {
 		docArgs := []string{"--document", "--commit", "--skip", "--force", "--hive-doc", cfg.DocumentsHive}
+		if cfg.DocumentText {
+			docArgs = append(docArgs, "--document-text")
+		}
 		if cfg.DB != "" {
 			docArgs = append(docArgs, "--db", cfg.DB)
 		}
