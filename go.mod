@@ -11,7 +11,7 @@ require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/emersion/go-message v0.18.2
 	github.com/eslider/go-config v0.4.0
-	github.com/eslider/go-onlyoffice v0.17.1-0.20260903121436-3da11586f97e
+	github.com/eslider/go-onlyoffice v0.20.1-0.20260915082913-b86d71211f07
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/integrii/flaggy v1.8.0
 	github.com/nyaruka/phonenumbers v1.8.1
@@ -24,10 +24,12 @@ require (
 
 replace (
 	github.com/eslider/go-config => git.produktor.io/eSlider/go-config v0.4.0
-	github.com/eslider/go-onlyoffice => git.produktor.io/eSlider/go-onlyoffice v0.17.1-0.20260903121436-3da11586f97e
+	github.com/eslider/go-onlyoffice => git.produktor.io/eSlider/go-onlyoffice v0.20.1-0.20260915082913-b86d71211f07
 )
 
 require (
+	github.com/aws/aws-sdk-go-v2 v1.41.1 // indirect
+	github.com/aws/smithy-go v1.24.0 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
