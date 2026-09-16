@@ -7,6 +7,10 @@
 //	var/corpus/mail/<folder>/<id>/message.json   # Message (this package)
 //	var/corpus/mail/<folder>/<id>/attachments/    # raw attachment bytes (storedName)
 //
+// Inline attachments live in the same attachments/ directory as regular ones,
+// under their disambiguated StoredName; message.json flags them with
+// isInline/contentId (see Attachment).
+//
 // The Message JSON is the contract shared with the Go converter. Fields
 // deliberately mirror what bin/mail/import already reads from the OnlyOffice
 // API, so conversion is source-agnostic.
@@ -19,12 +23,22 @@ import (
 // Attachment describes one attachment of a Message. FileID/FileName/StoredName
 // mirror OnlyOffice; Gmail fills them from its own ids. StoredName is always
 // unique (hash/attachment id) so raw files never collide.
+//
+// Inline attachments (e.g. screenshots embedded in the HTML body) are stored
+// in the same attachments/ directory as regular ones, but under a
+// disambiguated StoredName ("inline-<hash8>-<name>") so two same-named inline
+// images never overwrite each other or a regular attachment. IsInline and
+// ContentID carry the inline-ness into message.json; both are omitempty, so a
+// regular attachment serializes byte-for-byte as before and old consumers that
+// ignore unknown fields keep working.
 type Attachment struct {
 	FileID      string `json:"fileId,omitempty"`
 	FileName    string `json:"fileName"`
 	StoredName  string `json:"storedName"`
 	Size        int64  `json:"size,omitempty"`
 	ContentType string `json:"contentType,omitempty"`
+	IsInline    bool   `json:"isInline,omitempty"`
+	ContentID   string `json:"contentId,omitempty"`
 }
 
 // Message is the normalized record written to var/corpus/mail/<folder>/<id>/message.json.

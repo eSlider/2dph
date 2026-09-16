@@ -2,6 +2,8 @@ package mailsync
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -223,17 +225,17 @@ func (c *M365Client) GetMessage(ctx context.Context, mailbox, id string) (*Messa
 	path := fmt.Sprintf("/v1.0/users/%s/messages/%s?$expand=attachments($select=id,name,contentType,size,isInline)",
 		pathEscape(mailbox), pathEscape(id))
 	var raw struct {
-		ID                string             `json:"id"`
-		Subject           string             `json:"subject"`
-		From              m365Recipient      `json:"from"`
-		ToRecipients      []m365Recipient    `json:"toRecipients"`
-		CCRecipients      []m365Recipient    `json:"ccRecipients"`
-		BCCRecipients     []m365Recipient    `json:"bccRecipients"`
-		ReceivedDateTime  string             `json:"receivedDateTime"`
-		Body              m365Body           `json:"body"`
-		BodyPreview       string             `json:"bodyPreview"`
-		InternetMessageID string             `json:"internetMessageId"`
-		Attachments       []m365Attachment   `json:"attachments"`
+		ID                string           `json:"id"`
+		Subject           string           `json:"subject"`
+		From              m365Recipient    `json:"from"`
+		ToRecipients      []m365Recipient  `json:"toRecipients"`
+		CCRecipients      []m365Recipient  `json:"ccRecipients"`
+		BCCRecipients     []m365Recipient  `json:"bccRecipients"`
+		ReceivedDateTime  string           `json:"receivedDateTime"`
+		Body              m365Body         `json:"body"`
+		BodyPreview       string           `json:"bodyPreview"`
+		InternetMessageID string           `json:"internetMessageId"`
+		Attachments       []m365Attachment `json:"attachments"`
 	}
 	if err := c.getJSON(ctx, path, &raw); err != nil {
 		return nil, err
@@ -265,19 +267,40 @@ func (c *M365Client) GetMessage(ctx context.Context, mailbox, id string) (*Messa
 		}
 	}
 	for _, a := range raw.Attachments {
-		if a.IsInline || a.ID == "" || a.Name == "" {
+		if a.ID == "" {
 			continue
 		}
-		m.Attachments = append(m.Attachments, Attachment{
+		if a.Name == "" && !a.IsInline {
+			continue // regular attachment without a name: unchanged behaviour
+		}
+		att := Attachment{
 			FileID:      a.ID,
 			FileName:    a.Name,
 			StoredName:  a.Name,
 			Size:        a.Size,
 			ContentType: a.ContentType,
-		})
+		}
+		if a.IsInline {
+			att.IsInline = true
+			att.ContentID = a.ContentID
+			att.StoredName = inlineStoredName(a.ID, a.Name)
+		}
+		m.Attachments = append(m.Attachments, att)
 	}
 	m.HasAttachments = len(m.Attachments) > 0
 	return m, nil
+}
+
+// inlineStoredName is the deterministic on-disk name of an inline attachment:
+// "inline-<hash8>-<name>". The hash of the stable Graph attachment id keeps
+// two same-named inline images (e.g. image001.png) apart and cannot collide
+// with a regular attachment stored under its plain name.
+func inlineStoredName(id, name string) string {
+	if name == "" {
+		name = "attachment.bin"
+	}
+	sum := sha256.Sum256([]byte(id))
+	return "inline-" + hex.EncodeToString(sum[:])[:8] + "-" + name
 }
 
 type m365Recipient struct {
@@ -311,7 +334,8 @@ func formatRecipients(rs []m365Recipient) string {
 	return strings.Join(parts, ", ")
 }
 
-func formatRecipient(r m365Recipient) string {	a := r.EmailAddress.Address
+func formatRecipient(r m365Recipient) string {
+	a := r.EmailAddress.Address
 	n := r.EmailAddress.Name
 	switch {
 	case n == "" || n == a:
@@ -379,10 +403,10 @@ func (c *M365Client) getJSON(ctx context.Context, path string, out any) error {
 
 // m365FolderState is the persisted per-folder delta link for one mailbox.
 type m365FolderState struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
 	WellKnown string `json:"wellKnown,omitempty"`
-	Delta    string `json:"delta"`
+	Delta     string `json:"delta"`
 }
 
 // m365Source adapts a mailbox to the Source worker-pool contract. Each mailbox

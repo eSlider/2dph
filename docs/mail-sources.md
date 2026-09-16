@@ -32,6 +32,21 @@ related:
 Outlook: `Entwürfe`/`Vorlagen`/`Gelöschte Objekte`/`Junk-E-Mail`/`Postausgang`),
 `*.msf`, `filterlog.html`, `soft/drivers/**/*.pst` (прошивки).
 
+## M365 inline-вложения (#312)
+
+`internal/mailsync` (Graph, `m365.go`) сохраняет и inline-вложения — раньше они
+отбрасывались. Правило раскладки:
+
+- inline-вложения лежат в той же `attachments/`, что и обычные; имя
+  детерминированное и без коллизий: `inline-<hash8 graph-id>-<имя>`
+  (напр. `inline-d7bdd545-image001.png`), поэтому две `image001.png` одного
+  письма не перезаписывают друг друга и не затирают обычное вложение с тем же
+  именем.
+- в `message.json` inline помечен `isInline: true` и `contentId` (оба
+  `omitempty`); обычные вложения сериализуются как раньше, старые потребители
+  (`internal/mailconv`, ETL, office-assistant `internal/mailcorpus`) неизвестные
+  поля игнорируют.
+
 ## mbox-импорт
 
 Сплиттер живёт в `internal/mailconv` (`SplitMbox`, `SplitMboxDir`) — единая
