@@ -136,11 +136,139 @@ func TestM365GetMessageNormalizes(t *testing.T) {
 	if m.MimeMessageID != "<mid@x.de>" {
 		t.Errorf("mime id = %q", m.MimeMessageID)
 	}
-	if len(m.Attachments) != 1 || m.Attachments[0].FileName != "doc.pdf" || m.Attachments[0].FileID != "att1" {
+	if len(m.Attachments) != 2 || m.Attachments[0].FileName != "doc.pdf" || m.Attachments[0].FileID != "att1" {
 		t.Errorf("atts = %+v", m.Attachments)
+	}
+	if !m.Attachments[1].IsInline || m.Attachments[1].FileName != "logo.png" {
+		t.Errorf("inline att = %+v", m.Attachments[1])
 	}
 	if !m.HasAttachments {
 		t.Error("expected hasAttachments")
+	}
+}
+
+func TestM365GetMessageKeepsInlineAttachments(t *testing.T) {
+	graph := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"id":"m1",
+			"subject":"Offene Posten",
+			"from":{"emailAddress":{"name":"DZH","address":"dzh@x.de"}},
+			"toRecipients":[{"emailAddress":{"address":"a@x.de"}}],
+			"receivedDateTime":"2026-09-01T08:00:00Z",
+			"body":{"contentType":"text","content":"siehe Screenshots"},
+			"attachments":[
+				{"id":"att1","name":"doc.pdf","contentType":"application/pdf","size":10},
+				{"id":"img1","name":"image001.png","contentType":"image/png","size":4,"isInline":true,"contentId":"<image001@x.de>"},
+				{"id":"img2","name":"image001.png","contentType":"image/png","size":5,"isInline":true,"contentId":"<image002@x.de>"}
+			]
+		}`))
+	})
+	c := newM365TestClient(t, graph)
+	m, err := c.GetMessage(context.Background(), "a@x.de", "m1")
+	if err != nil {
+		t.Fatalf("GetMessage: %v", err)
+	}
+	if len(m.Attachments) != 3 {
+		t.Fatalf("attachments = %+v", m.Attachments)
+	}
+	reg := m.Attachments[0]
+	if reg.FileName != "doc.pdf" || reg.StoredName != "doc.pdf" || reg.IsInline || reg.ContentID != "" {
+		t.Errorf("regular attachment changed: %+v", reg)
+	}
+	var inlines []Attachment
+	for _, a := range m.Attachments {
+		if a.IsInline {
+			inlines = append(inlines, a)
+		}
+	}
+	if len(inlines) != 2 {
+		t.Fatalf("inline attachments = %+v", inlines)
+	}
+	for _, a := range inlines {
+		if a.ContentID == "" {
+			t.Errorf("inline content id missing: %+v", a)
+		}
+		if a.StoredName == "" || a.StoredName == a.FileName || !strings.HasPrefix(a.StoredName, "inline-") {
+			t.Errorf("inline stored name not disambiguated: %q", a.StoredName)
+		}
+		if a.FileName != "image001.png" {
+			t.Errorf("inline display name = %q", a.FileName)
+		}
+	}
+	if inlines[0].StoredName == inlines[1].StoredName {
+		t.Errorf("inline stored names collide: %q", inlines[0].StoredName)
+	}
+}
+
+func TestAttachmentJSONRegularUnchanged(t *testing.T) {
+	b, err := json.Marshal(Attachment{
+		FileID: "f1", FileName: "doc.pdf", StoredName: "doc.pdf", Size: 10, ContentType: "application/pdf",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"fileId":"f1","fileName":"doc.pdf","storedName":"doc.pdf","size":10,"contentType":"application/pdf"}`
+	if string(b) != want {
+		t.Fatalf("regular attachment JSON changed:\n got %s\nwant %s", b, want)
+	}
+}
+
+func TestM365InlineAttachmentStoredToDisk(t *testing.T) {
+	graph := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/attachments/") {
+			w.Write([]byte("\x89PNG\r\n\x1a\nfake-image-bytes"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"id":"m1",
+			"subject":"Offene Posten",
+			"from":{"emailAddress":{"address":"dzh@x.de"}},
+			"toRecipients":[{"emailAddress":{"address":"a@x.de"}}],
+			"receivedDateTime":"2026-09-01T08:00:00Z",
+			"body":{"contentType":"text","content":"siehe Screenshots"},
+			"attachments":[
+				{"id":"att1","name":"doc.pdf","contentType":"application/pdf","size":10},
+				{"id":"img1","name":"image001.png","contentType":"image/png","size":4,"isInline":true,"contentId":"<image001@x.de>"}
+			]
+		}`))
+	})
+	c := newM365TestClient(t, graph)
+	out := t.TempDir()
+	src := &m365Source{c: c, mailbox: "a@x.de", localpart: "a", stateDir: filepath.Join(out, ".m365")}
+	status, err := processOne(context.Background(), src, "m1", SyncConfig{Out: out, Force: true})
+	if err != nil || status != statusNew {
+		t.Fatalf("processOne: status=%v err=%v", status, err)
+	}
+	dir := filepath.Join(out, "m365", "a", "m1")
+	raw, err := os.ReadFile(filepath.Join(dir, "message.json"))
+	if err != nil {
+		t.Fatalf("message.json: %v", err)
+	}
+	if !strings.Contains(string(raw), `"isInline": true`) {
+		t.Fatalf("message.json missing isInline flag:\n%s", raw)
+	}
+	var got Message
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	var inlines int
+	for _, a := range got.Attachments {
+		if !a.IsInline {
+			continue
+		}
+		inlines++
+		p := filepath.Join(dir, "attachments", sanitize(a.StoredName))
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("inline attachment %q not on disk: %v", a.FileName, err)
+		}
+	}
+	if inlines != 1 {
+		t.Fatalf("inline attachments in message.json = %d", inlines)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "attachments", "doc.pdf")); err != nil {
+		t.Errorf("regular attachment not on disk: %v", err)
 	}
 }
 

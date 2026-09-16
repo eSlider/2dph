@@ -178,6 +178,8 @@ Common props on every node/edge: `root`, `confidence`, `evidence[]`, `how`,
 1. `bin/mail/sync.go` (Go, 8 workers) — paginated Gmail / OnlyOffice / M365
    Graph download. Gmail attachments key off `body.attachmentId`, not MIME
    `partId`. M365 uses client-credentials + delta link (commit after success).
+   M365 inline attachments are kept (#312): stored in `attachments/` under
+   `inline-<hash8>-<name>`, flagged `isInline`/`contentId` in `message.json`.
 2. `bin/mail/import.go --from-raw` — message.json → message.md; PDFs via
    `pdftotext -layout` (~15ms); textless/scanned PDFs `pdftoppm` + tesseract
    `eng+deu`. PDFs without a readable text layer are first normalized with
