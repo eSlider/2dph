@@ -37,6 +37,9 @@ mnt/
 # machine-local config overrides (never committed; CI guard on absolute paths)
 etc/brain/config.local.yml
 
+# local edelweiss deployment overlay (host paths, never upstream)
+compose.edelweiss.yml
+
 # AI-agent global config lives at ~/.config/opencode/ — never committed
 .opencode/
 
