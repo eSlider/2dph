@@ -175,6 +175,11 @@ services:
       # Same mount covers parquet/documents; empty/absent tree = doc step skipped.
       GATOR_DOCUMENTS_HIVE: "/gator/parquet/documents"
       DOCKER_HOST: "unix:///var/run/docker.sock"
+      # External skills corpus (#317): index-loop passes --corpus /skills to
+      # brain-index so principles/how-to stay current in the brain. Default
+      # ./skills exists in the repo; override the host path in .env
+      # (AGENT_SKILLS_DIR=<host skills dir>).
+      BRAIN_CORPUS: "/skills"
     volumes:
       - ./var:/data/var
       - ./etc/brain:/data/etc/brain:ro
@@ -182,6 +187,8 @@ services:
       # gator canon (read-only). Set GATOR_VAR_HOST=<gator repo>/var/gator in
       # .env; the default keeps `docker compose config` valid on a fresh clone.
       - ${GATOR_VAR_HOST:-./var/gator}:/gator:ro
+      # Agent skills corpus, read-only (#317). Host path overridable in .env.
+      - ${AGENT_SKILLS_DIR:-./skills}:/skills:ro
       - /var/run/docker.sock:/var/run/docker.sock
     command: ["index-loop", "--interval", "1h"]
     depends_on:

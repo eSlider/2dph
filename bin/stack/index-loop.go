@@ -49,6 +49,8 @@ func run(args []string) int {
 	since := fs.String("since", "", "corpus mail: only messages >= YYYY-MM-DD; env MAIL_SINCE")
 	docLeaf := fs.String("doc-leaf", "", "doc-leaf binary (default: same as mail-leaf)")
 	docText := fs.Bool("document-text", false, "extract PDF body text for document leafs (default: metadata-only; env GATOR_DOC_TEXT)")
+	var corpus indexsync.StringList
+	fs.Var(&corpus, "corpus", "extra docs corpus dir for brain-index (repeatable; env BRAIN_CORPUS comma-separated)")
 	root := fs.String("root", "", "repo root (default: autodetect)")
 	db := fs.String("db", "", "kb.lbug path (default <root>/var/kb.lbug)")
 	mailGraph := fs.String("mail-graph", "", "mail-graph binary (default: PATH lookup)")
@@ -117,6 +119,10 @@ func run(args []string) int {
 		docHiveRoot = cfg.Gator.DocumentsHive
 	}
 
+	// External corpora (#317): repeatable --corpus wins, else BRAIN_CORPUS
+	// (comma-separated, whitespace trimmed). Empty = the argv is unchanged.
+	corpusDirs := indexsync.ResolveCorpus(corpus, os.Getenv("BRAIN_CORPUS"))
+
 	ic := indexsync.Config{
 		Root:          *root,
 		Hive:          hiveRoot,
@@ -135,6 +141,7 @@ func run(args []string) int {
 		MailSource:    mailCanon,
 		Since:         cutoff,
 		DocumentText:  docbody.Enabled(*docText),
+		Corpus:        corpusDirs,
 	}.WithDefaults()
 
 	var dc *dockerctl.Client
