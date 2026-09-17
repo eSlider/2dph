@@ -47,6 +47,26 @@ Outlook: `Entwürfe`/`Vorlagen`/`Gelöschte Objekte`/`Junk-E-Mail`/`Postausgang`
   (`internal/mailconv`, ETL, office-assistant `internal/mailcorpus`) неизвестные
   поля игнорируют.
 
+## M365: все 13 ящиков тенанта (#321)
+
+`compose.edelweiss.yml` → `M365_USERS` = 13 ящиков (@edelweiss-pflegedienst.de):
+`a, info, kontakt, m.schumann, pdl, ea, fax, handys, i.rudi, lbnr,
+Lilia.Olenberg, Buchhaltung, rechnung`. Корпус:
+`var/corpus/mail/m365/<localpart>` (localpart в нижнем регистре). Секрет
+`~/.config/brain/m365.env` `M365_USERS` оператор расширяет отдельно (не в git).
+
+Отказ ApplicationAccessPolicy в Graph выглядит как `ErrorAccessDenied`
+(«Access to OData is disabled»); в логах sync таких нет — приложение читает
+все ящики. Сама политика — legacy, только Exchange PowerShell
+(`Get-/Test-ApplicationAccessPolicy`), в EAC отдельной страницы нет; заменена
+App RBAC.
+
+Exchange throttle: `rechnung@` периодически отвечает 503
+(`ErrorDirectoryConcurrencyLimit` / `CommandConcurrencyLimitReached` /
+`Application Request Queue Full`). Sync больше не падает целиком: сбой листинга
+одного источника ретраится (backoff), затем источник пропускается, остальные
+синкаются (`internal/mailsync/sync.go`).
+
 ## mbox-импорт
 
 Сплиттер живёт в `internal/mailconv` (`SplitMbox`, `SplitMboxDir`) — единая

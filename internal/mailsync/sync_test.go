@@ -306,3 +306,111 @@ func indexOf(s, sub string) int {
 	}
 	return -1
 }
+
+// commitSource is a fake Source with one id per entry and a recorded Commit,
+// used to prove per-source commit isolation (#321).
+type commitSource struct {
+	folder    string
+	ids       []string
+	commitErr error
+	committed bool
+}
+
+func (s *commitSource) ListIDs(context.Context, int, string) ([]string, string, error) {
+	return s.ids, "", nil
+}
+func (s *commitSource) Get(_ context.Context, id string) (*Message, error) {
+	return &Message{ID: id}, nil
+}
+func (s *commitSource) DownloadAttachment(context.Context, *Message, Attachment) ([]byte, error) {
+	return nil, errors.New("unused")
+}
+func (s *commitSource) Folder() string { return s.folder }
+func (s *commitSource) Commit() error {
+	if s.commitErr != nil {
+		return s.commitErr
+	}
+	s.committed = true
+	return nil
+}
+
+// listFailSource always fails to list, mimicking an Exchange-throttled mailbox.
+type listFailSource struct {
+	folder    string
+	committed bool
+}
+
+func (s *listFailSource) ListIDs(context.Context, int, string) ([]string, string, error) {
+	return nil, "", errors.New("503 CommandConcurrencyLimitReached")
+}
+func (s *listFailSource) Get(context.Context, string) (*Message, error) {
+	return nil, errors.New("unused")
+}
+func (s *listFailSource) DownloadAttachment(context.Context, *Message, Attachment) ([]byte, error) {
+	return nil, errors.New("unused")
+}
+func (s *listFailSource) Folder() string { return s.folder }
+func (s *listFailSource) Commit() error  { s.committed = true; return nil }
+
+// TestRunSkipsSourceThatFailsToList proves one throttled source does not abort
+// the whole run: the other source syncs and commits, the failing one is skipped
+// and not committed, and Run returns no fatal error (#321).
+func TestRunSkipsSourceThatFailsToList(t *testing.T) {
+	out := t.TempDir()
+	good := &commitSource{folder: "good", ids: []string{"a", "b"}}
+	bad := &listFailSource{folder: "bad"}
+	stats, err := Run(context.Background(), SyncConfig{
+		Out:     out,
+		Workers: 2,
+		Force:   true,
+		Policy:  RetryPolicy{MaxAttempts: 1},
+		sources: []Source{good, bad},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.New != 2 {
+		t.Fatalf("New = %d, want 2", stats.New)
+	}
+	if !good.committed {
+		t.Fatalf("good source must commit")
+	}
+	if bad.committed {
+		t.Fatalf("throttled source must not commit")
+	}
+}
+
+// TestRunSkipsSourceWhenDownloadFails proves a download failure also isolates
+// the commit and does not abort the other source (#321).
+func TestRunSkipsSourceWhenDownloadFails(t *testing.T) {
+	out := t.TempDir()
+	good := &commitSource{folder: "good", ids: []string{"a"}}
+	bad := &commitSource{folder: "bad", ids: []string{"x"}, commitErr: nil}
+	badGet := &failingGetSource{commitSource: bad}
+	stats, err := Run(context.Background(), SyncConfig{
+		Out:     out,
+		Workers: 2,
+		Force:   true,
+		Policy:  RetryPolicy{MaxAttempts: 1},
+		sources: []Source{good, badGet},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.New != 1 || stats.Failed != 1 {
+		t.Fatalf("New=%d Failed=%d, want 1/1", stats.New, stats.Failed)
+	}
+	if !good.committed {
+		t.Fatalf("good source must commit")
+	}
+	if bad.committed {
+		t.Fatalf("source with a failed download must not commit")
+	}
+}
+
+// failingGetSource lists fine but fails on Get.
+type failingGetSource struct{ *commitSource }
+
+func (s *failingGetSource) Get(context.Context, string) (*Message, error) {
+	return nil, errors.New("503 transient")
+}
