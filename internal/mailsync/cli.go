@@ -34,6 +34,8 @@ type flagVals struct {
 	workers, limit, offset       int
 	force, dryRun, raw           bool
 	once, ocr, local             bool
+	throttle                     string
+	maxConc                      int
 }
 
 func Parser() *flaggy.Parser {
@@ -67,6 +69,8 @@ func bind(v *flagVals) *flaggy.Parser {
 	p.String(&v.brain, "", "brain", "watch: brain base URL (default http://127.0.0.1:8630)")
 	p.Bool(&v.ocr, "", "ocr", "watch: OCR attachments during conversion")
 	p.Bool(&v.local, "", "local", "skip IMAP sync; convert + push local tree only")
+	p.String(&v.throttle, "", "throttle", "min pause between M365 requests per mailbox, e.g. 250ms")
+	p.Int(&v.maxConc, "", "max-concurrency", "max sources (mailboxes) synced at once (default 1)")
 	return p
 }
 
@@ -94,16 +98,26 @@ func ParseCLI(args []string) (CLIConfig, int, error) {
 		v.out = filepath.Join(wd, "var", "corpus", "mail")
 	}
 	envVars := readEnv(v.env)
+	var throttle time.Duration
+	if v.throttle != "" {
+		d, err := time.ParseDuration(v.throttle)
+		if err != nil || d < 0 {
+			return CLIConfig{}, 2, fmt.Errorf("invalid -throttle %q: want a duration such as 250ms", v.throttle)
+		}
+		throttle = d
+	}
 	cfg := SyncConfig{
-		Out:     v.out,
-		Workers: v.workers,
-		Limit:   v.limit,
-		Offset:  v.offset,
-		Force:   v.force,
-		DryRun:  v.dryRun,
-		Raw:     v.raw,
-		Query:   v.query,
-		Policy:  RetryPolicy{},
+		Out:            v.out,
+		Workers:        v.workers,
+		Limit:          v.limit,
+		Offset:         v.offset,
+		Force:          v.force,
+		DryRun:         v.dryRun,
+		Raw:            v.raw,
+		Query:          v.query,
+		Policy:         RetryPolicy{},
+		Throttle:       throttle,
+		MaxConcurrency: v.maxConc,
 	}
 	out := CLIConfig{Sync: cfg, Env: v.env, Sources: v.srcs, Once: v.once, Brain: v.brain, OCR: v.ocr, Local: v.local}
 	for _, s := range strings.Split(v.srcs, ",") {
@@ -168,7 +182,7 @@ func Main(args []string) int {
 		return code
 	}
 	if cfg.Help {
-		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365,imap] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--force] [--raw] [--dry-run]")
+		fmt.Fprintln(os.Stderr, "usage: bin/mail/sync.go [--source onlyoffice,gmail,m365,imap] [--query GMAIL_Q] [--limit N] [--offset N] [--workers N] [--throttle 250ms] [--max-concurrency N] [--force] [--raw] [--dry-run]")
 		return 0
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)

@@ -12,7 +12,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -60,6 +62,11 @@ type M365Client struct {
 	client        *http.Client
 	mu            chan struct{}
 	token         *m365Token
+	// throttle is the minimum pause between successive Graph requests. It
+	// paces one mailbox; the sync driver sets it from SyncConfig.Throttle.
+	throttle time.Duration
+	lastMu   sync.Mutex
+	last     time.Time
 }
 
 func NewM365Client(creds M365Credentials) (*M365Client, error) {
@@ -74,6 +81,90 @@ func NewM365Client(creds M365Credentials) (*M365Client, error) {
 	}
 	c.mu <- struct{}{}
 	return c, nil
+}
+
+// pace blocks until at least c.throttle has elapsed since the previous Graph
+// request, implementing the per-mailbox request spacing from SyncConfig.Throttle.
+// With throttle <= 0 it is a no-op. Cancellation is honored.
+func (c *M365Client) pace(ctx context.Context) error {
+	if c.throttle <= 0 {
+		return nil
+	}
+	c.lastMu.Lock()
+	defer c.lastMu.Unlock()
+	if !c.last.IsZero() {
+		if wait := c.last.Add(c.throttle).Sub(time.Now()); wait > 0 {
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	}
+	c.last = time.Now()
+	return nil
+}
+
+// throttleCodes are Exchange/Graph concurrency-throttle markers. Exchange may
+// return them as JSON error codes or plain text; a substring match covers both.
+var throttleCodes = []string{
+	"ErrorDirectoryConcurrencyLimit",
+	"CommandConcurrencyLimitReached",
+	"ApplicationRequestQueueFull",
+	"Application Request Queue Full",
+}
+
+// throttleMaxWait caps a server-provided Retry-After so one mailbox cannot stall
+// the whole run indefinitely.
+const throttleMaxWait = 60 * time.Second
+
+// m365HTTPError classifies a non-200 Graph response. HTTP 429, HTTP 503 and
+// any body carrying an Exchange concurrency code are retriable; a Retry-After
+// header, when present, is attached as the requested wait. Everything else is
+// a plain (non-retriable) error.
+func m365HTTPError(path string, status int, header http.Header, body []byte) error {
+	after := parseRetryAfter(header.Get("Retry-After"))
+	code := ""
+	for _, c := range throttleCodes {
+		if strings.Contains(string(body), c) {
+			code = c
+			break
+		}
+	}
+	if code != "" || status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable {
+		if after > throttleMaxWait {
+			after = throttleMaxWait
+		}
+		if code == "" {
+			code = http.StatusText(status)
+		}
+		return &errRetry{
+			err:   fmt.Errorf("m365 %s: retriable %d %s", path, status, code),
+			after: after,
+		}
+	}
+	return fmt.Errorf("m365 %s: status %d: %s", path, status, truncate(string(body), 300))
+}
+
+// parseRetryAfter interprets a Retry-After header: delta-seconds or an
+// HTTP-date. Missing or malformed values yield 0.
+func parseRetryAfter(h string) time.Duration {
+	h = strings.TrimSpace(h)
+	if h == "" {
+		return 0
+	}
+	if s, err := strconv.Atoi(h); err == nil {
+		if s <= 0 {
+			return 0
+		}
+		return time.Duration(s) * time.Second
+	}
+	if t, err := http.ParseTime(h); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+	}
+	return 0
 }
 
 // accessToken returns a fresh bearer token, refreshing via the Azure AD token
@@ -351,6 +442,9 @@ func formatRecipient(r m365Recipient) string {
 func (c *M365Client) DownloadAttachment(ctx context.Context, mailbox, msgID, attID string) ([]byte, error) {
 	path := fmt.Sprintf("/v1.0/users/%s/messages/%s/attachments/%s/$value",
 		pathEscape(mailbox), pathEscape(msgID), pathEscape(attID))
+	if err := c.pace(ctx); err != nil {
+		return nil, err
+	}
 	tok, err := c.accessToken(ctx)
 	if err != nil {
 		return nil, err
@@ -367,12 +461,15 @@ func (c *M365Client) DownloadAttachment(ctx context.Context, mailbox, msgID, att
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<20))
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("m365 attachment %s: status %d: %s", attID, resp.StatusCode, truncate(string(body), 300))
+		return nil, m365HTTPError(path, resp.StatusCode, resp.Header, body)
 	}
 	return body, nil
 }
 
 func (c *M365Client) getJSON(ctx context.Context, path string, out any) error {
+	if err := c.pace(ctx); err != nil {
+		return err
+	}
 	tok, err := c.accessToken(ctx)
 	if err != nil {
 		return err
@@ -393,7 +490,7 @@ func (c *M365Client) getJSON(ctx context.Context, path string, out any) error {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("m365 %s: status %d: %s", path, resp.StatusCode, truncate(string(body), 300))
+		return m365HTTPError(path, resp.StatusCode, resp.Header, body)
 	}
 	if out != nil {
 		return json.Unmarshal(body, out)
@@ -423,6 +520,11 @@ type m365Source struct {
 }
 
 func (s *m365Source) Folder() string { return filepath.Join("m365", s.localpart) }
+
+// Sequential reports that one mailbox must be fetched one request at a time:
+// Exchange throttles concurrent Graph calls per mailbox
+// (CommandConcurrencyLimit). Run caps the worker count for such sources at 1.
+func (s *m365Source) Sequential() bool { return true }
 
 // loadFolders reads the persisted folder+delta state, or lists the mailbox's
 // folders (minus excluded, e.g. spam) on first run.

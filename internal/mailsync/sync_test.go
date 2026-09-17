@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -289,6 +292,39 @@ func TestParseCLIGmailQuery(t *testing.T) {
 	}
 }
 
+func TestParseCLIThrottleAndMaxConcurrency(t *testing.T) {
+	t.Setenv("M365_TENANT", "t")
+	t.Setenv("M365_CLIENT_ID", "c")
+	t.Setenv("M365_CLIENT_SECRET", "s")
+	t.Setenv("M365_USERS", "r@x.de")
+	cli, code, err := ParseCLI([]string{
+		"--source", "m365", "--out", t.TempDir(),
+		"--throttle", "250ms", "--max-concurrency", "3",
+	})
+	if err != nil || code != 0 {
+		t.Fatalf("ParseCLI: code=%d err=%v", code, err)
+	}
+	if cli.Sync.Throttle != 250*time.Millisecond {
+		t.Fatalf("Throttle = %v, want 250ms", cli.Sync.Throttle)
+	}
+	if cli.Sync.MaxConcurrency != 3 {
+		t.Fatalf("MaxConcurrency = %d, want 3", cli.Sync.MaxConcurrency)
+	}
+}
+
+func TestParseCLIInvalidThrottle(t *testing.T) {
+	_, code, err := ParseCLI([]string{
+		"--source", "m365", "--throttle", "soon",
+		"--env", filepath.Join(t.TempDir(), "empty.env"),
+	})
+	if err == nil {
+		t.Fatal("expected an error for a bad -throttle")
+	}
+	if code != 2 {
+		t.Fatalf("code = %d, want 2", code)
+	}
+}
+
 func b64(s string) string {
 	return base64.URLEncoding.EncodeToString([]byte(s))
 }
@@ -413,4 +449,308 @@ type failingGetSource struct{ *commitSource }
 
 func (s *failingGetSource) Get(context.Context, string) (*Message, error) {
 	return nil, errors.New("503 transient")
+}
+
+// TestRetryHonorsRetryAfter proves a server-provided Retry-After overrides the
+// exponential backoff (#321).
+func TestRetryHonorsRetryAfter(t *testing.T) {
+	attempts := 0
+	start := time.Now()
+	err := Retry(context.Background(), RetryPolicy{
+		MaxAttempts: 3, BaseDelay: time.Nanosecond, MaxDelay: time.Nanosecond, Jitter: 0.001,
+	}, func() error {
+		attempts++
+		if attempts == 1 {
+			return &errRetry{err: errors.New("throttle"), after: 150 * time.Millisecond}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", attempts)
+	}
+	if d := time.Since(start); d < 120*time.Millisecond {
+		t.Fatalf("Retry-After not honored: retried after %v", d)
+	}
+}
+
+// retryListSource throttles its ListIDs a bounded number of times, then
+// succeeds. It mimics an Exchange mailbox returning
+// CommandConcurrencyLimitReached with a Retry-After (#321).
+type retryListSource struct {
+	folder    string
+	ids       []string
+	failFirst int
+	mu        sync.Mutex
+	listCalls int
+	committed bool
+}
+
+func (s *retryListSource) ListIDs(context.Context, int, string) ([]string, string, error) {
+	s.mu.Lock()
+	s.listCalls++
+	n := s.listCalls
+	s.mu.Unlock()
+	if n <= s.failFirst {
+		return nil, "", &errRetry{err: errors.New("503 CommandConcurrencyLimitReached"), after: time.Millisecond}
+	}
+	return s.ids, "", nil
+}
+func (s *retryListSource) Get(_ context.Context, id string) (*Message, error) {
+	return &Message{ID: id}, nil
+}
+func (s *retryListSource) DownloadAttachment(context.Context, *Message, Attachment) ([]byte, error) {
+	return nil, errors.New("unused")
+}
+func (s *retryListSource) Folder() string { return s.folder }
+func (s *retryListSource) Commit() error  { s.committed = true; return nil }
+
+func testPolicy() RetryPolicy {
+	return RetryPolicy{MaxAttempts: 3, BaseDelay: time.Millisecond, MaxDelay: 5 * time.Millisecond, Jitter: 0.01}
+}
+
+// TestRunRetriesThrottledMailboxThenSyncs proves a throttled listing is
+// retried and, once the throttle clears, the mailbox syncs and commits (#321).
+func TestRunRetriesThrottledMailboxThenSyncs(t *testing.T) {
+	out := t.TempDir()
+	src := &retryListSource{folder: "m365/r", ids: []string{"m1", "m2"}, failFirst: 1}
+	stats, err := Run(context.Background(), SyncConfig{
+		Out: out, Workers: 4, Force: true, Policy: testPolicy(),
+		sources: []Source{src},
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.New != 2 {
+		t.Fatalf("New = %d, want 2", stats.New)
+	}
+	if src.listCalls != 2 {
+		t.Fatalf("listCalls = %d, want 2 (one throttle, one success)", src.listCalls)
+	}
+	if !src.committed {
+		t.Fatal("mailbox must commit after a successful retry")
+	}
+}
+
+// TestRunSkipsMailboxAfterBoundedThrottleRetries proves a mailbox that keeps
+// throttling is retried a bounded number of times, then skipped without
+// aborting the run; the other source still syncs (#321).
+func TestRunSkipsMailboxAfterBoundedThrottleRetries(t *testing.T) {
+	out := t.TempDir()
+	good := &commitSource{folder: "good", ids: []string{"a", "b"}}
+	bad := &retryListSource{folder: "m365/r", failFirst: 1000}
+	stats, err := Run(context.Background(), SyncConfig{
+		Out: out, Workers: 2, Force: true, Policy: testPolicy(),
+		sources: []Source{good, bad},
+	})
+	if err != nil {
+		t.Fatalf("Run must stay non-fatal: %v", err)
+	}
+	if stats.New != 2 {
+		t.Fatalf("New = %d, want 2 from the healthy source", stats.New)
+	}
+	if stats.Failed != 1 {
+		t.Fatalf("Failed = %d, want 1 (skipped mailbox)", stats.Failed)
+	}
+	if bad.listCalls != testPolicy().MaxAttempts {
+		t.Fatalf("listCalls = %d, want bounded %d", bad.listCalls, testPolicy().MaxAttempts)
+	}
+	if bad.committed {
+		t.Fatal("throttled mailbox must not commit")
+	}
+	if !good.committed {
+		t.Fatal("healthy source must commit")
+	}
+}
+
+// cancelSource cancels the run context on its first Get.
+type cancelSource struct {
+	folder    string
+	ids       []string
+	cancel    context.CancelFunc
+	mu        sync.Mutex
+	gets      int
+	committed bool
+}
+
+func (s *cancelSource) ListIDs(context.Context, int, string) ([]string, string, error) {
+	return s.ids, "", nil
+}
+func (s *cancelSource) Get(context.Context, string) (*Message, error) {
+	s.mu.Lock()
+	s.gets++
+	n := s.gets
+	s.mu.Unlock()
+	if n == 1 {
+		s.cancel()
+	}
+	return &Message{ID: "x"}, nil
+}
+func (s *cancelSource) DownloadAttachment(context.Context, *Message, Attachment) ([]byte, error) {
+	return nil, errors.New("unused")
+}
+func (s *cancelSource) Folder() string { return s.folder }
+func (s *cancelSource) Commit() error  { s.committed = true; return nil }
+
+// TestRunCancelDoesNotCommit proves a cancelled run never advances a source's
+// durable delta state, so a later run stays gap-free (#321).
+func TestRunCancelDoesNotCommit(t *testing.T) {
+	out := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	src := &cancelSource{folder: "m365/r", ids: []string{"1", "2", "3"}, cancel: cancel}
+	_, err := Run(ctx, SyncConfig{
+		Out: out, Workers: 1, Force: true, Policy: testPolicy(),
+		sources: []Source{src},
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Run err = %v, want context.Canceled", err)
+	}
+	if src.committed {
+		t.Fatal("cancelled run must not commit the source")
+	}
+}
+
+// TestRunRetryNoDuplicateWrites proves a retried message is written once and a
+// repeated run skips it instead of duplicating (#321).
+func TestRunRetryNoDuplicateWrites(t *testing.T) {
+	out := t.TempDir()
+	src := &flakyGetSource{folder: "m365/r", id: "m1"}
+	cfg := SyncConfig{Out: out, Workers: 2, Policy: testPolicy(), sources: []Source{src}}
+	stats, err := Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.New != 1 {
+		t.Fatalf("New = %d, want 1", stats.New)
+	}
+	if n := countMessageJSON(t, out); n != 1 {
+		t.Fatalf("message.json count = %d, want 1", n)
+	}
+	// Second run: the message is already on disk, so it is skipped, not
+	// re-fetched or duplicated.
+	stats2, err := Run(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("Run 2: %v", err)
+	}
+	if stats2.New != 0 || stats2.Skipped != 1 {
+		t.Fatalf("second run New=%d Skipped=%d, want 0/1", stats2.New, stats2.Skipped)
+	}
+	if n := countMessageJSON(t, out); n != 1 {
+		t.Fatalf("message.json count after rerun = %d, want 1", n)
+	}
+}
+
+// flakyGetSource throttles the first Get, then succeeds with one attachment.
+type flakyGetSource struct {
+	folder string
+	id     string
+	mu     sync.Mutex
+	gets   int
+}
+
+func (s *flakyGetSource) ListIDs(context.Context, int, string) ([]string, string, error) {
+	return []string{s.id}, "", nil
+}
+func (s *flakyGetSource) Get(context.Context, string) (*Message, error) {
+	s.mu.Lock()
+	s.gets++
+	n := s.gets
+	s.mu.Unlock()
+	if n == 1 {
+		return nil, &errRetry{err: errors.New("503 throttled"), after: time.Millisecond}
+	}
+	return &Message{ID: s.id, Attachments: []Attachment{{FileID: "a1", FileName: "x.pdf", StoredName: "x.pdf"}}}, nil
+}
+func (s *flakyGetSource) DownloadAttachment(context.Context, *Message, Attachment) ([]byte, error) {
+	return []byte("data"), nil
+}
+func (s *flakyGetSource) Folder() string { return s.folder }
+
+func countMessageJSON(t *testing.T, root string) int {
+	t.Helper()
+	var n int
+	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && info.Name() == "message.json" {
+			n++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	return n
+}
+
+// seqSource records the maximum number of concurrent Get calls. When
+// sequential is set, Run must never let more than one Get overlap.
+type seqSource struct {
+	folder     string
+	ids        []string
+	sequential bool
+	mu         sync.Mutex
+	inFlight   int
+	maxSeen    int
+	committed  bool
+}
+
+func (s *seqSource) ListIDs(context.Context, int, string) ([]string, string, error) {
+	return s.ids, "", nil
+}
+func (s *seqSource) Get(context.Context, string) (*Message, error) {
+	s.mu.Lock()
+	s.inFlight++
+	if s.inFlight > s.maxSeen {
+		s.maxSeen = s.inFlight
+	}
+	s.mu.Unlock()
+	time.Sleep(5 * time.Millisecond)
+	s.mu.Lock()
+	s.inFlight--
+	s.mu.Unlock()
+	return &Message{ID: "x"}, nil
+}
+func (s *seqSource) DownloadAttachment(context.Context, *Message, Attachment) ([]byte, error) {
+	return nil, errors.New("unused")
+}
+func (s *seqSource) Folder() string   { return s.folder }
+func (s *seqSource) Sequential() bool { return s.sequential }
+func (s *seqSource) Commit() error    { s.committed = true; return nil }
+
+// TestRunSequentialSourceKeepsOneInFlight proves a Sequencer source is fetched
+// one message at a time even when Workers and MaxConcurrency are high (#321).
+func TestRunSequentialSourceKeepsOneInFlight(t *testing.T) {
+	out := t.TempDir()
+	src := &seqSource{folder: "m365/r", sequential: true, ids: []string{"1", "2", "3", "4", "5"}}
+	if _, err := Run(context.Background(), SyncConfig{
+		Out: out, Workers: 8, MaxConcurrency: 4, Force: true, Policy: testPolicy(),
+		sources: []Source{src},
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if src.maxSeen != 1 {
+		t.Fatalf("max concurrent Get = %d, want 1 for a sequential source", src.maxSeen)
+	}
+}
+
+// TestRunParallelSourceUsesWorkers is the control: a non-sequential source may
+// run its messages concurrently, so the sequential test is not trivially true.
+func TestRunParallelSourceUsesWorkers(t *testing.T) {
+	out := t.TempDir()
+	src := &seqSource{folder: "m365/r", ids: []string{"1", "2", "3", "4", "5", "6", "7", "8"}}
+	src.sequential = false
+	if _, err := Run(context.Background(), SyncConfig{
+		Out: out, Workers: 4, MaxConcurrency: 1, Force: true, Policy: testPolicy(),
+		sources: []Source{src},
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if src.maxSeen < 2 {
+		t.Fatalf("max concurrent Get = %d, want >1 for a parallel source", src.maxSeen)
+	}
 }

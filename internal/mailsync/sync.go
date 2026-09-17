@@ -58,7 +58,10 @@ func (p RetryPolicy) delay(attempt int) time.Duration {
 	return time.Duration(d)
 }
 
-type errRetry struct{ err error }
+type errRetry struct {
+	err   error
+	after time.Duration // server-requested delay (Retry-After); 0 if none
+}
 
 func (e *errRetry) Error() string { return e.err.Error() }
 func (e *errRetry) Unwrap() error { return e.err }
@@ -66,6 +69,16 @@ func (e *errRetry) Unwrap() error { return e.err }
 func isRetriable(err error) bool {
 	var r *errRetry
 	return errors.As(err, &r)
+}
+
+// retryAfter returns the server-requested delay attached to a retriable error,
+// or 0 when there is none.
+func retryAfter(err error) time.Duration {
+	var r *errRetry
+	if errors.As(err, &r) {
+		return r.after
+	}
+	return 0
 }
 
 func retryWrap(err error) error {
@@ -79,7 +92,8 @@ func retryWrap(err error) error {
 }
 
 // Retry runs fn up to MaxAttempts times with exponential backoff between
-// attempts. Non-retriable errors abort immediately. Returns the last error.
+// attempts. Non-retriable errors abort immediately. A server-requested
+// Retry-After takes precedence over the computed backoff. Returns the last error.
 func Retry(ctx context.Context, policy RetryPolicy, fn func() error) error {
 	policy = policy.withDefaults()
 	var err error
@@ -93,8 +107,12 @@ func Retry(ctx context.Context, policy RetryPolicy, fn func() error) error {
 		if attempt == policy.MaxAttempts {
 			return fmt.Errorf("after %d attempts: %w", policy.MaxAttempts, err)
 		}
+		wait := policy.delay(attempt)
+		if ra := retryAfter(err); ra > 0 {
+			wait = ra
+		}
 		select {
-		case <-time.After(policy.delay(attempt)):
+		case <-time.After(wait):
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -117,6 +135,13 @@ type SyncConfig struct {
 	Raw     bool              // fetch raw RFC 822 (.eml) for RawMailer sources
 	Query   string            // Gmail search query; default in:inbox
 	Policy  RetryPolicy
+	// Throttle is the minimum pause between successive M365 Graph requests
+	// within one mailbox; 0 disables pacing (see M365Client.pace).
+	Throttle time.Duration
+	// MaxConcurrency is how many sources (mailboxes) are synced at once; 0 => 1.
+	// Per-mailbox sequentiality is always enforced for Sources implementing
+	// Sequencer, regardless of this value.
+	MaxConcurrency int
 	// sources is a test-only seam injecting pre-built Sources before the
 	// configured ones. Empty in production; Run never fills it.
 	sources []Source
@@ -153,6 +178,13 @@ type RawMailer interface {
 }
 type Committer interface {
 	Commit() error
+}
+
+// Sequencer marks a Source whose messages must be fetched one at a time (e.g.
+// an Exchange mailbox subject to CommandConcurrencyLimit). Run caps the worker
+// count for such a source at 1.
+type Sequencer interface {
+	Sequential() bool
 }
 
 type ooSource struct {
@@ -238,6 +270,9 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	if cfg.Workers <= 0 {
 		cfg.Workers = 4
 	}
+	if cfg.MaxConcurrency <= 0 {
+		cfg.MaxConcurrency = 1
+	}
 	if err := os.MkdirAll(cfg.Out, 0o755); err != nil {
 		return nil, err
 	}
@@ -266,6 +301,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 			if err != nil {
 				return nil, fmt.Errorf("m365 init for %s: %w", mb, err)
 			}
+			c.throttle = cfg.Throttle
 			local := strings.SplitN(mb, "@", 2)[0]
 			sources = append(sources, &m365Source{c: c, mailbox: mb, localpart: strings.ToLower(local), stateDir: stateDir, exclude: cfg.M365.excludeSet()})
 		}
@@ -285,15 +321,19 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 
 	stats := &SyncStats{}
 	var (
-		wg       sync.WaitGroup
 		mu       sync.Mutex
 		failures []string
 		failed   = map[Source]bool{}
 	)
-	var jobs []struct {
-		src Source
-		id  string
+	// unit is one source with the ids it will fetch, and the per-source worker
+	// count. Sequential sources (e.g. an Exchange mailbox) always use 1 so their
+	// requests never overlap.
+	type unit struct {
+		src  Source
+		ids  []string
+		conc int
 	}
+	var units []unit
 	for _, src := range sources {
 		var ids []string
 		// A source that fails to list (e.g. a mailbox throttled by Exchange)
@@ -323,50 +363,45 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 			ids = ids[:cfg.Limit]
 		}
 		stats.Checked += len(ids)
-		for _, id := range ids {
-			jobs = append(jobs, struct {
-				src Source
-				id  string
-			}{src: src, id: id})
+		conc := cfg.Workers
+		if s, ok := src.(Sequencer); ok && s.Sequential() {
+			conc = 1
 		}
+		units = append(units, unit{src: src, ids: ids, conc: conc})
 	}
 
-	jobsCh := make(chan struct {
-		src Source
-		id  string
-	})
-	for i := 0; i < cfg.Workers; i++ {
+	sem := make(chan struct{}, cfg.MaxConcurrency)
+	var wg sync.WaitGroup
+	for _, u := range units {
 		wg.Add(1)
-		go func() {
+		go func(u unit) {
 			defer wg.Done()
-			for j := range jobsCh {
-				status, err := processOne(ctx, j.src, j.id, cfg)
-				switch status {
-				case statusFailed:
-					mu.Lock()
-					failures = append(failures, j.src.Folder()+"/"+j.id+": "+err.Error())
-					failed[j.src] = true
-					mu.Unlock()
-					atomic.AddInt32(&stats.Failed, 1)
-				case statusNew:
-					atomic.AddInt32(&stats.New, 1)
-				case statusSkipped:
-					atomic.AddInt32(&stats.Skipped, 1)
-				}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				return
 			}
-		}()
+			defer func() { <-sem }()
+			newN, skipN, failN, fails := processSource(ctx, u.src, u.ids, cfg, u.conc)
+			atomic.AddInt32(&stats.New, newN)
+			atomic.AddInt32(&stats.Skipped, skipN)
+			atomic.AddInt32(&stats.Failed, failN)
+			if len(fails) > 0 {
+				mu.Lock()
+				failures = append(failures, fails...)
+				failed[u.src] = true
+				mu.Unlock()
+			}
+		}(u)
 	}
-	for _, j := range jobs {
-		select {
-		case jobsCh <- j:
-		case <-ctx.Done():
-			close(jobsCh)
-			wg.Wait()
-			return stats, ctx.Err()
-		}
-	}
-	close(jobsCh)
 	wg.Wait()
+
+	// A cancelled run may have listed more ids than it managed to download;
+	// committing now would persist a delta link over a gap. Bail out before
+	// advancing any durable source state.
+	if err := ctx.Err(); err != nil {
+		return stats, err
+	}
 
 	// Advance durable source state (e.g. delta links) only for sources whose
 	// whole listed batch downloaded. A killed or failed source stays retryable
@@ -388,6 +423,70 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 		fmt.Fprintf(os.Stderr, "sync: %d failures:\n  %s\n", len(failures), strings.Join(failures, "\n  "))
 	}
 	return stats, nil
+}
+
+// processSource fetches ids for one source using up to workers goroutines
+// (workers == 1 runs strictly sequentially). Failures are returned instead of
+// aborting, so the caller can keep syncing other sources.
+func processSource(ctx context.Context, src Source, ids []string, cfg SyncConfig, workers int) (newN, skipN, failN int32, failures []string) {
+	if workers <= 0 {
+		workers = 1
+	}
+	if workers == 1 {
+		for _, id := range ids {
+			status, err := processOne(ctx, src, id, cfg)
+			switch status {
+			case statusNew:
+				newN++
+			case statusSkipped:
+				skipN++
+			case statusFailed:
+				failN++
+				failures = append(failures, src.Folder()+"/"+id+": "+err.Error())
+			}
+			if ctx.Err() != nil {
+				break
+			}
+		}
+		return newN, skipN, failN, failures
+	}
+	var (
+		wg sync.WaitGroup
+		mu sync.Mutex
+	)
+	jobsCh := make(chan string)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for id := range jobsCh {
+				status, err := processOne(ctx, src, id, cfg)
+				switch status {
+				case statusNew:
+					atomic.AddInt32(&newN, 1)
+				case statusSkipped:
+					atomic.AddInt32(&skipN, 1)
+				case statusFailed:
+					atomic.AddInt32(&failN, 1)
+					mu.Lock()
+					failures = append(failures, src.Folder()+"/"+id+": "+err.Error())
+					mu.Unlock()
+				}
+			}
+		}()
+	}
+	for _, id := range ids {
+		select {
+		case jobsCh <- id:
+		case <-ctx.Done():
+			close(jobsCh)
+			wg.Wait()
+			return newN, skipN, failN, failures
+		}
+	}
+	close(jobsCh)
+	wg.Wait()
+	return newN, skipN, failN, failures
 }
 
 type status int
