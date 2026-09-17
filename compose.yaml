@@ -239,7 +239,7 @@ services:
     profiles: ["searxng"]
     image: docker.io/searxng/searxng:2026.8.10-0a118066d
     ports:
-      - "127.0.0.1:8888:8080"
+      - "127.0.0.1:${SEARXNG_PORT:-8888}:8080"
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:-}
     volumes:
