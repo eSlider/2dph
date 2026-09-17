@@ -1,0 +1,25 @@
+# Local edelweiss deployment override (gitignored, never upstream).
+#   docker compose -f compose.yaml -f compose.edelweiss.yml up -d brain mail-sync
+#
+# Mail: M365 (13 tenant mailboxes @edelweiss-pflegedienst.de), all folders, junk excluded.
+# Secrets: ~/.config/brain/m365.env (mounted /secret/m365.env).
+# Reuses the previous download tree at var/corpus/mail (incl. .m365 state).
+services:
+  # Base healthcheck probes /stats, which 502s here (search daemon in-process,
+  # KBSEARCH_NO_DAEMON=1). Use /health instead.
+  brain:
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--timeout=3", "http://127.0.0.1:8630/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+  mail-sync:
+    environment:
+      MAIL_SYNC_SRC: m365
+      MAIL_SYNC_ENV: /secret/m365.env
+      M365_USERS: "a@edelweiss-pflegedienst.de,info@edelweiss-pflegedienst.de,kontakt@edelweiss-pflegedienst.de,m.schumann@edelweiss-pflegedienst.de,pdl@edelweiss-pflegedienst.de,ea@edelweiss-pflegedienst.de,fax@edelweiss-pflegedienst.de,handys@edelweiss-pflegedienst.de,i.rudi@edelweiss-pflegedienst.de,lbnr@edelweiss-pflegedienst.de,Lilia.Olenberg@edelweiss-pflegedienst.de,Buchhaltung@edelweiss-pflegedienst.de,rechnung@edelweiss-pflegedienst.de"
+      M365_EXCLUDE_FOLDERS: junkemail
+      MAIL_SYNC_INDEX: "0"
+    # No HTTP server in the runner loop; the image healthcheck does not apply.
+    healthcheck:
+      disable: true

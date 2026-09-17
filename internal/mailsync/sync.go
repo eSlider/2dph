@@ -284,14 +284,33 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	}
 
 	stats := &SyncStats{}
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		failures []string
+		failed   = map[Source]bool{}
+	)
 	var jobs []struct {
 		src Source
 		id  string
 	}
 	for _, src := range sources {
-		ids, _, err := src.ListIDs(ctx, cfg.Offset+cfg.Limit, "")
+		var ids []string
+		// A source that fails to list (e.g. a mailbox throttled by Exchange)
+		// must not abort the whole run: retry transient errors, then skip this
+		// source and sync the rest.
+		err := Retry(ctx, cfg.Policy, func() error {
+			var lerr error
+			ids, _, lerr = src.ListIDs(ctx, cfg.Offset+cfg.Limit, "")
+			return retryWrap(lerr)
+		})
 		if err != nil {
-			return nil, fmt.Errorf("list %s: %w", src.Folder(), err)
+			mu.Lock()
+			failures = append(failures, src.Folder()+"/list: "+err.Error())
+			failed[src] = true
+			mu.Unlock()
+			atomic.AddInt32(&stats.Failed, 1)
+			continue
 		}
 		if cfg.Offset > 0 {
 			if cfg.Offset >= len(ids) {
@@ -312,11 +331,6 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 		}
 	}
 
-	var (
-		wg       sync.WaitGroup
-		mu       sync.Mutex
-		failures []string
-	)
 	jobsCh := make(chan struct {
 		src Source
 		id  string
@@ -331,6 +345,7 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 				case statusFailed:
 					mu.Lock()
 					failures = append(failures, j.src.Folder()+"/"+j.id+": "+err.Error())
+					failed[j.src] = true
 					mu.Unlock()
 					atomic.AddInt32(&stats.Failed, 1)
 				case statusNew:
@@ -353,21 +368,18 @@ func Run(ctx context.Context, cfg SyncConfig) (*SyncStats, error) {
 	close(jobsCh)
 	wg.Wait()
 
-	// Only advance durable source state (e.g. delta links) when everything
-	// downloaded. A killed or failed run must be retryable without gaps.
-	if len(failures) == 0 {
-		seen := map[Source]bool{}
-		for _, j := range jobs {
-			if seen[j.src] {
-				continue
-			}
-			seen[j.src] = true
-			if c, ok := j.src.(Committer); ok {
-				if err := c.Commit(); err != nil {
-					mu.Lock()
-					failures = append(failures, j.src.Folder()+"/commit: "+err.Error())
-					mu.Unlock()
-				}
+	// Advance durable source state (e.g. delta links) only for sources whose
+	// whole listed batch downloaded. A killed or failed source stays retryable
+	// without gaps; one failing source no longer blocks the others.
+	for _, src := range sources {
+		if failed[src] {
+			continue
+		}
+		if c, ok := src.(Committer); ok {
+			if err := c.Commit(); err != nil {
+				mu.Lock()
+				failures = append(failures, src.Folder()+"/commit: "+err.Error())
+				mu.Unlock()
 			}
 		}
 	}
