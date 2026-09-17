@@ -578,3 +578,110 @@ func TestCycleCorpusModeNoUpstreamIsNoop(t *testing.T) {
 		t.Fatalf("no-op did not clear freshness: %+v", v)
 	}
 }
+
+// TestNewestPackIncludesCorpus: a fresh file in Config.Corpus raises newestPack
+// above the unchanged mail/document packs, and an empty Corpus leaves the
+// previous value untouched (regression, #319).
+func TestNewestPackIncludesCorpus(t *testing.T) {
+	cfg, _, _, _ := setup(t)
+	base := newestPack(cfg, false, 0)
+	if base == 0 {
+		t.Fatal("baseline newestPack is zero")
+	}
+
+	dir := t.TempDir()
+	future := time.Now().Add(2 * time.Hour)
+	p := filepath.Join(dir, "skill.md")
+	if err := os.WriteFile(p, []byte("# skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, future, future); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Corpus = []string{dir}
+
+	got := newestPack(cfg, false, 0)
+	if got <= base {
+		t.Fatalf("corpus did not raise newestPack: got=%d base=%d", got, base)
+	}
+	if want := corpusNewest(cfg.Corpus); got != want {
+		t.Fatalf("newestPack = %d, want the corpus mtime %d", got, want)
+	}
+
+	cfg.Corpus = nil
+	if got := newestPack(cfg, false, 0); got != base {
+		t.Fatalf("empty Corpus changed newestPack: got=%d base=%d", got, base)
+	}
+}
+
+// TestCycleCorpusFreshnessPreventsSkip: editing only the external corpus (a new
+// skill file) must re-run the cycle even though mail and documents are
+// unchanged (#319).
+func TestCycleCorpusFreshnessPreventsSkip(t *testing.T) {
+	cfg, _, fd, dc := setup(t)
+	if _, err := Cycle(context.Background(), cfg, dc); err != nil {
+		t.Fatal(err)
+	}
+	// Baseline: an unchanged re-run is skipped.
+	if rep, err := Cycle(context.Background(), cfg, dc); err != nil || !rep.Skipped {
+		t.Fatalf("baseline re-run: rep=%+v err=%v, want skip", rep, err)
+	}
+
+	dir := t.TempDir()
+	future := time.Now().Add(2 * time.Hour)
+	p := filepath.Join(dir, "skill.md")
+	if err := os.WriteFile(p, []byte("# skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(p, future, future); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Corpus = []string{dir}
+
+	before := fd.stopped
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Skipped {
+		t.Fatalf("cycle skipped on a fresh corpus edit: %+v", rep)
+	}
+	if fd.stopped == before {
+		t.Fatalf("brain not bounced for the corpus edit")
+	}
+}
+
+// TestCycleCorpusOnlyNotNoop: an external corpus alone (no mail, no documents)
+// is enough to run the cycle — the no-upstream early return must not swallow it
+// (#319).
+func TestCycleCorpusOnlyNotNoop(t *testing.T) {
+	cfg, logPath, fd, dc := setup(t)
+	cfg.Hive = missingDir(t)
+	cfg.DocumentsHive = missingDir(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "skill.md"), []byte("# skill\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Corpus = []string{dir}
+
+	rep, err := Cycle(context.Background(), cfg, dc)
+	if err != nil {
+		t.Fatalf("corpus-only cycle: %v", err)
+	}
+	if rep.Skipped && strings.Contains(rep.Reason, "no mail canon") {
+		t.Fatalf("corpus-only cycle hit the no-upstream early return: %+v", rep)
+	}
+	if !rep.Indexed {
+		t.Fatalf("corpus-only cycle did not index: %+v", rep)
+	}
+	if fd.stopped != 1 || fd.started != 1 {
+		t.Fatalf("quiesce stop=%d start=%d, want 1/1", fd.stopped, fd.started)
+	}
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(logs), "--corpus "+dir) {
+		t.Fatalf("brain-index did not receive the corpus path:\n%s", logs)
+	}
+}

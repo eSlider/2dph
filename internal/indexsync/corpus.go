@@ -2,7 +2,11 @@
 // indexed by brain-index --corpus as part of the periodic cycle.
 package indexsync
 
-import "strings"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+)
 
 // StringList is a repeatable string flag value (flag.Value): every Set appends
 // in order, so `--corpus a --corpus b` yields [a b].
@@ -41,4 +45,30 @@ func ResolveCorpus(flags []string, env string) []string {
 		return out
 	}
 	return SplitCorpusEnv(env)
+}
+
+// corpusNewest returns the newest file mtime (UnixNano) under any of dirs
+// (#319). A blank or absent directory contributes zero and is not an error —
+// an external corpus not mounted yet must not make freshness fail. Directories
+// and symlinks are skipped so freshness tracks real corpus content.
+func corpusNewest(dirs []string) int64 {
+	var newest int64
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		_ = filepath.Walk(dir, func(_ string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			if info.Mode()&os.ModeSymlink != 0 {
+				return nil
+			}
+			if n := info.ModTime().UnixNano(); n > newest {
+				newest = n
+			}
+			return nil
+		})
+	}
+	return newest
 }

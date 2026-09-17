@@ -199,6 +199,12 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 		rep.CorpusMail = corpusNano > 0
 	}
 
+	// External corpus freshness (#319): editing only the skills tree is an
+	// upstream change. It must keep the cycle from short-circuiting when mail
+	// and documents are absent and must raise the freshness gate (newestPack)
+	// so a corpus-only edit is re-indexed.
+	corpusFresh := corpusNewest(cfg.Corpus)
+
 	// Freshness is the newest pack across the active trees; a missing tree
 	// counts as zero and is not an error (one upstream may not be produced yet).
 	packNano := newestPack(cfg, corpusMode, corpusNano)
@@ -210,8 +216,10 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 
 	// No upstream tree exists/is populated: nothing to import. This is a clean
 	// no-op, not a failure — an upstream without data yet is not an error.
+	// An external corpus with content still needs indexing, so it suppresses
+	// the early return (#319).
 	// Persist success so a stale last_error from an earlier cycle is cleared.
-	if !mailPresent && len(docs) == 0 {
+	if !mailPresent && len(docs) == 0 && corpusFresh == 0 {
 		rep.Skipped = true
 		rep.Reason = "no mail canon or gator packs (mail and documents absent)"
 		saveSuccess(cfg, channels, packNano)
@@ -357,9 +365,9 @@ func Run(ctx context.Context, cfg Config, dc *dockerctl.Client, onCycle func(Rep
 }
 
 // newestPack returns the newest parquet mtime across the active hives plus the
-// local corpus-mail mtime in corpus mode. A missing/empty tree contributes zero
-// and is not an error: an upstream that has not produced data yet must not make
-// freshness fail.
+// local corpus-mail mtime in corpus mode and the external corpus mtime (#319).
+// A missing/empty tree contributes zero and is not an error: an upstream that
+// has not produced data yet must not make freshness fail.
 func newestPack(cfg Config, corpusMode bool, corpusNano int64) int64 {
 	var newest int64
 	if !corpusMode && cfg.Hive != "" {
@@ -374,6 +382,9 @@ func newestPack(cfg Config, corpusMode bool, corpusNano int64) int64 {
 	}
 	if corpusNano > newest {
 		newest = corpusNano
+	}
+	if n := corpusNewest(cfg.Corpus); n > newest {
+		newest = n
 	}
 	return newest
 }
