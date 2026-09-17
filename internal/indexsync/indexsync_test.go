@@ -419,6 +419,44 @@ func TestCycleFailureSurfacesAndRestarts(t *testing.T) {
 	}
 }
 
+// TestCycleCorpusFlagsPerPath: every Config.Corpus entry must reach the
+// brain-index argv as its own --corpus flag, in the given (stable) order (#317).
+func TestCycleCorpusFlagsPerPath(t *testing.T) {
+	cfg, logPath, _, dc := setup(t)
+	cfg.Corpus = []string{"/skills", "/extra/corpus"}
+	if _, err := Cycle(context.Background(), cfg, dc); err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "brain-index --skip --db " + cfg.DB + " --corpus /skills --corpus /extra/corpus"
+	if !strings.Contains(string(logs), want) {
+		t.Fatalf("brain-index missing corpus flags %q:\n%s", want, logs)
+	}
+}
+
+// TestCycleCorpusEmptyKeepsIndexArgs: an empty Corpus must not change the
+// existing brain-index argv (regression, #317).
+func TestCycleCorpusEmptyKeepsIndexArgs(t *testing.T) {
+	cfg, logPath, _, dc := setup(t)
+	if _, err := Cycle(context.Background(), cfg, dc); err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	logs, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(logs)
+	if strings.Contains(got, "--corpus") {
+		t.Fatalf("empty Corpus emitted --corpus:\n%s", got)
+	}
+	if !strings.Contains(got, "brain-index --skip --db "+cfg.DB) {
+		t.Fatalf("brain-index baseline argv changed:\n%s", got)
+	}
+}
+
 // seedCorpusMail creates one message.md under the local 2dph M365 corpus so
 // corpus mode has a freshness signal and something to index.
 func seedCorpusMail(t *testing.T, root, id string) {

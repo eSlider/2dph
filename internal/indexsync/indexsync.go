@@ -66,6 +66,11 @@ type Config struct {
 	// DocumentText enables PDF body-text extraction for the document tree
 	// (T12 #310): doc-leaf --document-text. Default false = metadata-only.
 	DocumentText bool
+	// Corpus lists extra markdown corpora for brain-index --corpus (#317),
+	// e.g. the agent skills tree mounted at /skills. Each non-empty entry
+	// becomes its own --corpus flag in the given (stable) order; empty means
+	// no flag, keeping the argv unchanged.
+	Corpus []string
 }
 
 // WithDefaults fills the standard 2dph layout (no host-absolute paths).
@@ -285,6 +290,13 @@ func Cycle(ctx context.Context, cfg Config, dc *dockerctl.Client) (rep Report, e
 		if cfg.Since != "" {
 			idxArgs = append(idxArgs, "--since", cfg.Since)
 		}
+	}
+	// External corpora (#317): one --corpus per path, order preserved.
+	for _, dir := range cfg.Corpus {
+		if dir == "" {
+			continue
+		}
+		idxArgs = append(idxArgs, "--corpus", dir)
 	}
 	if out, err := runner(ctx, cfg.BrainIndexBin, idxArgs...); err != nil {
 		rep.Err = fmt.Sprintf("index: %v (%s)", err, lastLine(out))
