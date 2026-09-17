@@ -61,11 +61,27 @@ Lilia.Olenberg, Buchhaltung, rechnung`. Корпус:
 (`Get-/Test-ApplicationAccessPolicy`), в EAC отдельной страницы нет; заменена
 App RBAC.
 
-Exchange throttle: `rechnung@` периодически отвечает 503
+Exchange throttle: `rechnung@` периодически отвечает 429/503
 (`ErrorDirectoryConcurrencyLimit` / `CommandConcurrencyLimitReached` /
-`Application Request Queue Full`). Sync больше не падает целиком: сбой листинга
-одного источника ретраится (backoff), затем источник пропускается, остальные
-синкаются (`internal/mailsync/sync.go`).
+`Application Request Queue Full`). Sync это распознаёт в клиенте (`m365.go`) и
+адаптируется (`sync.go`):
+
+- график — **поочерёдно, по ящику** (concurrency 1): параллельные Graph-запросы
+  в один ящик сами нарываются на `CommandConcurrencyLimit`; `m365Source`
+  реализует `Sequencer`, `Run` даёт такому источнику ровно один воркер;
+- `Retry-After` (секунды или HTTP-дата) уважается и перебивает экспоненциальный
+  backoff с джиттером (cap `RetryPolicy.MaxDelay`); серверный `Retry-After`
+  ограничен сверху 60с, чтобы один ящик не подвесил прогон;
+- сбой листинга ящика ретраится ограниченно (`RetryPolicy.MaxAttempts`), затем
+  ящик пропускается (лог в stderr, non-fatal), остальные синкаются; commit delta
+  — только по успешным, поэтому пропущенный ящик до-синкается в следующий прогон
+  без дублей;
+- флаги: `--throttle <dur>` — пауза между Graph-запросами внутри ящика
+  (напр. `250ms`), `--max-concurrency N` — сколько ящиков/источников синкать
+  разом (по умолчанию 1).
+
+Идемпотентность: `message.json` пишется по детерминированному пути и
+пропускается при повторе, так что ретрай ящика не плодит дублей.
 
 ## mbox-импорт
 

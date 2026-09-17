@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 // newM365TestClient serves the Graph delta + message endpoints against a fake
@@ -399,3 +401,130 @@ func pathLast(p string) string {
 // deltaNext/deltaFinal are set per-test from the fake graph server URL so
 // deltaLink values always point back at the fake (never the real Graph).
 var deltaNext, deltaFinal string
+
+// TestM365HTTPErrorClassifiesThrottle proves the Graph client classifies
+// Exchange concurrency throttles (503 codes, 429, Retry-After) as retriable
+// and leaves other errors non-retriable (#321).
+func TestM365HTTPErrorClassifiesThrottle(t *testing.T) {
+	cases := []struct {
+		name     string
+		status   int
+		retryHdr string
+		body     string
+		want     bool
+		after    time.Duration
+	}{
+		{"dir-concurrency", 503, "", `{"error":{"code":"ErrorDirectoryConcurrencyLimit","message":"x"}}`, true, 0},
+		{"cmd-concurrency", 503, "", `503 CommandConcurrencyLimitReached`, true, 0},
+		{"too-many-requests", 429, "", `{"error":{"code":"TooManyRequests"}}`, true, 0},
+		{"429-no-body", 429, "", ``, true, 0},
+		{"503-iis-html", 503, "", `<HTML><HEAD><TITLE>Service Unavailable</TITLE></HEAD></HTML>`, true, 0},
+		{"503-retry-after", 503, "5", `oops`, true, 5 * time.Second},
+		{"plain-500", 500, "", `{"error":{"message":"boom"}}`, false, 0},
+	}
+	for _, tc := range cases {
+		h := http.Header{}
+		if tc.retryHdr != "" {
+			h.Set("Retry-After", tc.retryHdr)
+		}
+		err := m365HTTPError("/x", tc.status, h, []byte(tc.body))
+		if got := isRetriable(err); got != tc.want {
+			t.Errorf("%s: retriable = %v, want %v (%v)", tc.name, got, tc.want, err)
+		}
+		if got := retryAfter(err); got != tc.after {
+			t.Errorf("%s: after = %v, want %v", tc.name, got, tc.after)
+		}
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	if got := parseRetryAfter("7"); got != 7*time.Second {
+		t.Errorf("seconds: got %v, want 7s", got)
+	}
+	if got := parseRetryAfter(" 0 "); got != 0 {
+		t.Errorf("zero: got %v, want 0", got)
+	}
+	if got := parseRetryAfter("garbage"); got != 0 {
+		t.Errorf("garbage: got %v, want 0", got)
+	}
+	future := time.Now().Add(2 * time.Second).UTC().Format(http.TimeFormat)
+	if got := parseRetryAfter(future); got <= 0 {
+		t.Errorf("future date: got %v, want >0", got)
+	}
+	past := time.Now().Add(-2 * time.Second).UTC().Format(http.TimeFormat)
+	if got := parseRetryAfter(past); got != 0 {
+		t.Errorf("past date: got %v, want 0", got)
+	}
+}
+
+// TestM365Throttle503ThenSuccess exercises the full path: a 503 with the
+// Exchange code on the first delta call, success on the retry (#321).
+func TestM365Throttle503ThenSuccess(t *testing.T) {
+	var deltaCalls int32
+	graph := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/mailFolders"):
+			w.Write([]byte(`{"value":[{"id":"f-inbox","displayName":"Inbox","wellKnownName":"inbox"}]}`))
+		case strings.HasSuffix(r.URL.Path, "/messages/delta"):
+			if atomic.AddInt32(&deltaCalls, 1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte(`{"error":{"code":"CommandConcurrencyLimitReached"}}`))
+				return
+			}
+			w.Write([]byte(`{"value":[{"id":"m1"}]}`))
+		default:
+			w.WriteHeader(500)
+			w.Write([]byte(`{"error":{"message":"unexpected path"}}`))
+		}
+	})
+	c := newM365TestClient(t, graph)
+	s := &m365Source{
+		c: c, mailbox: "r@x.de", localpart: "r",
+		stateDir: filepath.Join(t.TempDir(), ".m365"), exclude: map[string]bool{},
+	}
+	var ids []string
+	err := Retry(context.Background(), RetryPolicy{
+		MaxAttempts: 4, BaseDelay: time.Millisecond, MaxDelay: 5 * time.Millisecond, Jitter: 0.01,
+	}, func() error {
+		var lerr error
+		ids, _, lerr = s.ListIDs(context.Background(), 0, "")
+		return lerr
+	})
+	if err != nil {
+		t.Fatalf("ListIDs after throttle: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "m1" {
+		t.Fatalf("ids = %v, want [m1]", ids)
+	}
+	if got := atomic.LoadInt32(&deltaCalls); got != 2 {
+		t.Fatalf("delta calls = %d, want 2 (throttle + success)", got)
+	}
+}
+
+// TestM365PaceEnforcesSpacing proves the per-mailbox throttle pauses between
+// Graph requests (#321).
+func TestM365PaceEnforcesSpacing(t *testing.T) {
+	graph := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"value":[]}`))
+	})
+	c := newM365TestClient(t, graph)
+	c.throttle = 40 * time.Millisecond
+	start := time.Now()
+	if err := c.getJSON(context.Background(), "/v1.0/a", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.getJSON(context.Background(), "/v1.0/b", nil); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d < 35*time.Millisecond {
+		t.Fatalf("requests not paced: two calls took %v", d)
+	}
+}
+
+func TestM365SourceIsSequential(t *testing.T) {
+	if !(&m365Source{}).Sequential() {
+		t.Fatal("an Exchange mailbox source must report Sequential")
+	}
+}
