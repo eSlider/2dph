@@ -1,0 +1,92 @@
+# Infinite sets — бесконечные мощности, диагональ, halting, логика множеств
+# (6.042J, глава 7). Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: infinite.strict.definition
+    domain: infinite-sets
+    name: "Strictly smaller (strict)"
+    form: "A strict B  iff  NOT (A surj B)"
+    statement: "One set is strictly smaller than another when no function from the first maps onto the second."
+    source: "6.042J §7.1"
+    executable: false
+    tags: [cardinality]
+
+  - id: infinite.schroder-bernstein
+    domain: infinite-sets
+    name: "Schröder-Bernstein theorem"
+    form: "A surj B ; B surj A  ⊢  A bij B"
+    statement: "If each of two sets can be mapped onto the other, then a bijection exists between them."
+    source: "6.042J §7.1"
+    executable: false
+    tags: [cardinality, theorem]
+
+  - id: infinite.countable.definition
+    domain: infinite-sets
+    name: "Countable set"
+    form: "C countable iff C finite or ℕ bij C ; equivalently ℕ surj C"
+    statement: "A set is countable when it is finite or can be listed in a bijection with the naturals; equivalently when the naturals surject onto it."
+    source: "6.042J §7.1.2"
+    executable: false
+    tags: [countable]
+
+  - id: infinite.add-element.bijection
+    domain: infinite-sets
+    name: "Infinity is different"
+    form: "b ∉ A  ⊢  A infinite iff A bij A ∪ {b}"
+    statement: "Adding one new element changes the size of a finite set but leaves an infinite set the same size."
+    source: "6.042J §7.1.1"
+    executable: false
+    tags: [cardinality]
+
+  - id: infinite.cantor.power-set
+    domain: infinite-sets
+    name: "Cantor's theorem"
+    form: "A strict pow(A)"
+    statement: "Every set is strictly smaller than its power set, so not all infinite sets have the same size."
+    source: "6.042J §7.1.3"
+    executable: false
+    tags: [theorem, diagonal]
+
+  - id: infinite.diagonal.argument
+    domain: infinite-sets
+    name: "Diagonal argument"
+    form: "any listing of infinite bit strings  ⊢  a string omitted by flipping the diagonal"
+    statement: "Flipping the diagonal of an alleged listing of all bit strings produces a string absent from the list, so no such listing is complete."
+    source: "6.042J §7.1.4"
+    executable: false
+    tags: [diagonal]
+
+  - id: infinite.halting.undecidable
+    domain: infinite-sets
+    name: "Halting problem is undecidable"
+    form: "decider for {s : program P_s halts on input s}  ⊢  contradiction by diagonalization"
+    statement: "No procedure decides for every program whether it halts on its own description; recognizable sets need not be decidable."
+    source: "6.042J §7.2"
+    executable: false
+    tags: [undecidable]
+
+  - id: infinite.russell.paradox
+    domain: infinite-sets
+    name: "Russell's paradox"
+    form: "W = {S : S ∉ S}  ⊢  W ∈ W iff W ∉ W"
+    statement: "Unrestricted set comprehension gives a contradiction, showing that not every describable collection is a set."
+    source: "6.042J §7.3.1"
+    executable: false
+    tags: [paradox]
+
+  - id: infinite.zfc.axioms
+    domain: infinite-sets
+    name: "ZFC axioms"
+    form: "extensionality, pairing, union, infinity, subset, power set, replacement, foundation, choice  ⊢  standard mathematics"
+    statement: "Zermelo-Fraenkel set theory with Choice fixes the allowed ways of forming sets and suffices to derive ordinary mathematics."
+    source: "6.042J §7.3.2"
+    executable: false
+    tags: [axioms, meta]
+
+  - id: infinite.foundation.no-self-member
+    domain: infinite-sets
+    name: "Foundation rules out self-membership"
+    form: "Foundation  ⊢  S ∉ S for every set S"
+    statement: "The Foundation axiom forbids a set from containing itself, which resolves Russell's paradox by showing that W is not a set."
+    source: "6.042J §7.3.3"
+    executable: false
+    tags: [axioms, paradox]

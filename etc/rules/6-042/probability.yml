@@ -1,0 +1,282 @@
+# Probability — пространства, условная вероятность, случайные величины,
+# неравенства и случайные блуждания (6.042J, главы 16–20).
+# Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: probability.sample-space.definition
+    domain: probability
+    name: "Sample space and events"
+    form: "countable nonempty S ; outcomes ω ∈ S ; any subset of S is an event"
+    statement: "A sample space is the set of outcomes of an experiment, and an event is any subset of outcomes."
+    source: "6.042J §16.5.1"
+    executable: false
+    tags: [space]
+
+  - id: probability.function.definition
+    domain: probability
+    name: "Probability function"
+    form: "Pr : S → ℝ ; Pr[ω] ≥ 0 ; Σ_{ω} Pr[ω] = 1 ; Pr[E] = Σ_{ω∈E} Pr[ω]"
+    statement: "A probability function assigns nonnegative weights to outcomes that sum to one, and the probability of an event is the sum of its outcomes."
+    source: "6.042J §16.5.1"
+    executable: false
+    tags: [space]
+
+  - id: probability.four-step-method
+    domain: probability
+    name: "Four-step method"
+    form: "find the sample space ; define events ; assign outcome probabilities ; sum outcomes in the event"
+    statement: "The four-step method models a random experiment by its sample space, its events, the outcome probabilities and the resulting event probabilities."
+    source: "6.042J §16.2"
+    executable: false
+    tags: [method]
+
+  - id: probability.tree.edge-product
+    domain: probability
+    name: "Probabilities from tree diagrams"
+    form: "Pr[outcome] = product of the edge probabilities on the root-to-leaf path"
+    statement: "Multiplying the conditional branch probabilities along a tree path gives the probability of that outcome."
+    source: "6.042J §16.2.3"
+    executable: false
+    tags: [method]
+
+  - id: probability.uniform.definition
+    domain: probability
+    name: "Uniform probability space"
+    form: "Pr[ω] equal for all ω  ⊢  Pr[E] = |E| / |S|"
+    statement: "In a uniform space every outcome is equally likely, so an event's probability is a ratio of set sizes."
+    source: "6.042J §16.5.3"
+    executable: false
+    tags: [space]
+
+  - id: probability.sum-rule
+    domain: probability
+    name: "Sum rule for disjoint events"
+    form: "E_i pairwise disjoint  ⊢  Pr[∪ E_i] = Σ Pr[E_i]"
+    statement: "The probabilities of pairwise disjoint events add."
+    source: "6.042J §16.5.2"
+    executable: false
+    tags: [rule]
+
+  - id: probability.complement.rule
+    domain: probability
+    name: "Complement rule"
+    form: "Pr[A̅] = 1 − Pr[A]"
+    statement: "The probability of the complement of an event is one minus the probability of the event."
+    source: "6.042J §16.5.2"
+    executable: false
+    tags: [rule]
+
+  - id: probability.inclusion-exclusion
+    domain: probability
+    name: "Inclusion-exclusion for events"
+    form: "Pr[A ∪ B] = Pr[A] + Pr[B] − Pr[A ∩ B]"
+    statement: "Inclusion-exclusion corrects the double counting when two events overlap."
+    source: "6.042J §16.5.2"
+    executable: false
+    tags: [rule]
+
+  - id: probability.union-bound
+    domain: probability
+    name: "Union bound"
+    form: "Pr[E1 ∪ … ∪ En] ≤ Pr[E1] + … + Pr[En]"
+    statement: "The union bound caps the probability that at least one of several events occurs by the sum of their probabilities."
+    source: "6.042J §16.5.2"
+    executable: false
+    tags: [rule, bound]
+
+  - id: probability.conditional.definition
+    domain: probability
+    name: "Conditional probability"
+    form: "Pr[A | B] = Pr[A ∩ B] / Pr[B]  for Pr[B] > 0"
+    statement: "Conditional probability restricts attention to the outcomes where the conditioning event occurs."
+    source: "6.042J §17.2"
+    executable: false
+    tags: [conditional]
+
+  - id: probability.product-rule
+    domain: probability
+    name: "Product rule for conditional probabilities"
+    form: "Pr[E1 ∩ … ∩ En] = Pr[E1] · Pr[E2 | E1] · … · Pr[En | E1 ∩ … ∩ E_{n−1}]"
+    statement: "The probability of a conjunction is the product of successive conditional probabilities."
+    source: "6.042J §17.4"
+    executable: false
+    tags: [conditional]
+
+  - id: probability.total-probability
+    domain: probability
+    name: "Law of total probability"
+    form: "E_i disjoint and covering  ⊢  Pr[A] = Σ Pr[A | E_i] · Pr[E_i]"
+    statement: "Averaging conditional probabilities over a partition of the sample space gives the unconditional probability."
+    source: "6.042J §17.5"
+    executable: false
+    tags: [conditional]
+
+  - id: probability.bayes.rule
+    domain: probability
+    name: "Bayes' rule"
+    form: "Pr[E1 | A] = Pr[A | E1] · Pr[E1] / Σ_i Pr[A | E_i] · Pr[E_i]"
+    statement: "Bayes' rule inverts a conditional probability using the law of total probability."
+    source: "6.042J §17.5"
+    executable: false
+    tags: [conditional]
+
+  - id: probability.independence.definition
+    domain: probability
+    name: "Independence of events"
+    form: "Pr[A | B] = Pr[A]  iff  Pr[A ∩ B] = Pr[A] · Pr[B]"
+    statement: "Events are independent when knowing that one occurs does not change the probability of the other; disjoint events of nonzero probability are never independent."
+    source: "6.042J §17.7"
+    executable: false
+    tags: [independence]
+
+  - id: probability.mutual-independence
+    domain: probability
+    name: "Mutual independence"
+    form: "every subset of the events satisfies Pr[∩] = Π Pr[·]  ⊢  mutually independent"
+    statement: "Events are mutually independent when every subset's intersection probability is the product of the members' probabilities."
+    source: "6.042J §17.8"
+    executable: false
+    tags: [independence]
+
+  - id: probability.random-variable.definition
+    domain: probability
+    name: "Random variable and indicator"
+    form: "R : S → V ; event [R = x] = {ω : R(ω) = x} ; I_E is 1 on E and 0 elsewhere"
+    statement: "A random variable maps outcomes to values, every assertion about its value defines an event, and an indicator encodes an event as a 0–1 variable."
+    source: "6.042J §18.1"
+    executable: false
+    tags: [variable]
+
+  - id: probability.distribution.pdf-cdf
+    domain: probability
+    name: "Probability density and cumulative distribution"
+    form: "PDF_R(x) = Pr[R = x] ; CDF_R(x) = Pr[R ≤ x] = Σ_{y≤x} PDF_R(y)"
+    statement: "The density gives the probability of each value and the cumulative function gives the probability of at most a given value."
+    source: "6.042J §18.3"
+    executable: false
+    tags: [distribution]
+
+  - id: probability.distribution.common
+    domain: probability
+    name: "Bernoulli, uniform and binomial distributions"
+    form: "Bernoulli: f_p(0) = 1 − p, f_p(1) = p ; uniform: f(v) = 1/n ; binomial: C(n, k) p^k (1 − p)^{n−k}"
+    statement: "Bernoulli, uniform and binomial families model indicators, equally likely values and counts of successes."
+    source: "6.042J §18.3"
+    executable: false
+    tags: [distribution]
+
+  - id: probability.expectation.definition
+    domain: probability
+    name: "Expectation"
+    form: "Ex[R] = Σ_ω R(ω) · Pr[ω] = Σ_x x · Pr[R = x]"
+    statement: "Expectation is the probability-weighted average value of a random variable."
+    source: "6.042J §18.4"
+    executable: false
+    tags: [expectation]
+
+  - id: probability.indicator.expectation
+    domain: probability
+    name: "Expectation of an indicator"
+    form: "Ex[I_A] = Pr[A]"
+    statement: "The expectation of the indicator of an event equals the probability of that event."
+    source: "6.042J §18.4.3"
+    executable: false
+    tags: [expectation]
+
+  - id: probability.expectation.linearity
+    domain: probability
+    name: "Linearity of expectation"
+    form: "Ex[Σ a_i R_i] = Σ a_i Ex[R_i]"
+    statement: "Expectation is linear even when the random variables are dependent."
+    source: "6.042J §18.5"
+    executable: false
+    tags: [expectation]
+
+  - id: probability.conditional-expectation
+    domain: probability
+    name: "Conditional expectation"
+    form: "Ex[R | A] = Σ_ω R(ω) · Pr[ω | A]"
+    statement: "Conditional expectation averages a random variable over the outcomes in a given event."
+    source: "6.042J §18.4.5"
+    executable: false
+    tags: [expectation, conditional]
+
+  - id: probability.markov
+    domain: probability
+    name: "Markov's theorem"
+    form: "R ≥ 0 and x > 0  ⊢  Pr[R ≥ x] ≤ Ex[R] / x"
+    statement: "Markov's theorem bounds the upper tail of a nonnegative random variable using only its mean."
+    source: "6.042J §19.1"
+    executable: false
+    tags: [bound]
+
+  - id: probability.variance.definition
+    domain: probability
+    name: "Variance and standard deviation"
+    form: "Var[R] = Ex[(R − Ex[R])²] ; σ_R = √Var[R]"
+    statement: "Variance is the mean squared deviation from the mean, and its square root is the standard deviation."
+    source: "6.042J §19.2.2"
+    executable: false
+    tags: [variance]
+
+  - id: probability.chebyshev
+    domain: probability
+    name: "Chebyshev's theorem"
+    form: "Pr[|R − Ex[R]| ≥ x] ≤ Var[R] / x²"
+    statement: "Chebyshev's theorem bounds how far a random variable can deviate from its mean using the variance."
+    source: "6.042J §19.2"
+    executable: false
+    tags: [bound, variance]
+
+  - id: probability.variance.formula
+    domain: probability
+    name: "Formula for variance"
+    form: "Var[R] = Ex[R²] − (Ex[R])²"
+    statement: "Variance equals the mean of the square minus the square of the mean."
+    source: "6.042J §19.3.1"
+    executable: false
+    tags: [variance]
+
+  - id: probability.variance.sum
+    domain: probability
+    name: "Variance of a sum of independent variables"
+    form: "R and S independent  ⊢  Var[R + S] = Var[R] + Var[S]"
+    statement: "Variances add for independent random variables, and pairwise independence already suffices."
+    source: "6.042J §19.3.4"
+    executable: false
+    tags: [variance]
+
+  - id: probability.chernoff
+    domain: probability
+    name: "Chernoff bound"
+    form: "T = Σ T_i with 0 ≤ T_i ≤ 1 independent and c ≥ 1  ⊢  Pr[T ≥ c Ex[T]] ≤ e^{−β(c) Ex[T]}, β(c) = c ln c − c + 1"
+    statement: "The Chernoff bound gives exponentially small upper bounds on a sum of bounded independent variables significantly exceeding its mean."
+    source: "6.042J §19.6.2"
+    executable: false
+    tags: [bound]
+
+  - id: probability.murphy.law
+    domain: probability
+    name: "Murphy's law"
+    form: "T = Σ T_i a sum of independent indicators  ⊢  Pr[T = 0] ≤ e^{−Ex[T]}"
+    statement: "If the expected number of independent events is large, then at least one of them occurs with high probability."
+    source: "6.042J §19.6.8"
+    executable: false
+    tags: [bound]
+
+  - id: probability.gamblers-ruin
+    domain: probability
+    name: "Gambler's ruin"
+    form: "start n, target T, win probability p, r = (1 − p)/p  ⊢  Pr[win] = n/T if p = 1/2, else (r^n − 1)/(r^T − 1)"
+    statement: "The chance of reaching the target before ruin is linear in the starting stake for a fair game and geometric in the biased game."
+    source: "6.042J §20.1"
+    executable: false
+    tags: [random-walk]
+
+  - id: probability.random-walk.stationary
+    domain: probability
+    name: "Stationary distribution and page rank"
+    form: "π(x) = Σ_{y→x} π(y) / outdeg(y) ; Σ_x π(x) = 1  ⊢  stationary distribution"
+    statement: "A stationary distribution gives the long-run probability that a random walk is at each vertex, and page rank is such a distribution for the web graph."
+    source: "6.042J §20.2.3"
+    executable: false
+    tags: [random-walk]
