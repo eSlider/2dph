@@ -1,0 +1,245 @@
+# Logic — пропозициональная и предикатная логика (6.042J, §3).
+# Сжатая производная каталога: формулировки своими словами (epic #324).
+rules:
+  - id: logic.converse.definition
+    domain: logic
+    name: Converse
+    form: "P → Q  ⊢  converse is Q → P (not equivalent)"
+    statement: The converse of an implication swaps its two sides and is generally not equivalent to the original.
+    source: "6.042J §3.3.1"
+    executable: false
+    tags: [implication]
+
+  - id: logic.valid.definition
+    domain: logic
+    name: Valid formula
+    form: "true under every variable assignment  ⊢  valid(F)"
+    statement: A formula is valid when it is true for every assignment of truth values to its variables.
+    source: "6.042J §3.3.2"
+    executable: false
+    tags: [validity]
+
+  - id: logic.satisfiable.definition
+    domain: logic
+    name: Satisfiable formula
+    form: "∃ an assignment making F true  ⊢  satisfiable(F)"
+    statement: A formula is satisfiable when some assignment of truth values makes it true.
+    source: "6.042J §3.3.2"
+    executable: false
+    tags: [satisfiability]
+
+  - id: logic.equiv.validity
+    domain: logic
+    name: Equivalence as validity
+    form: "valid(F ↔ G)  ⊢  F ≡ G"
+    statement: Two formulas are equivalent exactly when their biconditional is valid.
+    source: "6.042J §3.3.2"
+    executable: true
+    tags: [equivalence, validity]
+
+  - id: logic.valid.excluded-middle
+    domain: logic
+    name: Excluded middle
+    form: "⊢  P ∨ ¬P"
+    statement: A proposition is either true or false; the disjunction with its negation is valid.
+    source: "6.042J §3.3.2"
+    executable: true
+    tags: [validity]
+
+  - id: logic.valid.implication-transitive
+    domain: logic
+    name: Transitivity of implication
+    form: "(P → Q) ∧ (Q → R)  ⊢  P → R"
+    statement: Implication is transitive; the corresponding formula is valid.
+    source: "6.042J §3.3.2"
+    executable: true
+    tags: [validity, implication]
+
+  - id: logic.satisfiable.dual
+    domain: logic
+    name: Satisfiability and validity duality
+    form: "satisfiable(F) ≡ ¬valid(¬F)"
+    statement: A formula is satisfiable exactly when its negation is not valid.
+    source: "6.042J §3.3.2"
+    executable: true
+    tags: [satisfiability, validity]
+
+  - id: logic.normal-form.disjunctive
+    domain: logic
+    name: Disjunctive normal form
+    form: "any propositional formula  ⊢  OR of AND-terms"
+    statement: Every propositional formula is equivalent to a disjunctive form, an OR of AND-terms of variables and their negations.
+    source: "6.042J §3.4.1"
+    executable: false
+    tags: [normal-form]
+
+  - id: logic.equiv.de-morgan
+    domain: logic
+    name: De Morgan's laws
+    form: "¬(P ∧ Q) ≡ ¬P ∨ ¬Q ;  ¬(P ∨ Q) ≡ ¬P ∧ ¬Q"
+    statement: Negation distributes over a compound by flipping the connective and negating both parts.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, negation]
+
+  - id: logic.equiv.implication-material
+    domain: logic
+    name: Material implication
+    form: "P → Q ≡ ¬P ∨ Q"
+    statement: An implication is equivalent to the disjunction of the negated premise with the conclusion.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, implication]
+
+  - id: logic.equiv.contrapositive
+    domain: logic
+    name: Contrapositive equivalence
+    form: "P → Q ≡ ¬Q → ¬P"
+    statement: An implication is logically equivalent to its contrapositive.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, implication]
+
+  - id: logic.equiv.double-negation
+    domain: logic
+    name: Double negation
+    form: "¬¬P ≡ P"
+    statement: Negating a negation returns the original proposition.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, negation]
+
+  - id: logic.equiv.idempotent
+    domain: logic
+    name: Idempotence
+    form: "P ∧ P ≡ P ;  P ∨ P ≡ P"
+    statement: Repeating a conjunct or disjunct changes nothing.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence]
+
+  - id: logic.equiv.commutative
+    domain: logic
+    name: Commutativity
+    form: "P ∧ Q ≡ Q ∧ P ;  P ∨ Q ≡ Q ∨ P"
+    statement: Conjunction and disjunction do not depend on the order of their operands.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence]
+
+  - id: logic.equiv.associative
+    domain: logic
+    name: Associativity
+    form: "(P ∧ Q) ∧ R ≡ P ∧ (Q ∧ R) ;  (P ∨ Q) ∨ R ≡ P ∨ (Q ∨ R)"
+    statement: Conjunction and disjunction may be regrouped freely.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence]
+
+  - id: logic.equiv.distributive
+    domain: logic
+    name: Distributivity
+    form: "P ∧ (Q ∨ R) ≡ (P ∧ Q) ∨ (P ∧ R) ;  P ∨ (Q ∧ R) ≡ (P ∨ Q) ∧ (P ∨ R)"
+    statement: Conjunction distributes over disjunction, and disjunction over conjunction.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence]
+
+  - id: logic.equiv.identity
+    domain: logic
+    name: Identity laws
+    form: "P ∧ T ≡ P ;  P ∨ F ≡ P"
+    statement: Conjoining with true and disjoining with false leave a proposition unchanged.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, constants]
+
+  - id: logic.equiv.annihilator
+    domain: logic
+    name: Annihilator laws
+    form: "P ∨ T ≡ T ;  P ∧ F ≡ F"
+    statement: A disjunction with true is true, and a conjunction with false is false.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, constants]
+
+  - id: logic.equiv.absorption
+    domain: logic
+    name: Absorption laws
+    form: "P ∨ (P ∧ Q) ≡ P ;  P ∧ (P ∨ Q) ≡ P"
+    statement: A proposition absorbs a compound built from itself and another proposition.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence]
+
+  - id: logic.equiv.iff
+    domain: logic
+    name: Biconditional as paired implications
+    form: "P ↔ Q ≡ (P → Q) ∧ (Q → P)"
+    statement: An if-and-only-if is equivalent to the conjunction of both implications.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [equivalence, iff]
+
+  - id: logic.inference.modus-ponens
+    domain: logic
+    name: Modus ponens
+    form: "P ; P → Q  ⊢  Q"
+    statement: From a proposition and an implication with it as premise, conclude the implication's conclusion.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [inference, implication]
+
+  - id: logic.inference.modus-tollens
+    domain: logic
+    name: Modus tollens
+    form: "¬Q ; P → Q  ⊢  ¬P"
+    statement: From the negation of an implication's conclusion, conclude the negation of its premise.
+    source: "6.042J §3.4"
+    executable: true
+    tags: [inference, implication]
+
+  - id: logic.sat.problem
+    domain: logic
+    name: The SAT problem
+    form: "formula F over n variables  ⊢  is there an assignment making F true?"
+    statement: SAT asks whether a given propositional formula is satisfiable; it is the canonical hard search problem.
+    source: "6.042J §3.5"
+    executable: false
+    tags: [sat, complexity]
+
+  - id: logic.predicate.definition
+    domain: logic
+    name: Predicate
+    form: "P(x) is a predicate  ⊢  P(a) is a proposition"
+    statement: A predicate becomes a proposition when its variable is given a value.
+    source: "6.042J §3.6"
+    executable: false
+    tags: [predicate]
+
+  - id: logic.quantifier.negation
+    domain: logic
+    name: Quantifier negation
+    form: "¬∀x P(x) ≡ ∃x ¬P(x) ;  ¬∃x P(x) ≡ ∀x ¬P(x)"
+    statement: Negating a quantifier flips it and moves the negation onto the predicate.
+    source: "6.042J §3.6"
+    executable: true
+    tags: [quantifier, negation]
+
+  - id: logic.quantifier.distribution
+    domain: logic
+    name: Distribution of a quantified implication
+    form: "∀x (P → Q(x)) ≡ P → ∀x Q(x)  (x not free in P)"
+    statement: When a proposition does not depend on the bound variable, a universal implication can be rewritten with the quantifier inside.
+    source: "6.042J §3.6"
+    executable: true
+    tags: [quantifier, implication]
+
+  - id: logic.quantifier.swap-universal
+    domain: logic
+    name: Swapping universal quantifiers
+    form: "∀x ∀y P(x, y) ≡ ∀y ∀x P(x, y)"
+    statement: Adjacent universal quantifiers of the same kind may be reordered.
+    source: "6.042J §3.6"
+    executable: true
+    tags: [quantifier]

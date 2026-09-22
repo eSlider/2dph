@@ -27,7 +27,8 @@ import (
 type Domain string
 
 const (
-	DomainProofs      Domain = "proofs"        // логика, методы доказательств
+	DomainProofs      Domain = "proofs"        // методы доказательств, well ordering
+	DomainLogic       Domain = "logic"         // пропозициональная/предикатная логика
 	DomainSets        Domain = "sets"          // множества, отношения, функции, мощности
 	DomainInduction   Domain = "induction"     // индукция, рекурсивные типы, state machines
 	DomainInfinite    Domain = "infinite-sets" // бесконечные мощности, halting
@@ -41,6 +42,7 @@ const (
 // domains — допустимые значения Domain (валидация каталога).
 var domains = map[Domain]bool{
 	DomainProofs:      true,
+	DomainLogic:       true,
 	DomainSets:        true,
 	DomainInduction:   true,
 	DomainInfinite:    true,
@@ -182,8 +184,8 @@ func Validate(rs []Rule) error {
 			return fmt.Errorf("rule %s: form is required", where)
 		case r.Source == "":
 			return fmt.Errorf("rule %s: source is required", where)
-		case r.Executable && !strings.Contains(r.Form, "⊢"):
-			return fmt.Errorf("rule %s: executable rule needs a derivation form (premises ⊢ conclusion)", where)
+		case r.Executable && !strings.Contains(r.Form, "⊢") && !strings.Contains(r.Form, "≡"):
+			return fmt.Errorf("rule %s: executable rule needs a derivation or equivalence form (⊢ / ≡)", where)
 		}
 		seen[r.ID] = true
 	}
