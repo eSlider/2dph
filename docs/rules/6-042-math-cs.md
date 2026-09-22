@@ -26,6 +26,22 @@ GitHub mirror (rule #190); the extractor keeps its artifacts in gitignored
 claims and premises. Domain theorems (number theory, graphs, probability) are
 catalogued for retrieval and agent reasoning, not run as audit checks.
 
+## Executable fragment (P3, issue #329)
+
+The audit engine (`internal/facts`) does not run the whole `executable` set.
+It runs exactly the rules whose premise shape exists in the claim model:
+
+| Rule id | Where it runs |
+|---------|---------------|
+| `logic.inference.modus-ponens` | `internal/facts` `Derive` / `CheckInference` |
+| `logic.inference.modus-tollens` | `internal/facts` `Derive` / `CheckInference` |
+| `proofs.contradiction.indirect`, Vinogradov set | `internal/facts/formal.go` |
+
+`De Morgan` and the quantifier rules stay **reference only** for now: the claim
+model has no connectives or quantifiers to rewrite, so wiring them would be
+dead code. They become executable when a formula-bearing claim shape exists.
+Everything else in the catalog is retrieval/vocabulary for the agent.
+
 ## Coverage
 
 | File | Domain | Rules |
