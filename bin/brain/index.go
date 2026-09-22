@@ -62,6 +62,7 @@ func gitRepoRoot() string {
 func sources(v indexFlags, root string) []contract.Source {
 	ss := []contract.Source{
 		corpus.Docs{Root: root, ExtraDirs: v.corpus, NoDefaults: v.noDefaults},
+		corpus.Rules{Root: root},
 	}
 	if v.withMail {
 		ss = append(ss, corpus.Mail{Root: root, Since: v.since})
