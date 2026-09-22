@@ -1,0 +1,10 @@
+# Каталог правил 6.042J — provenance источника (epic #324).
+#
+# ВАЖНО: лицензированный текст книги (PDF/plain text) НЕ хранится в репозитории
+# и не попадает в GitHub-зеркало (#190). Здесь только отпечаток артефакта,
+# извлечённого в gitignored var/rules/6-042/ (bin/rules/book.go).
+source: "https://ocw.mit.edu/courses/6-042j-mathematics-for-computer-science-spring-2015/mit6_042js15_textbook.pdf"
+edition: "Mathematics for Computer Science — Eric Lehman, F. Thomson Leighton, Albert Meyer; revised 2015-05-18"
+license: "CC BY-NC-SA 3.0"
+sha256: "a07e73979a55f0be10633fcba12c0195f4475288a9b84331c8eb0de0e0a1571a"
+pages: 920

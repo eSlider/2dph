@@ -41,6 +41,7 @@ domain area it acts on:
 | `bin/brain` | `index.go` / `add.go` | bulk rebuild / incremental write |
 | `bin/brain` | `serve.go` | HTTP API + OpenAPI/MCP |
 | `bin/facts` | `extract.go` / `audit.go` / `crm.go` | 2-source pairing, confidence, CRM proof |
+| `bin/rules` | `book.go` | rule-source extraction (PDF → gitignored chapter text) |
 | `bin/mail` | `sync.go` / `import.go` / `ocr.go` | mail ETL (Gmail/OO/M365) |
 | `bin/web` | `search.go` | SearXNG second source |
 | `bin/git` | `import.go` | commit history leafs |
