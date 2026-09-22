@@ -1,0 +1,120 @@
+# Proofs — методы доказательств и well ordering (6.042J, часть I).
+# Сжатая производная каталога: формулировки своими словами, текст книги не
+# копируется (epic #324). Источник — MIT 6.042J, см. index.yml.
+rules:
+  - id: proofs.axiomatic.method
+    domain: proofs
+    name: The axiomatic method
+    form: "axioms + logical deductions  ⊢  proved proposition"
+    statement: A proof is a chain of logical deductions leading to the proposition from a set of axioms and previously proved statements.
+    source: "6.042J §1.3"
+    executable: false
+    tags: [meta, axiom]
+
+  - id: proofs.proposition.terms
+    domain: proofs
+    name: Theorem, lemma, corollary
+    form: "proved proposition  ⊢  theorem | lemma | corollary"
+    statement: Important proved propositions are theorems; a preliminary proposition useful for later proofs is a lemma; a proposition following in a few steps from a theorem is a corollary.
+    source: "6.042J §1.3"
+    executable: false
+    tags: [meta]
+
+  - id: proofs.implication.assume
+    domain: proofs
+    name: Proving an implication (assume-derive)
+    form: "assume P ; derive Q  ⊢  P → Q"
+    statement: To prove that P implies Q, write "assume P" and then show that Q logically follows.
+    source: "6.042J §1.5.1"
+    executable: true
+    tags: [implication, method]
+
+  - id: proofs.implication.contrapositive
+    domain: proofs
+    name: Proving the contrapositive
+    form: "¬Q → ¬P  ⊢  P → Q"
+    statement: An implication and its contrapositive are equivalent, so a proof of not-Q implies not-P is a proof of P implies Q.
+    source: "6.042J §1.5.2"
+    executable: true
+    tags: [implication, method]
+
+  - id: proofs.iff.two-implications
+    domain: proofs
+    name: Proving an iff by two implications
+    form: "P → Q ; Q → P  ⊢  P ↔ Q"
+    statement: An if-and-only-if statement is equivalent to the conjunction of the two implications, so prove each direction separately.
+    source: "6.042J §1.6.1"
+    executable: true
+    tags: [iff, method]
+
+  - id: proofs.iff.chain
+    domain: proofs
+    name: Proving an iff by a chain of equivalences
+    form: "P ↔ R1 ; R1 ↔ R2 ; … ; Rk ↔ Q  ⊢  P ↔ Q"
+    statement: Chain equivalent statements from P to Q; the result is an if-and-only-if proof.
+    source: "6.042J §1.6.2"
+    executable: true
+    tags: [iff, method]
+
+  - id: proofs.cases.exhaustive
+    domain: proofs
+    name: Proof by cases
+    form: "P1 ∨ … ∨ Pn ; (P1 → Q) ; … ; (Pn → Q)  ⊢  Q"
+    statement: Split the argument into cases that together cover all possibilities and prove the claim in each case.
+    source: "6.042J §1.7"
+    executable: true
+    tags: [cases, method]
+
+  - id: proofs.contradiction.indirect
+    domain: proofs
+    name: Proof by contradiction
+    form: "¬P → false  ⊢  P"
+    statement: Assume the proposition false and derive a contradiction; since a false fact cannot be true, the proposition must hold.
+    source: "6.042J §1.8"
+    executable: true
+    tags: [contradiction, method]
+
+  - id: wellordering.principle
+    domain: proofs
+    name: Well Ordering Principle
+    form: "S ⊆ ℕ ; S ≠ ∅  ⊢  S has a least element"
+    statement: Every nonempty set of nonnegative integers has a smallest element.
+    source: "6.042J §2.1"
+    executable: false
+    tags: [axiom, numbers]
+
+  - id: wellordering.counterexample.template
+    domain: proofs
+    name: Well-ordering proof template
+    form: "C = {n ∈ ℕ : ¬P(n)} ; C ≠ ∅ → contradiction  ⊢  ∀n P(n)"
+    statement: Define the set of counterexamples, assume it is nonempty, take its least element, derive a contradiction, and conclude that no counterexamples exist.
+    source: "6.042J §2.2"
+    executable: true
+    tags: [well-ordering, method]
+
+  - id: wellordering.minimum.counterexample
+    domain: proofs
+    name: Minimum counterexample
+    form: "c = least counterexample ; ∀k < c P(k)  ⊢  P(c)"
+    statement: At the least counterexample the property is already known to hold for every smaller number, which is exactly the strong-induction premise.
+    source: "6.042J §2.2"
+    executable: true
+    tags: [well-ordering, induction]
+
+  - id: number.factorization.into-primes
+    domain: number-theory
+    name: Factorization into primes
+    form: "n > 1  ⊢  n = p1·p2·…·pk with each pi prime"
+    statement: Every integer greater than one is a product of primes; the proof uses well ordering on the least integer that cannot be factored.
+    source: "6.042J §2.3"
+    executable: false
+    tags: [primes, factorization]
+
+  - id: wellordering.well-ordered-set
+    domain: proofs
+    name: Well ordered set
+    form: "every nonempty subset has a least element  ⊢  the set is well ordered"
+    statement: A set is well ordered when each of its nonempty subsets has a least element.
+    source: "6.042J §2.4"
+    executable: false
+    tags: [orders]

@@ -81,3 +81,32 @@ func TestLoadMissingIndex(t *testing.T) {
 		t.Fatal("LoadIndex accepted a dir without index.yml")
 	}
 }
+
+// TestRepoCatalog guards the committed core catalog: it must load, validate,
+// and stay above the P2 floor (epic #324).
+func TestRepoCatalog(t *testing.T) {
+	dir := filepath.Join("..", "..", "etc", "rules", "6-042")
+	rs, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load(%s): %v", dir, err)
+	}
+	if len(rs) < 35 {
+		t.Fatalf("core catalog has %d rules, want >= 35", len(rs))
+	}
+	exec := Executable(rs)
+	if len(exec) < 25 {
+		t.Fatalf("core catalog has %d executable rules, want >= 25", len(exec))
+	}
+	byDomain := map[Domain]int{}
+	for _, r := range rs {
+		byDomain[r.Domain]++
+	}
+	for _, d := range []Domain{DomainProofs, DomainLogic, DomainInduction} {
+		if byDomain[d] == 0 {
+			t.Fatalf("core catalog has no rules for domain %q", d)
+		}
+	}
+	if _, err := LoadIndex(dir); err != nil {
+		t.Fatalf("LoadIndex: %v", err)
+	}
+}

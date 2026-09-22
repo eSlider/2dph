@@ -1,0 +1,92 @@
+# Induction — индукция, state machines, рекурсивные типы (6.042J, §5–§6).
+# Сжатая производная каталога: формулировки своими словами (epic #324).
+rules:
+  - id: induction.ordinary.principle
+    domain: induction
+    name: Ordinary (weak) induction
+    form: "P(0) ; ∀n (P(n) → P(n+1))  ⊢  ∀n P(n)"
+    statement: Prove the base case and the step from n to n+1; then the property holds for all natural numbers.
+    source: "6.042J §5.1"
+    executable: true
+    tags: [induction, method]
+
+  - id: induction.ordinary.template
+    domain: induction
+    name: Induction proof template
+    form: "base P(0) ; step assume P(n), prove P(n+1)  ⊢  ∀n P(n)"
+    statement: State the induction hypothesis P(n), prove the base case, then assume P(n) and derive P(n+1).
+    source: "6.042J §5.1"
+    executable: true
+    tags: [induction, method]
+
+  - id: induction.strong.principle
+    domain: induction
+    name: Strong induction
+    form: "∀n ((∀k < n P(k)) → P(n))  ⊢  ∀n P(n)"
+    statement: Assume the property for every value below n and derive it for n; no separate base case is needed because the hypothesis is vacuous at zero.
+    source: "6.042J §5.2"
+    executable: true
+    tags: [induction, method]
+
+  - id: induction.equivalence.strong-weak-wellordering
+    domain: induction
+    name: Strong induction equivalence
+    form: "strong induction  ≡  ordinary induction  ≡  well ordering"
+    statement: Ordinary induction, strong induction and the well-ordering principle are interchangeable proof methods.
+    source: "6.042J §5.3"
+    executable: false
+    tags: [induction, meta]
+
+  - id: induction.invariant.state-machine
+    domain: induction
+    name: State-machine invariant
+    form: "P(start) ; every transition preserves P  ⊢  P holds in all reachable states"
+    statement: A property true initially and preserved by every allowed transition holds in every reachable state; proved by induction on the number of steps.
+    source: "6.042J §5.4"
+    executable: true
+    tags: [state-machine, invariant]
+
+  - id: induction.partial-correctness
+    domain: induction
+    name: Partial correctness via invariant
+    form: "invariant P ; any terminated state satisfying P gives the right answer  ⊢  partial correctness"
+    statement: An invariant that implies the answer is correct on termination proves partial correctness of a procedure.
+    source: "6.042J §5.4"
+    executable: true
+    tags: [state-machine, correctness]
+
+  - id: induction.structural.principle
+    domain: induction
+    name: Structural induction
+    form: "P holds for every base case ; P preserved by every constructor  ⊢  P holds for every recursively defined value"
+    statement: For a recursively defined data type, prove the property for the base cases and show each constructor preserves it.
+    source: "6.042J §6.1"
+    executable: true
+    tags: [structural, induction]
+
+  - id: induction.recursive.definition
+    domain: induction
+    name: Recursive definition
+    form: "base clauses + constructor clauses  ⊢  a unique recursively defined set"
+    statement: A set is defined recursively by base elements and constructors that build new elements from existing ones.
+    source: "6.042J §6.1"
+    executable: false
+    tags: [recursion, definition]
+
+  - id: induction.recursive.delete
+    domain: induction
+    name: Shortening a recursively built value
+    form: "value built by n constructors  ⊢  a sub-value built by fewer constructors exists"
+    statement: Every value built by a positive number of constructors contains a proper sub-value built by fewer constructors, enabling strong induction on the construction.
+    source: "6.042J §6.1"
+    executable: true
+    tags: [recursion, induction]
+
+  - id: induction.structural.matched-brackets
+    domain: induction
+    name: Structural induction on matched brackets
+    form: "(empty) ok ; (s ok → (s) ok) ; (s ok ∧ t ok → st ok)  ⊢  every ok string is balanced"
+    statement: Define matched-bracket strings by base and constructor clauses; structural induction proves all such strings are balanced.
+    source: "6.042J §6.2"
+    executable: true
+    tags: [structural, strings]
