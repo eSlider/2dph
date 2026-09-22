@@ -1,0 +1,101 @@
+# Recurrences — Hanoi, merge sort, линейные рекуррентности, divide-and-conquer
+# (6.042J, глава 21). Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: recurrences.guess-verify
+    domain: recurrences
+    name: "Guess-and-verify"
+    form: "compute early terms ; guess a closed form ; prove it by induction  ⊢  solution"
+    statement: "Guess-and-verify solves a recurrence by computing initial values, guessing a formula and proving it by induction."
+    source: "6.042J §21.1"
+    executable: false
+    tags: [method]
+
+  - id: recurrences.plug-chug
+    domain: recurrences
+    name: "Plug-and-chug"
+    form: "expand T(n) into earlier terms until a pattern appears ; substitute a known base value  ⊢  closed form"
+    statement: "Plug-and-chug solves a recurrence by expanding it into earlier terms until a pattern emerges and then substituting a known base value."
+    source: "6.042J §21.1.2"
+    executable: false
+    tags: [method]
+
+  - id: recurrences.hanoi.solution
+    domain: recurrences
+    name: "Towers of Hanoi recurrence"
+    form: "t_0 = 0 ; t_n = 2 t_{n−1} + 1  ⊢  t_n = 2^n − 1"
+    statement: "The Towers of Hanoi can be solved in, and require at least, 2^n − 1 moves to transfer n disks."
+    source: "6.042J §21.1"
+    executable: false
+    tags: [hanoi]
+
+  - id: recurrences.hanoi.lower-bound
+    domain: recurrences
+    name: "Hanoi lower bound"
+    form: "the largest disk must move twice, so t_n ≥ 2 t_{n−1} + 1  ⊢  t_n = 2^n − 1"
+    statement: "Moving the largest disk forces two full transfers of the smaller stack, so the recursive solution is optimal."
+    source: "6.042J §21.1.1"
+    executable: false
+    tags: [hanoi, bound]
+
+  - id: recurrences.merge-sort.recurrence
+    domain: recurrences
+    name: "Merge sort recurrence"
+    form: "T_1 = 0 ; T_n = 2 T_{n/2} + n − 1  ⊢  T_n = n log n − n + 1"
+    statement: "Merge sort uses at most n log n − n + 1 comparisons, giving O(n log n) sorting."
+    source: "6.042J §21.2.1"
+    executable: false
+    tags: [merge-sort]
+
+  - id: recurrences.linear.homogeneous
+    domain: recurrences
+    name: "Homogeneous linear recurrence"
+    form: "f(n) = a1 f(n−1) + … + ad f(n−d) ; characteristic x^d = a1 x^{d−1} + … + ad  ⊢  solutions r^n, n r^n, …"
+    statement: "A homogeneous linear recurrence is solved from the roots of its characteristic equation, with a repeated root contributing polynomial multiples."
+    source: "6.042J §21.3.2"
+    executable: false
+    tags: [linear]
+
+  - id: recurrences.linear.general
+    domain: recurrences
+    name: "General linear recurrence"
+    form: "general solution = homogeneous solution + particular solution ; fit boundary conditions  ⊢  closed form"
+    statement: "An inhomogeneous linear recurrence is solved by adding any particular solution to the homogeneous solution and fitting the boundary conditions."
+    source: "6.042J §21.3.3"
+    executable: false
+    tags: [linear, method]
+
+  - id: recurrences.linear.particular-guess
+    domain: recurrences
+    name: "Guessing a particular solution"
+    form: "guess a particular solution with the form of the inhomogeneous term (polynomial or exponential)"
+    statement: "A particular solution is guessed to match the form of the extra term, raising the polynomial degree if the first guess fails."
+    source: "6.042J §21.3.4"
+    executable: false
+    tags: [linear, method]
+
+  - id: recurrences.divide-conquer.definition
+    domain: recurrences
+    name: "Divide-and-conquer recurrence"
+    form: "T(n) = Σ_i a_i T(b_i n) + g(n)  with  0 < b_i < 1"
+    statement: "Divide-and-conquer algorithms satisfy recurrences that combine several smaller subproblems with a nonrecursive cost."
+    source: "6.042J §21.4"
+    executable: false
+    tags: [divide-conquer]
+
+  - id: recurrences.akra-bazzi
+    domain: recurrences
+    name: "Akra-Bazzi formula"
+    form: "Σ a_i b_i^p = 1  ⊢  T(n) = Θ(n^p (1 + ∫_1^n g(u)/u^{p+1} du))"
+    statement: "The Akra-Bazzi formula gives the asymptotic solution to almost every divide-and-conquer recurrence through the critical exponent p."
+    source: "6.042J §21.4.3"
+    executable: false
+    tags: [divide-conquer, asymptotics]
+
+  - id: recurrences.master-theorem
+    domain: recurrences
+    name: "Master theorem"
+    form: "T(n) = a T(n/b) + g(n) ; compare g(n) with n^{log_b a}  ⊢  matching asymptotic case"
+    statement: "The Master Theorem solves T(n) = a T(n/b) + g(n) by comparing the extra term with the watershed function n^{log_b a}."
+    source: "6.042J §21.4.4"
+    executable: false
+    tags: [divide-conquer, asymptotics]

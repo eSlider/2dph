@@ -1,0 +1,254 @@
+# Graphs — ориентированные и простые графы, сети, планарность
+# (6.042J, главы 9–12). Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: graphs.digraph.definition
+    domain: graphs
+    name: "Directed graph"
+    form: "digraph = vertices V + directed edges ⟨u → v⟩ ⊆ V × V"
+    statement: "A directed graph is a set of vertices with ordered edges; formally it is just a binary relation on its vertex set."
+    source: "6.042J §9"
+    executable: false
+    tags: [digraph]
+
+  - id: graphs.degree.sum
+    domain: graphs
+    name: "Sum of in-degrees and out-degrees"
+    form: "Σ_v indeg(v) = Σ_v outdeg(v) = |E|"
+    statement: "In a digraph the in-degrees and the out-degrees each sum to the number of edges."
+    source: "6.042J §9.1"
+    executable: false
+    tags: [degree]
+
+  - id: graphs.walk.path.definition
+    domain: graphs
+    name: "Walks, paths and cycles"
+    form: "walk = alternating vertices and edges ; path = walk with distinct vertices ; cycle = positive closed walk, distinct except ends"
+    statement: "A walk follows edges in order, a path never repeats a vertex, and a cycle is a positive-length closed walk that repeats only its endpoints."
+    source: "6.042J §9.2"
+    executable: false
+    tags: [walk]
+
+  - id: graphs.walk-relation
+    domain: graphs
+    name: "Walk relations"
+    form: "G⁺ is transitive ; G* is reflexive and transitive ; a walk  ⊢  a path no longer than |V|"
+    statement: "Positive walk relations are transitive, the walk relation is reflexive, and every walk contains a path between the same endpoints."
+    source: "6.042J §9.4"
+    executable: false
+    tags: [relation]
+
+  - id: graphs.dag.definition
+    domain: graphs
+    name: "Directed acyclic graph"
+    form: "a digraph with no cycles  ⊢  DAG"
+    statement: "A directed acyclic graph has no positive-length closed walk, so no vertex is reachable from itself by a nontrivial path."
+    source: "6.042J §9.5"
+    executable: false
+    tags: [dag]
+
+  - id: graphs.topological-sort
+    domain: graphs
+    name: "Topological sort"
+    form: "finite DAG  ⊢  a list with every vertex before all vertices reachable from it"
+    statement: "Every finite DAG admits a topological sort, built by repeatedly picking minimal elements."
+    source: "6.042J §9.5.1"
+    executable: false
+    tags: [dag, scheduling]
+
+  - id: graphs.dilworth.lemma
+    domain: graphs
+    name: "Dilworth's lemma"
+    form: "DAG with n vertices  ⊢  a chain larger than t or an antichain of size at least n / t"
+    statement: "In a finite DAG there is either a long chain or a large antichain; in particular some chain exceeds √n or some antichain has size at least √n."
+    source: "6.042J §9.5.3"
+    executable: false
+    tags: [dag, antichain]
+
+  - id: graphs.partial-order.strict
+    domain: graphs
+    name: "Strict partial order"
+    form: "transitive and irreflexive  ⊢  strict partial order  iff  positive walk relation of a DAG"
+    statement: "Strict partial orders are exactly the positive walk relations of DAGs; equivalently they are transitive and asymmetric."
+    source: "6.042J §9.6.2"
+    executable: false
+    tags: [order]
+
+  - id: graphs.partial-order.weak
+    domain: graphs
+    name: "Weak partial order"
+    form: "transitive, reflexive and antisymmetric  ⊢  weak partial order  iff  walk relation of a DAG"
+    statement: "A weak partial order adds reflexivity to a strict order, so equal elements are comparable."
+    source: "6.042J §9.6.3"
+    executable: false
+    tags: [order]
+
+  - id: graphs.partial-order.set-containment
+    domain: graphs
+    name: "Partial orders as set containment"
+    form: "weak order  ⊢  isomorphic to ⊆ on a family of sets ; strict order  ⊢  isomorphic to ⊂"
+    statement: "Every partial order has the same shape as a family of sets ordered by containment."
+    source: "6.042J §9.7"
+    executable: false
+    tags: [order, isomorphism]
+
+  - id: graphs.equivalence-relation
+    domain: graphs
+    name: "Equivalence relation"
+    form: "reflexive, symmetric and transitive  ⊢  equivalence relation ; its classes partition the set"
+    statement: "An equivalence relation groups elements into disjoint classes that partition its domain; congruence modulo n is one example."
+    source: "6.042J §9.10"
+    executable: false
+    tags: [relation]
+
+  - id: graphs.simple.definition
+    domain: graphs
+    name: "Simple graph"
+    form: "undirected edges ⟨u — v⟩ ; no loops and no repeated edges  ⊢  simple graph"
+    statement: "A simple graph has unordered edges joining distinct vertices, with at most one edge per pair."
+    source: "6.042J §11.1"
+    executable: false
+    tags: [graph]
+
+  - id: graphs.simple.handshaking
+    domain: graphs
+    name: "Handshaking lemma"
+    form: "Σ_v deg(v) = 2 |E|"
+    statement: "In any graph the vertex degrees sum to twice the number of edges, so the number of odd-degree vertices is even."
+    source: "6.042J §11.2.1"
+    executable: false
+    tags: [degree]
+
+  - id: graphs.isomorphism.definition
+    domain: graphs
+    name: "Graph isomorphism"
+    form: "edge-preserving bijection f : V(G) → V(H)  ⊢  G ≅ H"
+    statement: "Two graphs are isomorphic when a bijection of their vertices preserves adjacency, so isomorphism preserves every graph property."
+    source: "6.042J §11.4"
+    executable: false
+    tags: [isomorphism]
+
+  - id: graphs.bipartite.definition
+    domain: graphs
+    name: "Bipartite graph"
+    form: "V = L ∪ R, L ∩ R = ∅, every edge joins L to R  ⊢  bipartite"
+    statement: "A bipartite graph splits its vertices into two sides with every edge crossing between them."
+    source: "6.042J §11.5"
+    executable: false
+    tags: [bipartite]
+
+  - id: graphs.hall.matching
+    domain: graphs
+    name: "Hall's matching theorem"
+    form: "bipartite G  ⊢  a matching covering L(G) exists iff no subset of L(G) is a bottleneck"
+    statement: "A matching saturating the left side exists exactly when every set of left vertices has at least as many neighbors."
+    source: "6.042J §11.5.1"
+    executable: false
+    tags: [matching, bipartite]
+
+  - id: graphs.stable-marriage
+    domain: graphs
+    name: "Stable marriage"
+    form: "preference lists on both sides  ⊢  a stable matching exists ; the mating ritual finds one"
+    statement: "For any preference lists there is a matching with no rogue couple, and the mating ritual in which men propose produces one."
+    source: "6.042J §11.6"
+    executable: false
+    tags: [matching, stable-marriage]
+
+  - id: graphs.coloring.definition
+    domain: graphs
+    name: "Graph coloring and chromatic number"
+    form: "adjacent vertices get different colors ; χ(G) = fewest colors needed"
+    statement: "A valid coloring gives adjacent vertices different colors, and the chromatic number is the minimum number of colors."
+    source: "6.042J §11.7"
+    executable: false
+    tags: [coloring]
+
+  - id: graphs.coloring.degree-bound
+    domain: graphs
+    name: "Coloring bound by maximum degree"
+    form: "maximum degree at most k  ⊢  (k + 1)-colorable"
+    statement: "A graph of maximum degree k can always be colored with k + 1 colors, by induction on the number of vertices."
+    source: "6.042J §11.7.2"
+    executable: false
+    tags: [coloring, bound]
+
+  - id: graphs.odd-cycle.2-colorability
+    domain: graphs
+    name: "Odd cycles and 2-colorability"
+    form: "contains an odd cycle  ≡  not 2-colorable  ≡  contains an odd closed walk"
+    statement: "A graph is 2-colorable exactly when it is bipartite, so an odd cycle is the only obstruction to two colors."
+    source: "6.042J §11.9.2"
+    executable: false
+    tags: [coloring, cycle]
+
+  - id: graphs.connectivity.components
+    domain: graphs
+    name: "Connected components from edge count"
+    form: "G has at least |V(G)| − |E(G)| connected components"
+    statement: "Few edges force many components, so a connected graph on n vertices has at least n − 1 edges."
+    source: "6.042J §11.9"
+    executable: false
+    tags: [connectivity]
+
+  - id: graphs.tree.properties
+    domain: graphs
+    name: "Properties of trees"
+    form: "tree  ⊢  unique path between vertices ; |V| = |E| + 1 ; every edge is a cut edge ; at least two leaves"
+    statement: "A tree is a connected acyclic graph that uniquely connects every pair of vertices using one fewer edge than vertices."
+    source: "6.042J §11.10.2"
+    executable: false
+    tags: [tree]
+
+  - id: graphs.spanning-tree
+    domain: graphs
+    name: "Spanning tree"
+    form: "connected graph  ⊢  a spanning tree exists"
+    statement: "Every connected graph contains a tree on all its vertices, and a minimum weight spanning tree minimizes total edge weight."
+    source: "6.042J §11.10.3"
+    executable: false
+    tags: [tree, spanning]
+
+  - id: graphs.planar.definition
+    domain: graphs
+    name: "Planar graph and faces"
+    form: "drawing in the plane with no edge crossings  ⊢  planar ; the regions are faces"
+    statement: "A graph is planar when it can be drawn in the plane without crossing edges, and the drawing divides the plane into faces."
+    source: "6.042J §12.2"
+    executable: false
+    tags: [planar]
+
+  - id: graphs.euler.formula
+    domain: graphs
+    name: "Euler's formula"
+    form: "connected planar embedding with v vertices, e edges and f faces  ⊢  v − e + f = 2"
+    statement: "Euler's formula relates the vertices, edges and faces of any connected planar embedding."
+    source: "6.042J §12.3"
+    executable: false
+    tags: [planar, formula]
+
+  - id: graphs.planar.edge-bound
+    domain: graphs
+    name: "Edge bound for planar graphs"
+    form: "planar with v ≥ 3  ⊢  e ≤ 3v − 6 ; bipartite planar  ⊢  e ≤ 2v − 4"
+    statement: "Planar graphs have linearly many edges, and bipartite planar graphs have even fewer."
+    source: "6.042J §12.4"
+    executable: false
+    tags: [planar, bound]
+
+  - id: graphs.planar.k5-k33
+    domain: graphs
+    name: "K5 and K3,3 are not planar"
+    form: "K5 has 10 > 3·5 − 6 edges ; K3,3 has 9 > 2·6 − 4  ⊢  not planar"
+    statement: "The complete graph K5 and the complete bipartite graph K3,3 cannot be drawn in the plane without crossings."
+    source: "6.042J §12.5"
+    executable: false
+    tags: [planar, nonplanar]
+
+  - id: graphs.planar.five-color
+    domain: graphs
+    name: "Five-color theorem for planar graphs"
+    form: "G planar  ⊢  χ(G) ≤ 5"
+    statement: "Every planar graph can be colored with five colors, proved by induction using a vertex of degree at most five."
+    source: "6.042J §12.6"
+    executable: false
+    tags: [planar, coloring]

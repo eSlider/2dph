@@ -1,0 +1,173 @@
+# Number theory — делимость, GCD, простые, модулярная арифметика, RSA
+# (6.042J, глава 8). Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: number.divisibility.definition
+    domain: number-theory
+    name: "Divisibility"
+    form: "a | b  iff  ∃k ∈ ℤ (a·k = b)"
+    statement: "a divides b when b is an integer multiple of a; every n divides 0 and itself, and ±1 divides every integer."
+    source: "6.042J §8.1"
+    executable: false
+    tags: [divisibility]
+
+  - id: number.divisibility.properties
+    domain: number-theory
+    name: "Divisibility is transitive and closes under linear combinations"
+    form: "a | b ; b | c  ⊢  a | c  ;  a | b ; a | c  ⊢  a | (sb + tc)"
+    statement: "Divisibility is transitive, and a common divisor divides every integer linear combination of the two numbers."
+    source: "6.042J §8.1.1"
+    executable: false
+    tags: [divisibility]
+
+  - id: number.division-theorem
+    domain: number-theory
+    name: "Division theorem"
+    form: "d > 0  ⊢  n = qd + r for unique q, r with 0 ≤ r < d"
+    statement: "Dividing any integer by a positive integer yields a unique quotient and a remainder in a fixed range."
+    source: "6.042J §8.1.2"
+    executable: false
+    tags: [division]
+
+  - id: number.gcd.definition
+    domain: number-theory
+    name: "Greatest common divisor"
+    form: "gcd(a, b) = the greatest integer dividing both a and b"
+    statement: "The gcd is the largest integer dividing both arguments; for n > 0, gcd(n, n) = n, gcd(n, 1) = 1 and gcd(n, 0) = n."
+    source: "6.042J §8.2"
+    executable: false
+    tags: [gcd]
+
+  - id: number.gcd.euclid
+    domain: number-theory
+    name: "Euclid's algorithm"
+    form: "b ≠ 0  ⊢  gcd(a, b) = gcd(b, rem(a, b))"
+    statement: "Replacing the pair by the divisor and its remainder preserves the gcd, which yields a fast algorithm."
+    source: "6.042J §8.2.1"
+    executable: false
+    tags: [gcd, algorithm]
+
+  - id: number.gcd.linear-combination
+    domain: number-theory
+    name: "Pulverizer (gcd as a linear combination)"
+    form: "⊢  gcd(a, b) = sa + tb for some integers s and t"
+    statement: "The gcd of two numbers is an integer linear combination of them, with coefficients found by the Pulverizer."
+    source: "6.042J §8.2.2"
+    executable: false
+    tags: [gcd, linear-combination]
+
+  - id: number.prime.definition
+    domain: number-theory
+    name: "Prime and composite"
+    form: "p prime iff p > 1 and the only positive divisors of p are 1 and p"
+    statement: "A prime is an integer greater than one divisible only by one and itself; integers other than 0, 1 and -1 that fail this are composite."
+    source: "6.042J §8.3"
+    executable: false
+    tags: [primes]
+
+  - id: number.prime.divides-product
+    domain: number-theory
+    name: "A prime dividing a product divides a factor"
+    form: "p prime ; p | ab  ⊢  p | a or p | b"
+    statement: "A prime that divides a product must divide one of its factors, which follows from the gcd as a linear combination."
+    source: "6.042J §8.4.1"
+    executable: false
+    tags: [primes]
+
+  - id: number.arithmetic.fundamental-unique
+    domain: number-theory
+    name: "Fundamental theorem of arithmetic"
+    form: "every positive integer  ⊢  a unique weakly decreasing product of primes"
+    statement: "Every positive integer factors into primes in exactly one way once the primes are sorted by size."
+    source: "6.042J §8.4"
+    executable: false
+    tags: [primes, factorization]
+
+  - id: number.prime.number-theorem
+    domain: number-theory
+    name: "Prime number theorem"
+    form: "π(n) = number of primes ≤ n ; lim π(n) / (n / ln n) = 1"
+    statement: "The count of primes up to n grows like n divided by its natural logarithm."
+    source: "6.042J §8.3"
+    executable: false
+    tags: [primes, asymptotics]
+
+  - id: number.congruence.definition
+    domain: number-theory
+    name: "Congruence modulo n"
+    form: "a ≡ b (mod n)  iff  n | (a − b)  iff  rem(a, n) = rem(b, n)"
+    statement: "Two integers are congruent modulo n when their difference is a multiple of n, equivalently when their remainders agree."
+    source: "6.042J §8.6"
+    executable: false
+    tags: [congruence]
+
+  - id: number.congruence.arithmetic
+    domain: number-theory
+    name: "Arithmetic preserves congruence"
+    form: "a ≡ b ; c ≡ d (mod n)  ⊢  a + c ≡ b + d ; a·c ≡ b·d (mod n)"
+    statement: "Congruence modulo n is preserved by addition, subtraction and multiplication."
+    source: "6.042J §8.6"
+    executable: false
+    tags: [congruence, arithmetic]
+
+  - id: number.remainder-arithmetic
+    domain: number-theory
+    name: "General principle of remainder arithmetic"
+    form: "operands of + and · may be replaced by their remainders modulo n"
+    statement: "To find a remainder of a sum or product, replace each operand by its remainder and reduce after every step; exponents are not reduced."
+    source: "6.042J §8.7"
+    executable: false
+    tags: [congruence, arithmetic]
+
+  - id: number.inverse.relative-prime
+    domain: number-theory
+    name: "Inverses, cancellation and relative primality"
+    form: "gcd(k, n) = 1  iff  k has an inverse in ℤ_n  iff  k is cancellable in ℤ_n"
+    statement: "Modulo n, having a multiplicative inverse, being cancellable and being relatively prime to n are equivalent conditions."
+    source: "6.042J §8.9"
+    executable: false
+    tags: [inverse, gcd]
+
+  - id: number.cancellation.rule
+    domain: number-theory
+    name: "Cancellation rule"
+    form: "k invertible in ℤ_n  ⊢  ka = kb implies a = b"
+    statement: "A factor can be cancelled modulo n exactly when it has a multiplicative inverse there."
+    source: "6.042J §8.9.2"
+    executable: false
+    tags: [cancellation]
+
+  - id: number.euler.theorem
+    domain: number-theory
+    name: "Euler's theorem"
+    form: "gcd(k, n) = 1  ⊢  k^φ(n) ≡ 1 (mod n)"
+    statement: "Any number relatively prime to n raised to the totient of n is congruent to one modulo n."
+    source: "6.042J §8.10"
+    executable: false
+    tags: [euler, congruence]
+
+  - id: number.totient.definition
+    domain: number-theory
+    name: "Euler's totient function"
+    form: "φ(n) = |{k ∈ [0, n) : gcd(k, n) = 1}| ; φ(p) = p − 1 ; φ(pq) = (p − 1)(q − 1)"
+    statement: "The totient counts the residues relatively prime to n; it is p − 1 for a prime and the product of one less than each of two distinct primes."
+    source: "6.042J §8.10.1"
+    executable: false
+    tags: [euler, totient]
+
+  - id: number.fermat.little
+    domain: number-theory
+    name: "Fermat's little theorem"
+    form: "p prime ; p ∤ k  ⊢  k^(p − 1) ≡ 1 (mod p)"
+    statement: "Fermat's little theorem is the prime-modulus special case of Euler's theorem."
+    source: "6.042J §8.10"
+    executable: false
+    tags: [fermat, congruence]
+
+  - id: number.rsa.cryptosystem
+    domain: number-theory
+    name: "RSA public-key cryptosystem"
+    form: "n = pq ; gcd(e, (p − 1)(q − 1)) = 1 ; d = e⁻¹ mod (p − 1)(q − 1)  ⊢  m = (m^e)^d (mod n)"
+    statement: "RSA publishes the pair (e, n), keeps d as the inverse of e modulo (p − 1)(q − 1), encrypts by exponentiating with e and decrypts with d."
+    source: "6.042J §8.11"
+    executable: false
+    tags: [rsa, cryptography]

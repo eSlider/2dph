@@ -1,0 +1,245 @@
+# Counting — суммы, асимптотика, правила подсчёта, производящие функции
+# (6.042J, главы 13–15). Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: counting.geometric-sum
+    domain: counting
+    name: "Geometric sum"
+    form: "Σ_{i=0}^n x^i = (1 − x^{n+1}) / (1 − x) ; Σ_{i=0}^∞ x^i = 1 / (1 − x) for |x| < 1"
+    statement: "A finite geometric sum has a closed form, and the infinite version converges to the reciprocal of one minus the ratio when that ratio is smaller than one in absolute value."
+    source: "6.042J §13.1"
+    executable: false
+    tags: [sum]
+
+  - id: counting.perturbation-method
+    domain: counting
+    name: "Perturbation method"
+    form: "S = Σ x^i ; xS = Σ x^{i+1} ; S − xS  ⊢  closed form"
+    statement: "Subtracting a shifted copy of a sum from the original cancels almost every term and leaves a closed form."
+    source: "6.042J §13.1.2"
+    executable: false
+    tags: [sum, method]
+
+  - id: counting.sums-of-powers
+    domain: counting
+    name: "Sums of consecutive integers and squares"
+    form: "Σ_{i=1}^n i = n(n + 1)/2 ; Σ_{i=1}^n i² = n(n + 1)(2n + 1)/6"
+    statement: "Sums of consecutive integers and of squares have polynomial closed forms, found by pairing terms or solving for coefficients."
+    source: "6.042J §13.2"
+    executable: false
+    tags: [sum]
+
+  - id: counting.integral-bounds
+    domain: counting
+    name: "Bounding sums by integrals"
+    form: "f weakly increasing: I + f(1) ≤ Σ_{i=1}^n f(i) ≤ I + f(n), where I = ∫_1^n f"
+    statement: "A sum is sandwiched between its integral plus the first and last terms, giving close lower and upper bounds."
+    source: "6.042J §13.3"
+    executable: false
+    tags: [sum, bound]
+
+  - id: counting.harmonic.number
+    domain: counting
+    name: "Harmonic number"
+    form: "H_n = 1 + 1/2 + … + 1/n ; H_n ~ ln n"
+    statement: "The harmonic sum grows like the natural logarithm of n."
+    source: "6.042J §13.4.2"
+    executable: false
+    tags: [sum, asymptotics]
+
+  - id: counting.asymptotic.equality
+    domain: counting
+    name: "Asymptotic equality"
+    form: "f ~ g  iff  lim f(x) / g(x) = 1"
+    statement: "Two functions are asymptotically equal when their ratio tends to one, so lower-order terms are ignored."
+    source: "6.042J §13.4.3"
+    executable: false
+    tags: [asymptotics]
+
+  - id: counting.stirling.formula
+    domain: counting
+    name: "Stirling's formula"
+    form: "n! ~ √(2πn) · (n / e)^n"
+    statement: "Stirling's formula approximates the factorial by an explicit exponential expression."
+    source: "6.042J §13.5.1"
+    executable: false
+    tags: [asymptotics, factorial]
+
+  - id: counting.asymptotic.little-o
+    domain: counting
+    name: "Little-oh"
+    form: "f = o(g)  iff  lim f(x) / g(x) = 0"
+    statement: "Little-oh says one function grows strictly more slowly than another."
+    source: "6.042J §13.7.1"
+    executable: false
+    tags: [asymptotics]
+
+  - id: counting.asymptotic.big-o
+    domain: counting
+    name: "Big-oh"
+    form: "f = O(g)  iff  ∃c, x0 ∀x ≥ x0 (|f(x)| ≤ c·g(x))"
+    statement: "Big-oh bounds a function above by another up to a constant factor, ignoring sufficiently small inputs."
+    source: "6.042J §13.7.2"
+    executable: false
+    tags: [asymptotics]
+
+  - id: counting.asymptotic.theta
+    domain: counting
+    name: "Theta"
+    form: "f = Θ(g)  iff  f = O(g) and g = O(f)"
+    statement: "Theta notation marks two functions as equal up to constant factors, giving matching upper and lower bounds."
+    source: "6.042J §13.7.3"
+    executable: false
+    tags: [asymptotics]
+
+  - id: counting.bijection-rule
+    domain: counting
+    name: "Bijection rule"
+    form: "bijection f : A → B  ⊢  |A| = |B|"
+    statement: "Two sets connected by a bijection have the same size, so counting one set counts the other."
+    source: "6.042J §14.1.1"
+    executable: false
+    tags: [rule]
+
+  - id: counting.product-rule
+    domain: counting
+    name: "Product rule"
+    form: "|P1 × … × Pn| = |P1| · |P2| · … · |Pn|"
+    statement: "The number of sequences drawn componentwise from finite sets is the product of the set sizes."
+    source: "6.042J §14.2.1"
+    executable: false
+    tags: [rule]
+
+  - id: counting.sum-rule
+    domain: counting
+    name: "Sum rule"
+    form: "A_i pairwise disjoint  ⊢  |A1 ∪ … ∪ An| = |A1| + … + |An|"
+    statement: "The sizes of pairwise disjoint sets add, which lets a problem be split into cases."
+    source: "6.042J §14.2.3"
+    executable: false
+    tags: [rule]
+
+  - id: counting.generalized-product
+    domain: counting
+    name: "Generalized product rule"
+    form: "n1 choices, then n2 given the first, …  ⊢  |S| = n1 · n2 · … · nk"
+    statement: "For sequences whose later entries depend on earlier ones, multiply the number of available choices at each step."
+    source: "6.042J §14.3"
+    executable: false
+    tags: [rule]
+
+  - id: counting.division-rule
+    domain: counting
+    name: "Division rule"
+    form: "f : A → B is k-to-1  ⊢  |A| = k · |B|"
+    statement: "If every codomain element has exactly k preimages, then the domain is k times the size of the codomain."
+    source: "6.042J §14.4"
+    executable: false
+    tags: [rule]
+
+  - id: counting.subset-rule
+    domain: counting
+    name: "Subset rule"
+    form: "C(n, k) = n! / (k! · (n − k)!)"
+    statement: "The number of k-element subsets of an n-element set is a binomial coefficient, obtained by dividing permutation counts."
+    source: "6.042J §14.5.1"
+    executable: false
+    tags: [rule, binomial]
+
+  - id: counting.bookkeeper-rule
+    domain: counting
+    name: "Bookkeeper rule"
+    form: "sequences with k_i copies of letter l_i  ⊢  (Σ k_i)! / Π k_i!"
+    statement: "The number of distinct orderings of a multiset of letters is a multinomial coefficient."
+    source: "6.042J §14.6.2"
+    executable: false
+    tags: [rule, multinomial]
+
+  - id: counting.binomial-theorem
+    domain: counting
+    name: "Binomial theorem"
+    form: "(a + b)^n = Σ_{k=0}^n C(n, k) · a^{n−k} · b^k"
+    statement: "Expanding a binomial power gives the binomial coefficients as counts of letter arrangements."
+    source: "6.042J §14.6.3"
+    executable: false
+    tags: [binomial]
+
+  - id: counting.pigeonhole
+    domain: counting
+    name: "Pigeonhole principle"
+    form: "|A| > |B| ; f : A → B total  ⊢  two different elements share an image"
+    statement: "More pigeons than holes forces a collision; the principle is the contrapositive of the injective mapping rule."
+    source: "6.042J §14.8"
+    executable: false
+    tags: [rule]
+
+  - id: counting.inclusion-exclusion
+    domain: counting
+    name: "Inclusion-exclusion"
+    form: "|∪ S_i| = Σ|S_i| − Σ|S_i ∩ S_j| + Σ|S_i ∩ S_j ∩ S_k| − …"
+    statement: "The size of a union is corrected by alternately subtracting and adding the sizes of intersections."
+    source: "6.042J §14.9"
+    executable: false
+    tags: [rule]
+
+  - id: counting.combinatorial-proof
+    domain: counting
+    name: "Combinatorial proof"
+    form: "count the same set two ways  ⊢  algebraic identity"
+    statement: "An identity can be proved by counting one set in two different ways and equating the two results."
+    source: "6.042J §14.10"
+    executable: false
+    tags: [method]
+
+  - id: counting.pascal.identity
+    domain: counting
+    name: "Pascal's identity"
+    form: "C(n, k) = C(n − 1, k − 1) + C(n − 1, k)"
+    statement: "Splitting subsets according to whether they contain a fixed element gives Pascal's triangle recurrence."
+    source: "6.042J §14.10.1"
+    executable: false
+    tags: [binomial]
+
+  - id: counting.generating-function.definition
+    domain: counting
+    name: "Generating function"
+    form: "F(x) = Σ_{n≥0} a_n x^n represents the sequence (a_n)"
+    statement: "A generating function encodes a sequence as the coefficients of a formal power series."
+    source: "6.042J §15.1"
+    executable: false
+    tags: [generating-function]
+
+  - id: counting.generating-function.convolution
+    domain: counting
+    name: "Convolution rule"
+    form: "A(x)·B(x)  ⊢  the coefficient of x^n is Σ_i a_i · b_{n−i}"
+    statement: "Multiplying generating functions convolves their coefficients, which models selecting items from a union of disjoint sets."
+    source: "6.042J §15.2.3"
+    executable: false
+    tags: [generating-function]
+
+  - id: counting.partial-fractions
+    domain: counting
+    name: "Partial fractions"
+    form: "p(x) / Π(1 − α_i x) = Σ c_i / (1 − α_i x)  ⊢  coefficients from geometric series"
+    statement: "Partial fractions split a rational generating function into terms whose coefficients are geometric sequences."
+    source: "6.042J §15.3"
+    executable: false
+    tags: [generating-function, method]
+
+  - id: counting.linear-recurrence.generating-function
+    domain: counting
+    name: "Solving linear recurrences with generating functions"
+    form: "recurrence  ⊢  rational generating function  ⊢  closed form for f(n)"
+    statement: "A linear recurrence is solved by forming its generating function, reducing it with partial fractions and reading off coefficients; Fibonacci and Hanoi are examples."
+    source: "6.042J §15.4"
+    executable: false
+    tags: [generating-function, recurrence]
+
+  - id: counting.formal-power-series
+    domain: counting
+    name: "Ring of formal power series"
+    form: "sequences with convolution product  ⊢  commutative ring of formal power series"
+    statement: "Generating functions are treated as formal coefficient sequences, so identities hold without regard to convergence."
+    source: "6.042J §15.5"
+    executable: false
+    tags: [generating-function, algebra]

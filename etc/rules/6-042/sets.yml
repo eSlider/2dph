@@ -1,0 +1,119 @@
+# Sets — множества, последовательности, функции, отношения, мощности
+# (6.042J, глава 4). Сжатая производная: формулировки своими словами (epic #324).
+rules:
+  - id: sets.subset.definition
+    domain: sets
+    name: "Subset and proper subset"
+    form: "x ∈ S → x ∈ T  ⊢  S ⊆ T"
+    statement: "S is a subset of T when every element of S also belongs to T, and a proper subset when the two sets additionally differ."
+    source: "6.042J §4.1.2"
+    executable: false
+    tags: [subset]
+
+  - id: sets.combine.operations
+    domain: sets
+    name: "Union, intersection, difference"
+    form: "A ∪ B = {x : x ∈ A ∨ x ∈ B} ; A ∩ B = {x : x ∈ A ∧ x ∈ B} ; A \\ B = {x : x ∈ A ∧ x ∉ B}"
+    statement: "Union collects elements appearing in either set, intersection those appearing in both, and difference those in the first but not the second."
+    source: "6.042J §4.1.2"
+    executable: false
+    tags: [operations]
+
+  - id: sets.complement.definition
+    domain: sets
+    name: "Complement"
+    form: "A̅ = D \\ A ; A ∪ A̅ = D ; A ∩ A̅ = ∅"
+    statement: "Relative to a domain of discourse D, the complement of A contains exactly the elements of D that are not in A."
+    source: "6.042J §4.1.2"
+    executable: false
+    tags: [operations]
+
+  - id: sets.power-set.definition
+    domain: sets
+    name: "Power set"
+    form: "B ∈ pow(A)  iff  B ⊆ A"
+    statement: "The power set of A is the set of all its subsets; an n-element set therefore has 2^n subsets."
+    source: "6.042J §4.1.3"
+    executable: false
+    tags: [power-set, cardinality]
+
+  - id: sets.builder.notation
+    domain: sets
+    name: "Set-builder notation"
+    form: "{x ∈ S : P(x)}  ⊢  the subset of S whose elements satisfy P"
+    statement: "Set-builder notation names a set by a predicate, keeping exactly the elements that make the predicate true."
+    source: "6.042J §4.1.4"
+    executable: false
+    tags: [notation]
+
+  - id: sets.equality.extensionality
+    domain: sets
+    name: "Set equality by elements"
+    form: "∀z (z ∈ X ↔ z ∈ Y)  ⊢  X = Y"
+    statement: "Two sets are equal exactly when they have the same elements, so a set equality is proved as an if-and-only-if statement."
+    source: "6.042J §4.1.5"
+    executable: false
+    tags: [equality]
+
+  - id: sets.sequence.definition
+    domain: sets
+    name: "Sequence and Cartesian product"
+    form: "(a1, …, an) ordered, terms may repeat ; S1 × … × Sn = all compatible tuples"
+    statement: "A sequence is an ordered list whose terms may repeat, and a Cartesian product is the set of all sequences drawing position i from Si."
+    source: "6.042J §4.2"
+    executable: false
+    tags: [sequence, product]
+
+  - id: sets.function.definition
+    domain: sets
+    name: "Function, image and range"
+    form: "f : A → B ; f(S) = {f(s) : s ∈ S} ; range(f) = f(domain(f))"
+    statement: "A function assigns each domain element at most one codomain value; the image of a set is the values it takes there, and the range is its image on the whole domain."
+    source: "6.042J §4.3.1"
+    executable: false
+    tags: [function]
+
+  - id: sets.function.composition
+    domain: sets
+    name: "Function composition"
+    form: "(g ∘ f)(x) = g(f(x))  with  f : A → B and g : B → C"
+    statement: "Composition applies f first and then g, producing a function from the domain of f to the codomain of g."
+    source: "6.042J §4.3.2"
+    executable: false
+    tags: [function]
+
+  - id: sets.relation.binary
+    domain: sets
+    name: "Binary relation"
+    form: "R : A → B ; graph(R) ⊆ A × B ; a R b means (a, b) ∈ graph(R)"
+    statement: "A binary relation consists of a domain, a codomain and a set of ordered pairs; every function is a special case of a relation."
+    source: "6.042J §4.4"
+    executable: false
+    tags: [relation]
+
+  - id: sets.relation.images
+    domain: sets
+    name: "Relational images and inverse"
+    form: "R(Y) = {b ∈ B : a R b for some a ∈ Y} ; b R⁻¹ a  iff  a R b"
+    statement: "The image of a set under a relation collects its related codomain elements, and the inverse relation reverses every pair."
+    source: "6.042J §4.4.2"
+    executable: false
+    tags: [relation]
+
+  - id: sets.cardinality.mapping-rules
+    domain: sets
+    name: "Mapping rules for finite sets"
+    form: "|A| ≥ |B| iff A surj B ; |A| ≤ |B| iff A inj B ; |A| = |B| iff A bij B"
+    statement: "For finite sets, size comparisons are exactly witnessed by surjective, injective or bijective functions."
+    source: "6.042J §4.5"
+    executable: false
+    tags: [cardinality]
+
+  - id: sets.cardinality.subsets
+    domain: sets
+    name: "Number of subsets"
+    form: "|A| = n  ⊢  |pow(A)| = 2^n"
+    statement: "An n-element set has 2^n subsets, shown by a bijection between subsets and n-bit sequences."
+    source: "6.042J §4.5.1"
+    executable: false
+    tags: [cardinality, subsets]
