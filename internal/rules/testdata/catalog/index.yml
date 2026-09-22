@@ -1,0 +1,5 @@
+source: "https://example.test/book.pdf"
+edition: "Synthetic fixture, 1st ed."
+license: "CC BY-NC-SA 3.0"
+sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+pages: 3

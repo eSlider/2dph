@@ -1,0 +1,17 @@
+rules:
+  - id: proof.method.contrapositive
+    domain: proofs
+    name: Proof by contrapositive
+    form: "¬Q → ¬P  ⊢  P → Q"
+    statement: To prove P implies Q, assume Q false and derive that P is false.
+    source: "6.042J §1.5"
+    executable: true
+    tags: [implication, proof]
+  - id: number.mod.cancellation
+    domain: number-theory
+    name: Cancellation modulo a prime
+    form: "p prime, ¬(p | a), a·b ≡ a·c (mod p)  ⊢  b ≡ c (mod p)"
+    statement: A factor coprime to the modulus can be cancelled in a congruence.
+    source: "6.042J §8.9"
+    executable: false
+    tags: [modular]
