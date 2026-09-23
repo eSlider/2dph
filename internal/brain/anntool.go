@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain/ann"
@@ -60,29 +59,16 @@ func openAnnToolDB(dbPath string) error {
 
 // annExtractEmbed — вектор для leaf при построении ANN (issue #248 B3):
 // embedding-колонка не пишется когда ANN включён (index пишет БД текстом),
-// поэтому build/upsert/ensure эмбедят l.text напрямую моделью. Модель
-// грузится лениво один раз на процесс и только если есть leafs без колонки
-// (legacy-БД с колонкой идут старым путём без модели). Var — cgo-тесты
-// подменяют детерминированным вектором без модели/HF-кэша (как embedQueryFn).
+// поэтому build/upsert/ensure эмбедят l.text напрямую моделью. Модель берётся
+// из общего процесса-wide кэша (#335) — грузится один раз, не закрывается.
+// Var — cgo-тесты подменяют детерминированным вектором без модели/HF-кэша
+// (как embedQueryFn).
 var annExtractEmbed = func(text string) ([]float64, error) {
-	model, err := annExtractModel()
+	model, err := getEmbedModel()
 	if err != nil {
 		return nil, err
 	}
 	return model.Embed(text)
-}
-
-var (
-	annExtractModelOnce sync.Once
-	annExtractModelVal  *StaticModel
-	annExtractModelErr  error
-)
-
-func annExtractModel() (*StaticModel, error) {
-	annExtractModelOnce.Do(func() {
-		annExtractModelVal, annExtractModelErr = loadModel()
-	})
-	return annExtractModelVal, annExtractModelErr
 }
 
 // extractRows тянет каждый leaf (id, embedding) для build/upsert/ensure.

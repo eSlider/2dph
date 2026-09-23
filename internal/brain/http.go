@@ -178,7 +178,7 @@ func (HTTP) Audit(context.Context) ([]byte, error) {
 var embedIngestLeafs = embedIngestLeafsWithModel
 
 func embedIngestLeafsWithModel(leafs []LeafInput) error {
-	model, err := getIngestModel()
+	model, err := getEmbedModel()
 	if err != nil {
 		return fmt.Errorf("model: %w", err)
 	}

@@ -556,6 +556,29 @@ Notes: other `LoadModel()` callers (`bin/brain/add.go`, `index.go`,
 `bin/facts/*`) are one-shot CLI processes — unchanged. Diff kept strictly to
 model caching; connection lifecycle in the same function is #109 territory.
 
+## 2026-09-23 — shared embedding model on the search path (gitea #335)
+
+Goal: same fix as #110, extended to `/search`. `internal/brain/search.go`
+`embedQuery` still called `loadModel()` + `defer model.Close()` on every
+request, and `StaticModel.Close()` freed only the tokenizer — so each search
+retained ~490 MiB inuse (~980 MiB allocated) until GC, and a live `brain-serve`
+grew to 13 GiB (RSS 1.8 + swap 11.2) over the DB's 11 MB.
+
+| Step | Status |
+|------|--------|
+| `internal/brain/embedmodel.go` (renamed from `ingestmodel.go`): `embedder` (no Close), `embedModelCache`, `getEmbedModel()` process-wide singleton; now backs /ingest, the /search in-process fallback AND ANN extract | done |
+| `search.go` `embedQuery` → new `embedInProcess()` (cache, never Close); `serve()` (daemon) uses the shared model without closing; `anntool.go` `annExtractEmbed` drops its private `sync.Once` for the shared cache | done |
+| `model.go` `StaticModel.Close()` now releases `mat` too (one-shot CLI callers); shared instance is never closed | done |
+| `pkg/httpapi` pprof binds `127.0.0.1` instead of the API host (was `0.0.0.0:1707` via KB_HOST) | done |
+| `compose.yaml`: `KB_BUFFER_POOL` 4 GiB → 512 MiB, `deploy.resources.limits.memory: 2g` (container had `HostConfig.Memory=0`) | done |
+| TDD: `internal/brain/embedmodel_test.go` — 200 sequential search embeds load once and never Close; real `embedQuery` fallback loads once; `Close` frees the matrix; plus the #110 cache tests | done |
+
+Live before/after (same host, `KBSEARCH_NO_DAEMON=1`, sequential
+`test/stress --mix search:1 --c 1`): before, 13 searches grew RSS 147 MiB →
+6.8 GiB (swap 0.5 GiB) with `alloc_space` `loadMatrix` 13.84 GiB; after, 49,448
+searches kept `alloc_space` `loadMatrix` at 977 MB (one load), p50 6 ms vs
+1429 ms, RSS post-warmup delta ~36 MiB (< 50 MiB), swap flat. See `PERF.md`.
+
 ## 2026-08-23 — concurrency audit: mailsync, corpuswatch, index, bench (gitea #94)
 
 Audit of the concurrency paths outside `internal/brain` db/conn lifecycle

@@ -445,11 +445,12 @@ func resultsToDicts(hits []Hit) []any {
 
 // --- Daemon server ---
 func serve(port int) error {
-	model, err := loadModel()
+	// Shared process-living model: never Close it. Close frees the tokenizer,
+	// and the matrix is shared with every other in-process consumer (#335).
+	model, err := getEmbedModel()
 	if err != nil {
 		return fmt.Errorf("load model: %w", err)
 	}
-	defer model.Close()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(healthPath, func(w http.ResponseWriter, r *http.Request) {
@@ -505,11 +506,18 @@ func embedQuery(text string) ([]float64, error) {
 		}
 	}
 
-	model, err := loadModel()
+	return embedInProcess(text)
+}
+
+// embedInProcess embeds through the process-wide model cache (#335). It never
+// closes the shared model: the old per-request loadModel()+Close reloaded the
+// ~490 MiB matrix on every /search and, since Close freed only the tokenizer,
+// left the matrix for the GC while RSS/swap climbed.
+func embedInProcess(text string) ([]float64, error) {
+	model, err := getEmbedModel()
 	if err != nil {
 		return nil, fmt.Errorf("fallback load model: %w", err)
 	}
-	defer model.Close()
 	return model.Embed(text)
 }
 

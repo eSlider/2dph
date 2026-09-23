@@ -207,15 +207,19 @@ func toFloat32(emb []float64, dim int) []float32 {
 	return out
 }
 
-// annStatsJSON is the /stats-style ANN report for the tools.
+// annStatsJSON is the /stats-style ANN report for the tools. It returns a copy:
+// mutating the package-level annStats under RLock raced with concurrent Stats
+// callers (each wrote annStats.Len/Skipped) — a plain RLock read of a local
+// copy removes the write-write race.
 func annStatsJSON() annInfo {
 	annMu.RLock()
 	defer annMu.RUnlock()
+	out := annStats
 	if annIdx != nil {
-		annStats.Len = annIdx.Len()
-		annStats.Skipped = annIdx.Skipped()
+		out.Len = annIdx.Len()
+		out.Skipped = annIdx.Skipped()
 	}
-	return annStats
+	return out
 }
 
 // annOpenForBuild opens the index for the build/upsert tools, honoring the

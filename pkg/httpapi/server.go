@@ -413,7 +413,11 @@ func Run(api API, c *config.Config) {
 	log.Printf("serve: %s (workers=%d)", addr, workers)
 	if pprofPort := c.Pprof; pprofPort != "" {
 		go func() {
-			paddr := host + ":" + pprofPort
+			// pprof exposes heap/goroutine data and must not follow the API
+			// host: with KB_HOST=0.0.0.0 it used to bind 0.0.0.0:1707 and was
+			// reachable from outside the host. Keep it on loopback; omit
+			// KB_PPROF to disable it entirely (#335).
+			paddr := "127.0.0.1:" + pprofPort
 			log.Printf("pprof: %s (cpu/heap/goroutine via /debug/pprof/)", paddr)
 			if err := http.ListenAndServe(paddr, nil); err != nil {
 				log.Printf("pprof: %v", err)
