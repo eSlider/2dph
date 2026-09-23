@@ -45,14 +45,18 @@ services:
       KB_ROOT: /data
       KB_WORKERS: "4"
       KB_PORT: "8630"
-      # Ladybug write path needs a pool larger than the ~1.4GB DB (docs/brain/rebuild.md).
-      # Rebuild uses 10GB; the serve-side incremental pool stays at the 4GB default
-      # to avoid HNSW write stalls with a large pool.
-      KB_BUFFER_POOL: "4294967296"
+      # Ladybug buffer pool. The served DB is ~11 MB (#335), so the old 4 GiB
+      # pool only wasted address space/RSS. Rebuild (index profile) keeps its
+      # own larger pool; the serve/incremental pool stays at 512 MiB — ample
+      # for the DB size while still leaving headroom for concurrent searches.
+      KB_BUFFER_POOL: "536870912"
       # In-process embedding: the daemon on KBSEARCH_PORT is only started by
       # the entrypoint when the image carries a working brain-search; embedding
-      # in-process avoids a respawn loop against a dead daemon.
+      # in-process avoids a respawn loop against a dead daemon. The model is
+      # loaded once per process into a shared cache (#335) and reused for every
+      # /search — it is no longer reloaded per request.
       KBSEARCH_NO_DAEMON: "1"
+      # pprof (heap/cpu) on loopback only; the API host stays 0.0.0.0.
       KB_PPROF: "1707"
     network_mode: host
     volumes:
@@ -78,6 +82,14 @@ services:
       retries: 3
     restart: unless-stopped
     stop_grace_period: 20s
+    # Hard memory ceiling so a regression cannot eat host swap again (#335:
+    # the container was unbounded — HostConfig.Memory=0 — and the per-request
+    # model reload pushed 11 GiB into swap). 2 GiB covers the ~0.5 GiB shared
+    # model + ANN snapshot + Ladybug pool with headroom.
+    deploy:
+      resources:
+        limits:
+          memory: 2g
 
   brain-watch:
     image: ghcr.io/eslider/2dph:api

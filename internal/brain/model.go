@@ -60,11 +60,16 @@ func loadModel() (*StaticModel, error) {
 	}, nil
 }
 
+// Close releases both the tokenizer and the embedding matrix. One-shot tools
+// (bin/brain/add, bin/facts/extract, …) own their model and must Close it; the
+// process-wide shared model (getEmbedModel) must NEVER be closed — it is owned
+// by the process (#335). Callers must not Embed after Close.
 func (m *StaticModel) Close() error {
 	if m.tok != nil {
 		m.tok.Close()
 		m.tok = nil
 	}
+	m.mat = nil
 	return nil
 }
 

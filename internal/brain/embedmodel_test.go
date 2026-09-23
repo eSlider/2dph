@@ -4,12 +4,18 @@ package brain
 
 import (
 	"errors"
+	"net"
 	"sync"
 	"testing"
+
+	"github.com/eSlider/2dph/internal/config"
 )
 
+// searchLoadIterations mirrors the #335 acceptance load (N≥200 searches).
+const searchLoadIterations = 200
+
 // countingEmbedder is a stub embedder that records Close calls, so tests can
-// prove the shared ingest model is never closed mid-flight.
+// prove the shared model is never closed mid-flight.
 type countingEmbedder struct {
 	mu         sync.Mutex
 	closeCalls int
@@ -32,9 +38,19 @@ func (c *countingEmbedder) closes() int {
 	return c.closeCalls
 }
 
-func TestIngestModelSingletonLoadsOnce(t *testing.T) {
+// stubEmbedModel replaces the process-wide model cache with loader and restores
+// the previous cache when the test ends. Lets the search/ingest paths run
+// offline and count model loads.
+func stubEmbedModel(t *testing.T, loader func() (embedder, error)) {
+	t.Helper()
+	prev := embedModel
+	embedModel = newEmbedModelCache(loader)
+	t.Cleanup(func() { embedModel = prev })
+}
+
+func TestEmbedModelSingletonLoadsOnce(t *testing.T) {
 	loads := 0
-	cache := newIngestModelCache(func() (embedder, error) {
+	cache := newEmbedModelCache(func() (embedder, error) {
 		loads++
 		return &countingEmbedder{}, nil
 	})
@@ -60,7 +76,7 @@ func TestIngestModelSingletonLoadsOnce(t *testing.T) {
 // Ladybug write section (#109 territory).
 func TestIngestRequestsShareSingleLoad(t *testing.T) {
 	loads := 0
-	cache := newIngestModelCache(func() (embedder, error) {
+	cache := newEmbedModelCache(func() (embedder, error) {
 		loads++
 		return &countingEmbedder{}, nil
 	})
@@ -87,10 +103,10 @@ func TestIngestRequestsShareSingleLoad(t *testing.T) {
 	}
 }
 
-func TestIngestModelSingletonConcurrentLoadsOnce(t *testing.T) {
+func TestEmbedModelSingletonConcurrentLoadsOnce(t *testing.T) {
 	loads := 0
 	var mu sync.Mutex
-	cache := newIngestModelCache(func() (embedder, error) {
+	cache := newEmbedModelCache(func() (embedder, error) {
 		mu.Lock()
 		loads++
 		mu.Unlock()
@@ -114,9 +130,9 @@ func TestIngestModelSingletonConcurrentLoadsOnce(t *testing.T) {
 	}
 }
 
-func TestIngestModelNoCloseOfSharedModel(t *testing.T) {
+func TestEmbedModelNoCloseOfSharedModel(t *testing.T) {
 	em := &countingEmbedder{}
-	cache := newIngestModelCache(func() (embedder, error) { return em, nil })
+	cache := newEmbedModelCache(func() (embedder, error) { return em, nil })
 
 	for i := 0; i < 3; i++ {
 		if _, err := cache.get(); err != nil {
@@ -133,9 +149,9 @@ func TestIngestModelNoCloseOfSharedModel(t *testing.T) {
 
 // A failed load must not poison the singleton: the next request retries the
 // loader instead of failing forever.
-func TestIngestModelCacheRetriesAfterLoaderError(t *testing.T) {
+func TestEmbedModelCacheRetriesAfterLoaderError(t *testing.T) {
 	calls := 0
-	cache := newIngestModelCache(func() (embedder, error) {
+	cache := newEmbedModelCache(func() (embedder, error) {
 		calls++
 		if calls == 1 {
 			return nil, errors.New("weights not downloaded yet")
@@ -155,6 +171,86 @@ func TestIngestModelCacheRetriesAfterLoaderError(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("loader called %d times, want 2 (retry after failure)", calls)
+	}
+}
+
+// TestSearchEmbedLoadsModelOnce is the #335 regression: N sequential search
+// embeds through the production helper must load the model exactly once and
+// never close it. Before the fix every /search ran loadModel()+Close, so this
+// test fails with N loads (and ~N × 980 MiB allocated in loadMatrix).
+func TestSearchEmbedLoadsModelOnce(t *testing.T) {
+	loads := 0
+	em := &countingEmbedder{}
+	stubEmbedModel(t, func() (embedder, error) {
+		loads++
+		return em, nil
+	})
+
+	for i := 0; i < searchLoadIterations; i++ {
+		if _, err := embedInProcess("docker compose"); err != nil {
+			t.Fatalf("embed %d: %v", i, err)
+		}
+	}
+	if loads != 1 {
+		t.Fatalf("model loaded %d times over %d searches, want 1", loads, searchLoadIterations)
+	}
+	if em.closes() != 0 {
+		t.Fatalf("shared search model closed %d times over %d searches, want 0", em.closes(), searchLoadIterations)
+	}
+}
+
+// TestEmbedQueryFallbackUsesSharedModel exercises the real embedQuery fallback
+// (daemon disabled, nothing listening) and proves it reaches the shared cache
+// once instead of loading the model per request (#335).
+func TestEmbedQueryFallbackUsesSharedModel(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close() // free port: tryDaemon gets a fast connection refused
+
+	prevCfg := brainCfg()
+	cfg := config.Defaults()
+	cfg.Root = t.TempDir()
+	cfg.SearchNoDaemon = true
+	cfg.SearchDaemonPort = port
+	Configure(&cfg)
+	t.Cleanup(func() { Configure(&prevCfg) })
+
+	loads := 0
+	em := &countingEmbedder{}
+	stubEmbedModel(t, func() (embedder, error) {
+		loads++
+		return em, nil
+	})
+
+	for i := 0; i < 5; i++ {
+		if _, err := embedQuery("docker compose"); err != nil {
+			t.Fatalf("embedQuery %d: %v", i, err)
+		}
+	}
+	if loads != 1 {
+		t.Fatalf("embedQuery loaded the model %d times over 5 queries, want 1", loads)
+	}
+	if em.closes() != 0 {
+		t.Fatalf("embedQuery closed the shared model %d times, want 0", em.closes())
+	}
+}
+
+// TestStaticModelCloseFreesMatrix — Close must release the safetensors matrix
+// (~490 MiB), not just the tokenizer (#335).
+func TestStaticModelCloseFreesMatrix(t *testing.T) {
+	m := &StaticModel{
+		mat:       make([]float32, 16),
+		vocabSize: 4,
+		dim:       4,
+	}
+	if err := m.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if m.mat != nil {
+		t.Fatal("Close did not release the embedding matrix")
 	}
 }
 
