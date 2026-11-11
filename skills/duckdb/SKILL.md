@@ -24,7 +24,7 @@ CC=gcc CXX=g++ CGO_CFLAGS= CGO_LDFLAGS= go test ./pkg/duckdb
 
 | Store | Job |
 |-------|-----|
-| Ladybug | graph + FTS + HNSW (facts/info) |
+| Ladybug | graph + FTS + IVF ANN (facts/info) |
 | modernc sqlite | web-search KV cache + throttle |
 | duckdb-go | OLAP: quantiles, counts, scans of many rows/files |
 | mikefarah/yq | small YAML/JSON/XML/CSV/TOML/HCL slice, not bulk |
