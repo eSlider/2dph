@@ -142,7 +142,7 @@ mail-server** (docker-mailserver, `info@` reads the mailboxes as shared). Autosy
 gator `kind=mail` is epic B (outside A).
 
 **Mailbox model (decision 2026-09-02, #252):** an incubator mailbox = the **historical
-owner address** of the period, NOT an abstract "source". The wheregroup period →
+owner address** of the period, NOT an abstract "source". The Wheregroup period →
 `andriy.oblivantsev@wheregroup.com`; for future periods — a separate account for
 each historical address (`eslider@gmail.com`, `…@viscreation.de`). Mails
 are laid out by addressee: owner in `From` → **Sent**; owner in
