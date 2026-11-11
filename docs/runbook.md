@@ -19,11 +19,11 @@ No laptop-absolute paths. Config lives in env files under `$HOME/.config/brain/`
 - Optional: ghostscript `gs` — normalizes export-locked / oversized PDFs before
   extraction (strips export-protection, shrinks; original preserved, artifact
   in `var/tmp`). Clean PDFs skip it, so the pdftotext fast path stays fast.
-- Optional: **liteparse service** (epic #219) — документы → структурированный
-  JSON/YAML. `docker compose up -d liteparse` (демон с warmup), вызов через
-  `docker compose exec -T liteparse lit parse ...` (~100ms против ~700ms
-  `docker run`). Инструменты: `bin/research/convert.go` (→ `var/struct-data/<sha256>.yml`,
-  idempotent), `bin/research/bench.go` (p95). Детали: `docs/research-liteparse.md`.
+- Optional: **liteparse service** (epic #219) — documents → structured
+  JSON/YAML. `docker compose up -d liteparse` (daemon with warmup), invoked via
+  `docker compose exec -T liteparse lit parse ...` (~100ms vs ~700ms for
+  `docker run`). Tools: `bin/research/convert.go` (→ `var/struct-data/<sha256>.yml`,
+  idempotent), `bin/research/bench.go` (p95). Details: `docs/research-liteparse.md`.
 
 ```bash
 eval "$(bin/cgo/zig env)"   # optional; bin/brain/{search,get,stats,eval,serve}.go auto-wrap zig
@@ -217,133 +217,132 @@ write never commits, so the on-disk DB is the last successful state. A full
 rebuild is only needed after a deliberate `--rebuild` or a corrupt DB, not
 after a restart.
 
-## Бенчмарки поиска (#202)
+## Search benchmarks (#202)
 
-A/B-харнесс `bin/brain/bench.go` гоняет фиксированный golden-set запросов
-(`internal/brain/testdata/golden-set.json`, ~50, рус+англ, темы
-facts/mail/docs/git/ssh) через поиск и печатает latency p50/p95/mean,
-recall@5/@10 и CPU/RSS. **Никакой кандидат не принимается без замера**
-(эпик #201): baseline — текущий линейный скан.
+The A/B harness `bin/brain/bench.go` runs a fixed golden set of queries
+(`internal/brain/testdata/golden-set.json`, ~50, ru+en, themes
+facts/mail/docs/git/ssh) through search and prints latency p50/p95/mean,
+recall@5/@10 and CPU/RSS. **No candidate is accepted without a measurement**
+(epic #201): the baseline is the current linear scan.
 
 ```bash
-# baseline против живого brain (HTTP MCP :8630, read-only; контейнер можно не трогать)
+# baseline against the live brain (HTTP MCP :8630, read-only; the container can be left alone)
 ./bin/brain/bench.go
 
-# machine-отчёт (для issue/CI)
+# machine-readable report (for issue/CI)
 ./bin/brain/bench.go --json
 
-# кандидат: исполняемый бинарь с CLI bin/brain/search.go --json -n N --no-web "q"
+# candidate: executable binary with the CLI bin/brain/search.go --json -n N --no-web "q"
 ./bin/brain/bench.go --candidate /path/to/candidate
 
-# кандидат: другой serve (:8631) — A/B recall vs baseline + latency ratio
+# candidate: another serve (:8631) — A/B recall vs baseline + latency ratio
 ./bin/brain/bench.go --candidate http://127.0.0.1:8631
 
-# локально, без сервера: открыть var/kb.lbug read-only в процессе
-# (сначала quiesce: docker compose stop brain — single-writer!)
+# locally, without a server: open var/kb.lbug read-only in-process
+# (quiesce first: docker compose stop brain — single-writer!)
 ./bin/brain/bench.go --inproc
 
-# локально против отдельной копии БД (напр. свежий --rebuild --db /tmp/kb.lbug)
+# locally against a separate copy of the DB (e.g. a fresh --rebuild --db /tmp/kb.lbug)
 ./bin/brain/bench.go --inproc --db /tmp/kb.lbug
 
-# ресурсы сервера: семплировать PID brain-контейнера вместо собственного
+# server resources: sample the brain container PID instead of our own
 ./bin/brain/bench.go --pid $(docker inspect -f '{{.State.Pid}}' 2dph-brain-1)
 ```
 
-Метрики и гейты:
+Metrics and gates:
 
-| Метрика | Смысл | Гейт |
-|---------|-------|------|
-| latency p50/p95/mean, ms | распределение длительности поиска на запрос | кандидат p50 ≤ baseline p50 × 1.5 |
-| recall@5/@10 (fragment) | доля запросов, у которых ожидаемый фрагмент (из корпуса) в top-k | baseline recall@5 ≥ 0.95 |
-| recall@5/@10 (vs baseline) | кандидат не теряет известные baseline-хиты (top-k IDs) | кандидат ≥ 0.95 |
-| CPU/RSS | user+sys jiffies, RSS до/после, пик (VmHWM) из /proc | для сравнения при «тех же ресурсах» |
+| Metric | Meaning | Gate |
+|--------|---------|------|
+| latency p50/p95/mean, ms | distribution of search duration per query | candidate p50 ≤ baseline p50 × 1.5 |
+| recall@5/@10 (fragment) | share of queries whose expected fragment (from the corpus) is in the top-k | baseline recall@5 ≥ 0.95 |
+| recall@5/@10 (vs baseline) | candidate does not lose known baseline hits (top-k IDs) | candidate ≥ 0.95 |
+| CPU/RSS | user+sys jiffies, RSS before/after, peak (VmHWM) from /proc | for comparison "at the same resources" |
 
-Exit codes: `0` — гейты прошли, `2` — recall/ratio FAIL, `1` — ошибка
-(нет golden-set, не поднялся searcher, и т.п.).
+Exit codes: `0` — gates passed, `2` — recall/ratio FAIL, `1` — error
+(no golden set, the searcher did not come up, and so on).
 
-Чтение: p50/p95 по per-query latency при `--workers 1` (по умолчанию) —
-чистый одиночный запрос; `--workers N` меряет сервер под нагрузкой.
-Повторяемость: два прогона подряд, разброс p50 < 10 % (линейный скан
-детерминирован; разброс даёт только фоновая нагрузка). Baseline-эталон:
-p50 ≈ 32s на 313k leafs (линейный скан, #192); после внедрения кандидата
-цель эпика p50 < 500ms, p95 < 2s.
+Reading: p50/p95 from per-query latency with `--workers 1` (the default) —
+a clean single request; `--workers N` measures the server under load.
+Reproducibility: two consecutive runs, p50 spread < 10 % (the linear scan is
+deterministic; only background load adds spread). Baseline reference:
+p50 ≈ 32s on 313k leafs (linear scan, #192); after the candidate lands, the
+epic goal is p50 < 500ms, p95 < 2s.
 
-В CI (GitHub, оффлайн): `--rebuild` корпуса → `bench --inproc --json`
-(та же схема, что и recall-gate `bin/brain/eval.go`).
+In CI (GitHub, offline): `--rebuild` the corpus → `bench --inproc --json`
+(the same schema as the recall gate `bin/brain/eval.go`).
 
-### ANN-индекс в проде (#204/#206)
+### ANN index in production (#204/#206)
 
-Векторный поиск brain идёт через инкрементальный индекс **вне liblbug** (его
-собственный HNSW крашится на росте графа, #192; fallback — линейный скан).
-Алгоритм: **IVF** (k-means cells + точный косинус внутри probed-кластеров,
-чистый Go, без внешних зависимостей). `coder/hnsw` (HNSW) отброшен на
-эмпирике: на 313k реальных эмбеддингов из entry достижимы лишь 34% узлов
-(изоляция при вытеснении соседей) → recall@5 падает до 0.16; IVF держит
-recall@30 ≥ 0.93 при NList=2000/NProbe=128 (замеры probe #204). Индекс
-живёт в `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`).
+Vector search in the brain goes through an incremental index **outside liblbug**
+(liblbug's own HNSW crashes as the graph grows, #192; the fallback is the linear
+scan). Algorithm: **IVF** (k-means cells + exact cosine inside the probed
+clusters, pure Go, no external dependencies). `coder/hnsw` (HNSW) was dropped on
+empirical grounds: on 313k real embeddings from entry only 34% of nodes are
+reachable (isolation when neighbours are evicted) → recall@5 drops to 0.16; IVF
+holds recall@30 ≥ 0.93 at NList=2000/NProbe=128 (probe measurements #204). The
+index lives in `var/state/vector.ann` (+ append-only WAL `vector.ann.wal`).
 
-**Включён по умолчанию** (#206): `vector.ann.enabled: true` — serve и CLI
-ищут через ANN; при отсутствии/повреждении индекса поиск автоматически
-падает на линейный скан (никогда не ломается). `serve` грузит индекс при
-старте (warm start, без rebuild); если индекс пуст — serve отвечает через
-скан, а волна (шаг `ann-build`) строит его.
+**Enabled by default** (#206): `vector.ann.enabled: true` — serve and the CLI
+search through ANN; when the index is missing or corrupt, search automatically
+falls back to the linear scan (it never breaks). `serve` loads the index at
+startup (warm start, no rebuild); if the index is empty, serve answers via the
+scan and the wave (step `ann-build`) builds it.
 
 ```bash
-# полный build из БД (~30s extract + ~4min k-means + assign на 313k, NList=2000).
-# Источник векторов: embedding-колонка когда есть (legacy/ANN-off БД); у БД
-# после --rebuild при ANN-on колонки нет (issue #248 B3) — build/upsert/ensure
-# эмбедят l.text моделью напрямую (~16k/s, +модель ~1.5GB в этом процессе).
+# full build from the DB (~30s extract + ~4min k-means + assign on 313k, NList=2000).
+# Source of vectors: the embedding column when present (legacy/ANN-off DB); for a DB
+# after --rebuild with ANN on there is no column (issue #248 B3) — build/upsert/ensure
+# embed l.text with the model directly (~16k/s, +model ~1.5GB in that process).
 KB_BUFFER_POOL=4294967296 ./bin/brain/ann.go build
 
-# волна/ручной режим: build если индекса нет или он устарел (>10% отставания
-# по счётчику leafs), иначе инкрементальный WAL-upsert новых leafs (<1s, НЕ rebuild)
+# wave/manual mode: build if the index is missing or stale (>10% behind
+# on the leaf counter), otherwise incremental WAL-upsert of new leafs (<1s, NOT a rebuild)
 ./bin/brain/ann.go ensure
 
-# инкрементальный upsert новых leafs (append WAL, НЕ rebuild) — для ручных прогонов
+# incremental upsert of new leafs (append WAL, NOT a rebuild) — for manual runs
 ./bin/brain/ann.go upsert
 
-# статистика индекса
+# index statistics
 ./bin/brain/ann.go stats
 
-# CLI-поиск через ANN (fallback на скан при отсутствии индекса)
+# CLI search through ANN (falls back to the scan when the index is missing)
 ./bin/brain/ann.go --json -n 10 "query"
 
-# HTTP-сервер поиска через ANN (для bench --candidate http://127.0.0.1:8631)
+# HTTP search server through ANN (for bench --candidate http://127.0.0.1:8631)
 ./bin/brain/ann.go api --port 8631
 ```
 
-**Инкрементальность** (критично: волна идёт каждые N минут, полный rebuild
-на каждую волну НЕДОПУСТИМ): `ensure` сравнивает счётчик leafs в БД с
-мощностью индекса; steady-state рост (+100 писем на 313k) всегда уходит в
-WAL-upsert (<1s), полный build — только когда индекса нет или он отстал
->10% (битый/частичный/после bulk-import). Доказано тестом
+**Incrementality** (critical: the wave runs every N minutes, a full rebuild on
+every wave is NOT ALLOWED): `ensure` compares the leaf counter in the DB with
+the index capacity; steady-state growth (+100 mails on 313k) always goes to the
+WAL-upsert (<1s), a full build only when the index is missing or more than 10%
+behind (corrupt/partial/after a bulk import). Proven by the test
 `TestAnnEnsureIncrementalUpsertNoRebuild` (+100 leafs → rebuild=false,
-upsert <1s) и замером на проде.
+upsert <1s) and by a production measurement.
 
-A/B (изолирует векторный слой: baseline = скан, кандидат = ANN, один
-процесс, одна БД):
+A/B (isolates the vector layer: baseline = scan, candidate = ANN, one process,
+one DB):
 
 ```bash
-# quiesce сначала (single-writer): docker compose stop brain
+# quiesce first (single-writer): docker compose stop brain
 KB_BUFFER_POOL=4294967296 ./bin/brain/bench.go --inproc --candidate inproc-ann
-# эталон: ./bin/brain/bench.go --inproc                 (baseline, ~26 min на 50 запросов)
-# через отдельный serve: ./bin/brain/bench.go --candidate http://127.0.0.1:8631
+# reference: ./bin/brain/bench.go --inproc                 (baseline, ~26 min for 50 queries)
+# via a separate serve: ./bin/brain/bench.go --candidate http://127.0.0.1:8631
 ```
 
-**nprobe-дефолт = 2000** (решение #206, замерено на живом корпусе 313689
-векторов, 11 запросов golden-set): полный probe даёт порядок кандидатов,
-совпадающий с точным сканом (recall@5 vs baseline = 1.0) при p50 ~470ms
-(гейт <500ms); снижение до 256 ускоряет поиск (p50 ~260ms), но recall@5
-падает до ~0.82 — теряются точные top-5. Выбор: корректность сначала,
-тюнинг (256/512) — отдельной задачей, если понадобится p50 < 300ms.
-Конфиг (`etc/brain/config.yml`, секция `vector.ann`): `enabled`, `index`,
-`dim` (256), `nlist` (2000 — k-means cells, ~150 векторов на ячейку при
-313k), `nprobe` (2000). В compose весь `etc/brain` монтируется в
-`/data/etc/brain:ro` (repo root в контейнере — `/data`, #208); без mount
-serve работает на код-default (nprobe=128). Идемпотентность: повторный
-`upsert` не дублирует (idCell — map), повторный `build` из той же БД даёт
-ту же мощность.
-A/B-отчёты: #204 (кандидат), #206 (прод, nprobe 256 vs 2000).
+**nprobe default = 2000** (decision #206, measured on a live corpus of 313689
+vectors, 11 golden-set queries): a full probe gives an ordering of candidates
+that matches the exact scan (recall@5 vs baseline = 1.0) at p50 ~470ms
+(gate <500ms); lowering it to 256 speeds up search (p50 ~260ms) but recall@5
+drops to ~0.82 — the exact top-5 are lost. Choice: correctness first; tuning
+(256/512) is a separate task, if p50 < 300ms is needed. Config
+(`etc/brain/config.yml`, section `vector.ann`): `enabled`, `index`, `dim` (256),
+`nlist` (2000 — k-means cells, ~150 vectors per cell at 313k), `nprobe` (2000).
+In compose the whole `etc/brain` is mounted at `/data/etc/brain:ro` (the repo
+root in the container is `/data`, #208); without the mount serve runs on the
+code default (nprobe=128). Idempotency: a repeated `upsert` does not duplicate
+(idCell is a map), a repeated `build` from the same DB yields the same capacity.
+A/B reports: #204 (candidate), #206 (production, nprobe 256 vs 2000).
 
 ## Disk mail/contacts import (#79)
 
@@ -374,8 +373,8 @@ go run ./bin/stack/sync.go --with-chats --git-root <dir> # + chats, git history
 
 `--only` takes actual step names (fixed order): `mail`, `mail-import`,
 `mail-index`, `chats`, `contact-brain`, `git-brain`, `contact-crm`.
-`--with-mail` включает шаг `mail-index` (mail leafs обоих корпусов → brain,
-#199); без флага шаг SKIP, не FAIL.
+`--with-mail` enables the `mail-index` step (mail leafs of both corpora → brain,
+#199); without the flag the step is SKIP, not FAIL.
 
 ### chats step (--with-chats, #195)
 
