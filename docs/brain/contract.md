@@ -1,71 +1,73 @@
-# Контракт записи в Ladybug (P-9.2 + P-9.3)
+# Leaf write contract in Ladybug (P-9.2 + P-9.3)
 
-Единый контракт записи leaf в Ladybug для всех источников корпуса (mail,
-git, chats, docs, facts). Формализация по образцу gator `contract.Record`
-(G-8.0, issue #73) — см. также общий ADR по версионности P-9.6 (#16).
+Single contract for writing a leaf into Ladybug for all corpus sources (mail,
+git, chats, docs, facts). Formalization following the gator `contract.Record`
+model (G-8.0, issue #73) — see also the shared versioning ADR P-9.6 (#16).
 
-Реализация: пакет `internal/contract` (cgo-free) + адаптеры корпуса
-`internal/corpus` (cgo-free) + write-путь `internal/brain` (колонки
+Implementation: package `internal/contract` (cgo-free) + corpus adapters
+`internal/corpus` (cgo-free) + write path `internal/brain` (columns
 `observed_at`, `external_id`; id = `ContentHash`).
 
-## Поля leaf
+## Leaf fields
 
-| Поле | Обязательно | Смысл |
+| Field | Required | Meaning |
 |------|-------------|-------|
-| `source` | да | корпус-источник: `mail` / `git` / `chats` / `docs` / `facts` (P-9.3: имя корпуса, не evidence pointer) |
-| `external_id` | да | устойчивый ref внутри корпуса: message id / commit sha / chat message id / rel-путь файла |
-| `kind` | да | тип leaf: `fact` / `mail` / `chat` / `commit` / `reference` / `seed` / … |
-| `text` | да | содержимое leaf |
-| `root` | нет | `facts` (утверждение, ≥2 источника) или `info` (нарратив); default `info` |
-| `confidence` | нет | `confirmed` / `estimated` / `inferred` / …; default `confirmed` |
-| `source_rev` | нет | ревизия источника: `working-tree` / sha; default `working-tree` |
-| `how` | нет | как получено: `kb/index`, `mail/import`, `git-log`, `facts/extract`, `brain/add` |
-| `loc` | нет | локальный контекст (путь/репо); default = `source` |
-| `valid_from` / `valid_to` | нет | D24-день валидности (YYYY-MM-DD) — **ортогонально версии**: это про факт, а не про запись |
-| `observed_at` | нет | когда контент **увиден** (RFC3339); пусто → штамп `now()` при записи; **не входит в dedup-ключ** |
+| `source` | yes | corpus source: `mail` / `git` / `chats` / `docs` / `facts` (P-9.3: corpus name, not an evidence pointer) |
+| `external_id` | yes | stable ref inside the corpus: message id / commit sha / chat message id / file rel-path |
+| `kind` | yes | leaf type: `fact` / `mail` / `chat` / `commit` / `reference` / `seed` / … |
+| `text` | yes | leaf content |
+| `root` | no | `facts` (claim, ≥2 sources) or `info` (narrative); default `info` |
+| `confidence` | no | `confirmed` / `estimated` / `inferred` / …; default `confirmed` |
+| `source_rev` | no | source revision: `working-tree` / sha; default `working-tree` |
+| `how` | no | how it was obtained: `kb/index`, `mail/import`, `git-log`, `facts/extract`, `brain/add` |
+| `loc` | no | local context (path/repo); default = `source` |
+| `valid_from` / `valid_to` | no | D24 validity day (YYYY-MM-DD) — **orthogonal to the version**: it is about the fact, not about the record |
+| `observed_at` | no | when the content was **seen** (RFC3339); empty → stamped with `now()` on write; **not part of the dedup key** |
 
-Проверка обязательных полей — `Leaf.Validate()`; невалидный leaf режется на
-границе записи (до upsert).
+Required-field validation — `Leaf.Validate()`; an invalid leaf is cut at the
+write boundary (before upsert).
 
-## Dedup (ContentHash) — id в БД
+## Dedup (ContentHash) — the DB id
 
-Dedup-ключ версии **и id записи в БД** — `ContentHash()` =
-`sha256(source|external_id|kind|text)[:32]` (P-9.3: runtime id переведён с
-`LeafID(text, source)[:24]` на контрактный `ContentHash` — единый ключ,
-dedup-ключ == id). Текст перед хэшем нормализуется `contract.NormalizeText`
-(ToValidUTF8 → LF → trim): один контент из разных путей (CRLF vs LF,
-хвостовые пробелы) даёт один id. `observed_at` намеренно вне хэша — семантика
-gator (G-8.0 #73): тот же контент, записанный позже, дедуплицируется к той же
-версии (сохраняется первый `observed_at`); изменился контент → новый ключ.
+The dedup key of the version **and the id of the record in the DB** —
+`ContentHash()` = `sha256(source|external_id|kind|text)[:32]` (P-9.3: the
+runtime id moved from `LeafID(text, source)[:24]` to the contract
+`ContentHash` — one key, dedup key == id). Before hashing, the text is
+normalized by `contract.NormalizeText` (ToValidUTF8 → LF → trim): the same
+content from different paths (CRLF vs LF, trailing spaces) yields one id.
+`observed_at` is deliberately outside the hash — gator semantics (G-8.0 #73):
+the same content written later dedups to the same version (the first
+`observed_at` is kept); the content changed → new key.
 
-## Версионирование
+## Versioning
 
-Одна версия = один id. Изменение контента (text) или identity (source /
-external_id / kind) → новый `ContentHash` → новый id, старая версия остаётся в
-графе. Повторная запись той же версии — MERGE (upsert), без дубликата.
+One version = one id. A change of content (text) or identity (source /
+external_id / kind) → new `ContentHash` → new id, the old version stays in the
+graph. Rewriting the same version — MERGE (upsert), without a duplicate.
 
-`valid_from/valid_to` — валидность факта по дням (D24, `facts.NormalizeDay`),
-используется в поиске `--as-of`. Это не версионирование записи: версия
-определяется id/ContentHash, валидность — интервалом.
+`valid_from/valid_to` — validity of the fact by days (D24, `facts.NormalizeDay`),
+used in `--as-of` search. This is not record versioning: the version is
+determined by id/ContentHash, validity — by an interval.
 
-## Формат ref (external_id) — P-9.3
+## Ref format (external_id) — P-9.3
 
-`source` = имя корпуса; `external_id` = устойчивый ref; `loc` = evidence
-pointer (путь/репо) для FROM_FILE и аудита.
+`source` = corpus name; `external_id` = stable ref; `loc` = evidence pointer
+(path/repo) for FROM_FILE and the audit.
 
-| Корпус | source | external_id | Пример loc |
+| Corpus | source | external_id | Example loc |
 |--------|--------|-------------|------------|
-| mail | `mail` | content-address `sha256(NormalizeText(text))[:16]` — единая схема для live (OO numeric id) и legacy (sha256:16 dir), чтобы один message из обоих корпусов сливался по ContentHash (#5.2) | `/var/corpus/mail/<folder>/<id>/message.md` |
-| git | `git` | commit sha (полный) | путь репозитория |
-| chats | `chats` | frontmatter `id` (первый message id); нет id → content-address | `.../var/corpus/chats/md/<platform>/<chat>/messages.md` |
-| docs | `docs` | относительный путь в репо (стабилен между машинами) | абсолютный путь файла |
+| mail | `mail` | content-address `sha256(NormalizeText(text))[:16]` — one scheme for live (OO numeric id) and legacy (sha256:16 dir), so that one message from both corpora merges by ContentHash (#5.2) | `/var/corpus/mail/<folder>/<id>/message.md` |
+| git | `git` | commit sha (full) | repository path |
+| chats | `chats` | frontmatter `id` (first message id); no id → content-address | `.../var/corpus/chats/md/<platform>/<chat>/messages.md` |
+| docs | `docs` | relative path in the repo (stable across machines) | absolute file path |
 
-Текст лифа = `Heading + "\n\n" + body` во всех корпусах (git переведён с
-одинарного `\n` на двойной, #5.3) — единообразие для ContentHash.
+Leaf text = `Heading + "\n\n" + body` in all corpora (git moved from a single
+`\n` to a double one, #5.3) — uniformity for ContentHash.
 
-## Адаптеры корпуса (P-9.3)
+## Corpus adapters (P-9.3)
 
-Каждый корпус — адаптер по контракту gator `Source` (`internal/contract`):
+Each corpus is an adapter following the gator `Source` contract
+(`internal/contract`):
 
 ```go
 type Source interface {
@@ -74,47 +76,49 @@ type Source interface {
 }
 ```
 
-Адаптеры в `internal/corpus` (cgo-free): `mail.go`, `git.go`, `chats.go`,
-`docs.go`. Общий index-драйвер (`bin/brain/index.go`) собирает leafs через
-`corpus.StreamAll` и пишет единым `brain.WriteCorpus([]contract.Leaf)`.
-**Добавление/удаление корпуса = адаптер в `sources()` + `--rebuild`**
-(детерминированные id = ContentHash → пересборка без ручной магии).
-Флаги `--with-mail` / `--with-chats` / `--corpus` / `--git-root` включают
-соответствующие адаптеры. facts остаются отдельным путём (не корпус, а
-evidence gate) — семантика «facts = ≥2 независимых источника» не трогается.
+Adapters live in `internal/corpus` (cgo-free): `mail.go`, `git.go`, `chats.go`,
+`docs.go`. The common index driver (`bin/brain/index.go`) collects leafs via
+`corpus.StreamAll` and writes them with a single `brain.WriteCorpus([]contract.Leaf)`.
+**Adding/removing a corpus = an adapter in `sources()` + `--rebuild`**
+(deterministic ids = ContentHash → rebuild without manual magic).
+The flags `--with-mail` / `--with-chats` / `--corpus` / `--git-root` enable the
+corresponding adapters. facts remain a separate path (not a corpus but an
+evidence gate) — the semantics "facts = ≥2 independent sources" is untouched.
 
-Дубль git устранён: git-история пишется только git-адаптером
-(`var/corpus/git/*.md` и `2dph__corpus__git__*` в docs-корпусе исключаются
-docs-адаптером).
+The git duplicate is eliminated: git history is written only by the git adapter
+(`var/corpus/git/*.md` and `2dph__corpus__git__*` in the docs corpus are excluded
+by the docs adapter).
 
-## Аудит соответствия
+## Conformance audit
 
-`bin/brain/audit-contract.go` — read-only аудит против живой kb.lbug
-(открывает БД с `ReadOnly=true`, не держит файл, агрегаты одним проходом):
+`bin/brain/audit-contract.go` — read-only audit against the live kb.lbug
+(opens the DB with `ReadOnly=true`, does not hold the file, aggregates in a
+single pass):
 
     ./bin/brain/audit-contract.go            # summary
-    ./bin/brain/audit-contract.go --json     # полные агрегаты
+    ./bin/brain/audit-contract.go --json     # full aggregates
 
-Считает total, пропуски обязательных/рекомендуемых полей, распределение по
-корпусам (группировка по полю `source` напрямую — P-9.3; на живой БД до
-пересборки source ещё содержит старые evidence-указатели, такие строки
-показываются как есть). Прогон на живой БД
-(2026-09-01, 313817 leafs): `missing_external_id: 313817` (колонки ещё нет —
-миграция применится при старте сервиса), `missing_valid_from: 10099`,
+Counts total, missing required/recommended fields, distribution by corpus
+(grouping by the `source` field directly — P-9.3; on the live DB before the
+rebuild source still contains old evidence pointers, such rows are shown as
+they are). Run on the live DB
+(2026-09-01, 313817 leafs): `missing_external_id: 313817` (the column does not
+exist yet — the migration will be applied when the service starts),
+`missing_valid_from: 10099`,
 `missing_how/loc/kind: 4`, `observed_at: 0`.
 
-## Известные расхождения (на момент P-9.3)
+## Known discrepancies (as of P-9.3)
 
-- Живая `var/kb.lbug` (313k leafs) ещё не пересобрана: старые id
-  (`sha256(source\0text)[:24]`), старые source (evidence pointers), git-дубль.
-  Пересборка — отдельный шаг (devops, после merge): `index --rebuild
-  --with-mail --with-facts [--with-chats] [--git-root DIR]`, полный рехэш id.
-- facts-путь (`factsFromJSON`) пишет напрямую `UpsertLeaf` без `FROM_FILE` —
-  оставлено как есть, фиксируется контрактом как допустимый путь записи.
+- The live `var/kb.lbug` (313k leafs) has not been rebuilt yet: old ids
+  (`sha256(source\0text)[:24]`), old source (evidence pointers), git duplicate.
+  The rebuild is a separate step (devops, after merge): `index --rebuild
+  --with-mail --with-facts [--with-chats] [--git-root DIR]`, full id rehash.
+- The facts path (`factsFromJSON`) writes directly via `UpsertLeaf` without
+  `FROM_FILE` — left as is, recorded by the contract as an allowed write path.
 
 ## Cross-ref
 
-- G-8.0 контракт записи gator: `internal/contract` (gator), issue #73.
-- Общий паттерн версионности / ADR: P-9.6, issue #16.
-- Адаптеры корпуса + рехэш id: P-9.3, issue #13.
-- Скилл `brain` (skills/brain) — как пользоваться поиском и как добавить источник.
+- G-8.0 gator write contract: `internal/contract` (gator), issue #73.
+- Shared versioning pattern / ADR: P-9.6, issue #16.
+- Corpus adapters + id rehash: P-9.3, issue #13.
+- Skill `brain` (skills/brain) — how to use search and how to add a source.

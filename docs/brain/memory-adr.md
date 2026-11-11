@@ -1,136 +1,136 @@
-# ADR P-9.6: память 2dph — единая модель фактов, аудита и хранения
+# ADR P-9.6: 2dph memory — a single model of facts, audit and storage
 
-> Статус: **Accepted** (2026-09-03). Документ не вводит новых механизмов: он
-> сводит уже принятые и работающие решения (P-9.2/#235, P-9.3/#13,
-> P-9.4/#240, L-9/#229–234) в одну модель для клиентов. Изменение модели —
-> через новый issue; эпик P-9 (#239).
+> Status: **Accepted** (2026-09-03). The document introduces no new mechanisms: it
+> consolidates the already accepted and working decisions (P-9.2/#235, P-9.3/#13,
+> P-9.4/#240, L-9/#229–234) into one model for clients. A change of the model —
+> through a new issue; epic P-9 (#239).
 
-## 1. Цель и место документа
+## 1. Purpose and place of the document
 
-2dph («память», префронтальная кора по ADR-0012) держит **факты и выводы**:
-leafs (утверждения) + связи + аудит. Разрозненные документы описывали части
-модели; этот ADR — единая точка входа для клиентов (агенты/MCP, gator, cv,
-скрипты), чтобы все опирались на одну модель фактов/аудита/хранения.
+2dph ("memory", the prefrontal cortex per ADR-0012) holds **facts and conclusions**:
+leafs (statements) + links + audit. Scattered documents described parts of the
+model; this ADR — a single entry point for clients (agents/MCP, gator, cv,
+scripts), so that everyone relies on one model of facts/audit/storage.
 
-Что он делает и чего не делает:
+What it does and what it does not do:
 
-- **сводит** уже существующее: write-контракт (`docs/brain/contract.md`,
-  P-9.2/P-9.3), read-контракт (`docs/brain/read-contract.md`, P-9.4),
-  эмпирику аудита (`docs/facts/audit-recipes.md`, #52/#56) и формальную
-  логику L-9 (issues #229–234), факт-слой (`bin/facts/extract.go`,
+- **consolidates** what already exists: the write contract (`docs/brain/contract.md`,
+  P-9.2/P-9.3), the read contract (`docs/brain/read-contract.md`, P-9.4),
+  the audit empirics (`docs/facts/audit-recipes.md`, #52/#56) and the formal
+  logic of L-9 (issues #229–234), the facts layer (`bin/facts/extract.go`,
   `docs/facts/ingest.md`);
-- **не дублирует код и не заменяет** контракты: здесь — модель и ссылки,
-  норматив — в перечисленных файлах (пересечение с L-9 файловое минимальное:
-  ADR отдельный файл, L-9 пишет в `docs/facts/audit-recipes.md` и
+- **does not duplicate code and does not replace** the contracts: here — the model and references,
+  the normative part — in the listed files (the overlap with L-9 is minimal at the file level:
+  the ADR is a separate file, L-9 writes to `docs/facts/audit-recipes.md` and
   `var/audit/source-of-truth.yml`);
-- **не описывает** инструменты сбора/CRM/gator — их зоны фиксирует ADR-0012
-  (ответственность зон, «один канон на тип данных»).
+- **does not describe** the collection/CRM/gator tools — their zones are fixed by ADR-0012
+  (zone responsibility, "one canon per data type").
 
-Карта зон (ADR-0012), где живёт 2dph:
+Zone map (ADR-0012), where 2dph lives:
 
-| Зона | Система | Канон |
+| Zone | System | Canon |
 |------|---------|-------|
-| сенсоры/сырьё | gator (`var/` raw/parquet) | **данные** (raw, версии, append-only) |
-| кора/память | **2dph** (Ladybug `var/kb.lbug`) | **факты/выводы** (leafs) + связи |
-| скелет | OnlyOffice CRM | структура бизнеса (сделки/контакты/задачи) |
-| суперэго | skills/inventar | правила, контракты, ADR |
+| sensors/raw | gator (`var/` raw/parquet) | **data** (raw, versions, append-only) |
+| cortex/memory | **2dph** (Ladybug `var/kb.lbug`) | **facts/conclusions** (leafs) + links |
+| skeleton | OnlyOffice CRM | business structure (deals/contacts/tasks) |
+| superego | skills/inventar | rules, contracts, ADR |
 
-2dph ссылается на каноны данных и CRM, не копирует их; свой канон (факты/
-выводы) держит сам. Детали — ADR-0012 (внешний документ fabric, inventar
+2dph references the data and CRM canons, does not copy them; it keeps its own canon (facts/
+conclusions) itself. Details — ADR-0012 (external fabric document, inventar
 `docs/adr/ADR-0012-responsibility-zones.md`).
 
-## 2. Модель фактов: термины
+## 2. Fact model: terms
 
-Единые термины (совпадают с write- и read-контрактами):
+Unified terms (matching the write and read contracts):
 
-| Термин | Определение |
+| Term | Definition |
 |--------|-------------|
-| **наблюдение** (leaf корпуса) | единичное свидетельство одного источника: корпусный лист (`root=info`, kind `mail`/`commit`/`chat`/`reference`/`seed`/…). Пишется адаптером корпуса из одного файла/коммита/сообщения — по построению **single-source**, само по себе ничего не утверждает. Момент «когда контент увиден» фиксирует `observed_at` (RFC3339). |
-| **info** | корень нарративных/описательных листов корпуса (mail/git/chats/docs). Поисковый слой, `never asserted`. Один лист = одно наблюдение. |
-| **факт** | утверждение под `root=facts`, подтверждённое **≥2 независимыми источниками**; `confidence: confirmed`. Единственный корень, ответ с которого можно выдавать как подтверждённое знание. |
-| **независимость источников** | источники из разных классов свидетелей: runtime × declared (например `docker ps` × compose-файл; `~/.ssh/config` × README/PLAN/AGENTS). В листе пара пишется в `source` через `" x "` (нотация факт-слоя, `facts/extract`). |
-| **версия** | одна версия = один id. id записи = `ContentHash(source\|external_id\|kind\|text)[:32]` (dedup-ключ == id). Изменение контента/identity → новый hash → новая версия; старая остаётся в графе. Повторная запись той же версии — MERGE (upsert). |
-| **валидность** | `valid_from` / `valid_to` (`YYYY-MM-DD`, D24) — интервал истинности **факта по дням**, ортогонален версии (версия про запись, валидность про смысл). Пустой интервал = «всегда» (legacy); пустой `valid_to` = открытый конец; концы включительно. Фильтр — `--as-of YYYY-MM-DD`. |
-| **confirmed** | `confidence: confirmed`; пустое значение confidence (legacy leafs) трактуется как `confirmed`. |
-| **(not confirmed)** | любой ответ, который **не сошёл с facts-корня**: info-хит, hypothesis/partial, единственный источник, противоречие 2v2 без сработавшего правила. Агент обязан помечать такой ответ `(not confirmed)`, а не выдавать за факт. |
-| **stale** | `valid_to` в прошлом, либо факт отсутствует в сегодняшнем `--as-of`-виде (D24). Не путать с D16 `temporal_freshness` (свежесть источника против HEAD). |
+| **observation** (corpus leaf) | a single piece of evidence from one source: a corpus sheet (`root=info`, kind `mail`/`commit`/`chat`/`reference`/`seed`/…). Written by a corpus adapter from one file/commit/message — by construction **single-source**, on its own it asserts nothing. The moment "when the content was seen" is recorded by `observed_at` (RFC3339). |
+| **info** | the root of narrative/descriptive corpus sheets (mail/git/chats/docs). The search layer, `never asserted`. One sheet = one observation. |
+| **fact** | a claim under `root=facts`, confirmed by **≥2 independent sources**; `confidence: confirmed`. The only root whose answer can be given as confirmed knowledge. |
+| **source independence** | sources from different witness classes: runtime × declared (e.g. `docker ps` × compose file; `~/.ssh/config` × README/PLAN/AGENTS). In the sheet the pair is written to `source` via `" x "` (fact-layer notation, `facts/extract`). |
+| **version** | one version = one id. Record id = `ContentHash(source\|external_id\|kind\|text)[:32]` (dedup key == id). A change of content/identity → new hash → new version; the old one stays in the graph. Rewriting the same version — MERGE (upsert). |
+| **validity** | `valid_from` / `valid_to` (`YYYY-MM-DD`, D24) — the interval of truthfulness **of the fact by days**, orthogonal to the version (the version is about the record, validity about the meaning). An empty interval = "always" (legacy); an empty `valid_to` = an open end; the ends are inclusive. Filter — `--as-of YYYY-MM-DD`. |
+| **confirmed** | `confidence: confirmed`; an empty confidence value (legacy leafs) is treated as `confirmed`. |
+| **(not confirmed)** | any answer that **did not come from the facts root**: an info hit, hypothesis/partial, a single source, a 2v2 contradiction with no rule triggered. The agent must mark such an answer `(not confirmed)` and not present it as a fact. |
+| **stale** | `valid_to` in the past, or the fact is absent in today's `--as-of` view (D24). Not to be confused with D16 `temporal_freshness` (source freshness against HEAD). |
 
-Один лист в БД — контрактные поля против runtime-схемы Ladybug:
+One sheet in the DB — contract fields against the Ladybug runtime schema:
 
-| Контракт (`internal/contract.Leaf`) | Колонка/смысл в БД |
+| Contract (`internal/contract.Leaf`) | Column/meaning in the DB |
 |-------------------------------------|--------------------|
-| `source` | имя корпуса-источника: `mail`/`git`/`chats`/`docs`; у фактов — пара источников `"S1 x S2"` |
-| `external_id` | устойчивый ref внутри корпуса (message id / commit sha / chat id / rel-путь; у mail — content-address `sha256(text)[:16]`) |
-| `kind` | тип листа (в БД колонка `type`): `fact`/`mail`/`chat`/`commit`/`reference`/`seed`/… |
-| `text` | содержимое (Heading + body, единообразно во всех корпусах) |
-| `root` | `facts` (утверждение, ≥2 источника) или `info` (нарратив); default `info` |
-| `confidence` | открытый домен: `confirmed`/`estimated`/`inferred`/`hypothesis`/`partial`/… |
-| `valid_from`/`valid_to` | D24-день валидности (см. выше) |
-| `observed_at` | когда контент увиден (RFC3339); **вне** dedup-ключа |
+| `source` | name of the corpus source: `mail`/`git`/`chats`/`docs`; for facts — a pair of sources `"S1 x S2"` |
+| `external_id` | stable ref inside the corpus (message id / commit sha / chat id / rel-path; for mail — content-address `sha256(text)[:16]`) |
+| `kind` | sheet type (in the DB the column is `type`): `fact`/`mail`/`chat`/`commit`/`reference`/`seed`/… |
+| `text` | content (Heading + body, uniform across all corpora) |
+| `root` | `facts` (claim, ≥2 sources) or `info` (narrative); default `info` |
+| `confidence` | open domain: `confirmed`/`estimated`/`inferred`/`hypothesis`/`partial`/… |
+| `valid_from`/`valid_to` | D24 validity day (see above) |
+| `observed_at` | when the content was seen (RFC3339); **outside** the dedup key |
 
-Норматив записи — [`docs/brain/contract.md`](contract.md) (Leaf.Validate(),
-`NormalizeText`, ContentHash, `observed_at` вне хэша, адаптеры корпуса).
+The write norm — [`docs/brain/contract.md`](contract.md) (Leaf.Validate(),
+`NormalizeText`, ContentHash, `observed_at` outside the hash, corpus adapters).
 
-## 3. Модель аудита
+## 3. Audit model
 
-### 3.1 Как факт подтверждается
+### 3.1 How a fact is confirmed
 
-1. **Наблюдения** приходят из корпусов (адаптеры `internal/corpus`) и пишутся
-   всегда как `root=info` (`internal/brain/corpus.go`, `WriteCorpus`) — один
-   лист происходит из одного файла/коммита, сам по себе фактом быть не может.
-2. **Факт-слой** — отдельный evidence gate (`bin/facts/extract.go`), не корпус:
-   сопоставляет два независимых класса источников —
+1. **Observations** come from corpora (adapters `internal/corpus`) and are written
+   always as `root=info` (`internal/brain/corpus.go`, `WriteCorpus`) — one
+   sheet originates from one file/commit and on its own cannot be a fact.
+2. The **facts layer** — a separate evidence gate (`bin/facts/extract.go`), not a corpus:
+   it matches two independent classes of sources —
    S1 runtime (`docker ps` / `~/.ssh/config`) × S2 declared
-   (compose-файл / README+PLAN+AGENTS) — и пишет совпадение как
+   (compose file / README+PLAN+AGENTS) — and writes the match as
    `root=facts`, `confidence: confirmed`, `source: "S1 x S2"`.
-3. **Promote** (`bin/facts/promote.go`): уже подтверждённые `info`-листы,
-   чей `source` содержит ≥2 различных источника, перекореняются в `facts`
-   (идемпотентно).
-4. При **rebuild** факт-слой включается только флагом `--with-facts`
-   (`bin/brain/index.go`); без него facts-корень пуст (#181) — см.
+3. **Promote** (`bin/facts/promote.go`): already confirmed `info` sheets
+   whose `source` contains ≥2 distinct sources are re-rooted into `facts`
+   (idempotently).
+4. On **rebuild** the facts layer is enabled only by the `--with-facts` flag
+   (`bin/brain/index.go`); without it the facts root is empty (#181) — see
    `docs/facts/ingest.md`.
 
-Проверка двух-источниковости по живой БД — `bin/facts/audit.go db` (каждый
-`root=facts` лист); корень правила «≥2 источника» — evidence-first (AGENTS.md),
-эмпирика — `docs/facts/audit-recipes.md` (#52/#56).
+Two-source verification against the live DB — `bin/facts/audit.go db` (every
+`root=facts` sheet); the root of the "≥2 sources" rule — evidence-first (AGENTS.md),
+the empirics — `docs/facts/audit-recipes.md` (#52/#56).
 
-### 3.2 Когда ответ (not confirmed)
+### 3.2 When an answer is (not confirmed)
 
-- ответ сошёл с `info`-корня (нарратив, даже если `confidence: confirmed`);
-- у утверждения один источник (hypothesis/partial);
-- **противоречие 2v2**: `a x b` против `c x d`, обе стороны с ≥2 источниками,
-  но ни одно правило не сработало (`temporal_freshness` / `authority_pairing`,
-  D16) — остаётся hypothesis, пока не расследовано (`bin/facts/audit.go
+- the answer came from the `info` root (narrative, even if `confidence: confirmed`);
+- the claim has one source (hypothesis/partial);
+- **2v2 contradiction**: `a x b` against `c x d`, both sides with ≥2 sources,
+  but no rule triggered (`temporal_freshness` / `authority_pairing`,
+  D16) — it stays a hypothesis until investigated (`bin/facts/audit.go
   contradict`);
-- stale (valid_to в прошлом или нет в сегодняшнем `--as-of`).
+- stale (valid_to in the past or absent in today's `--as-of`).
 
-Дедукционный порядок поиска: **facts → info → web** (`web` — SearXNG, второй
-независимый источник, держится отдельным блоком; `throttled`/`refused` — не
-доказательство отсутствия).
+The deductive search order: **facts → info → web** (`web` — SearXNG, the second
+independent source, kept in a separate block; `throttled`/`refused` — not
+proof of absence).
 
-### 3.3 Формальная логика L-9 (Vinogradov)
+### 3.3 Formal logic L-9 (Vinogradov)
 
-Эмпирика рецептов (#52/#56) дополнена формальными законами на уровне
-суждений/URL (L-9, issues #229–234; ядро `internal/facts`, cgo-free):
+The empirics of the recipes (#52/#56) is complemented by formal laws at the level of
+judgments/URLs (L-9, issues #229–234; the core `internal/facts`, cgo-free):
 
-| Закон | Правило | Вердикт |
+| Law | Rule | Verdict |
 |-------|---------|---------|
-| identity (тождество) | один канонический URL в разных написаниях → merge/flag | `weaken` |
-| contradiction (противоречие) | подтверждённые `P` и `¬P` об одном предикате одного URL с пересекающимися D24-интервалами | `reject` |
-| excluded middle | hypothesis/partial или claim без предиката — не FACT, кандидат в `open_questions[]` | `weaken` |
-| sufficient reason | verdict `accept` только с FACT-/OPEN- premises | `reject`/`weaken` |
+| identity (sameness) | one canonical URL in different spellings → merge/flag | `weaken` |
+| contradiction | confirmed `P` and `¬P` about one predicate of one URL with overlapping D24 intervals | `reject` |
+| excluded middle | hypothesis/partial or a claim without a predicate — not FACT, a candidate for `open_questions[]` | `weaken` |
+| sufficient reason | verdict `accept` only with FACT-/OPEN- premises | `reject`/`weaken` |
 
-Суждение = факт о ресурсе URL: `{id, url, claim, attr, neg, conf, from, to}`
-(`attr` — предикат, `neg` — знак P/¬P). Машинные проверки —
-`bin/facts/audit.go formal` (stdin JSON). Канонизация URL —
-`facts.CanonicalURL` (конвенция gator G-8.1). Полные рецепты —
-`docs/facts/audit-recipes.md` (§Формальные проверки URL, L-9.3).
+A judgment = a fact about a URL resource: `{id, url, claim, attr, neg, conf, from, to}`
+(`attr` — the predicate, `neg` — the P/¬P sign). Machine checks —
+`bin/facts/audit.go formal` (stdin JSON). URL canonicalization —
+`facts.CanonicalURL` (gator convention G-8.1). Full recipes —
+`docs/facts/audit-recipes.md` (§Formal URL checks, L-9.3).
 
-### 3.4 Аудит-карточки и source-of-truth
+### 3.4 Audit cards and source-of-truth
 
-Каждый вердикт фиксируется **карточкой Vinogradov** в логическом SoT
+Every verdict is recorded by a **Vinogradov card** in the logical SoT
 (`var/audit/source-of-truth.yml`, `audits[]`, L-9.1 #230 / L-9.2 #231):
-рекомендация без карточки = нарушение. Карточка обязана опираться на
+a recommendation without a card = a violation. The card must rely on
 FACT-/OPEN- premises:
 
 ```bash
@@ -138,153 +138,153 @@ bin/facts/audit-card.go --claim "…" --premises FACT-9002,FACT-9001 \
   --inference deduction --gaps OPEN-0001 --counter none --verdict weaken
 ```
 
-- CLI валидирует карточку (verdict `accept|reject|weaken`, inference
-  `deduction|induction|analogy|other`, обязательные claim/premises/counter),
-  присваивает `AUD-NNNN`, дописывает в `audits[]` (yaml-дерево, остальные
-  секции не трогает).
-- SoT хранит только индексированные факты `{id, claim, source}` — срезы из
-  `root=facts` Ladybug; сырьё остаётся в `var/`; секретов нет (ASR-0006);
-  файл gitignored, живёт локально как артефакт контура.
-- В `root=facts` **нет** фактов-вакансий (truth-gate #52) — см. OPEN-0001 в
-  SoT: не выдуманы.
+- The CLI validates the card (verdict `accept|reject|weaken`, inference
+  `deduction|induction|analogy|other`, mandatory claim/premises/counter),
+  assigns `AUD-NNNN`, appends to `audits[]` (yaml tree, does not touch the other
+  sections).
+- The SoT stores only indexed facts `{id, claim, source}` — slices from
+  `root=facts` Ladybug; the raw material stays in `var/`; no secrets (ASR-0006);
+  the file is gitignored, lives locally as a circuit artifact.
+- In `root=facts` there are **no** vacancy facts (truth-gate #52) — see OPEN-0001 in
+  the SoT: not invented.
 
-### 3.5 Read-аудит (форматы ответа)
+### 3.5 Read audit (response formats)
 
-- `/audit` (HTTP/MCP) и `bin/facts/audit.go db` — гистограмма `root ×
-  confidence` (формат — read-контракт, поле `by_confidence`);
-- `bin/brain/audit-contract.go` — read-only аудит **соответствия write-
-  контракту** (пропуски обязательных полей, распределение по корпусам);
-- `bin/brain/read-contract.go` / `read-contract-db.go` — гейты форматов
-  read-контракта (живой сервис и живая БД, read-only).
+- `/audit` (HTTP/MCP) and `bin/facts/audit.go db` — a `root ×
+  confidence` histogram (format — the read contract, field `by_confidence`);
+- `bin/brain/audit-contract.go` — a read-only audit of **conformance to the write
+  contract** (missing required fields, distribution by corpus);
+- `bin/brain/read-contract.go` / `read-contract-db.go` — format gates of the
+  read contract (live service and live DB, read-only).
 
-## 4. Модель хранения
+## 4. Storage model
 
-### 4.1 Ladybug, один файл, два корня
+### 4.1 Ladybug, one file, two roots
 
-Вся память — один встроенный граф Ladybug: `var/kb.lbug`. `facts` и `info` —
-колонка `root` на каждом листе, **семантическое, не физическое** разделение:
-оба корня живут в одном файле и пишутся в одной транзакции (D12, ACID — аудит
-видит согласованный снимок).
+All memory — one embedded Ladybug graph: `var/kb.lbug`. `facts` and `info` —
+the `root` column on each sheet, a **semantic, not physical** separation:
+both roots live in one file and are written in one transaction (D12, ACID — the audit
+sees a consistent snapshot).
 
-Схема (`internal/brain` `InitSchema`, идемпотентна): узлы
-`Leaf`/`File`/`Host`/`Commit`/`Person`/`Message` + рёбра
+The schema (`internal/brain` `InitSchema`, idempotent): nodes
+`Leaf`/`File`/`Host`/`Commit`/`Person`/`Message` + edges
 `FROM_FILE`, `RUNS_ON`, `AUTHORED`, `SENT`, `TO`, `CC`, `BCC`, `REPLY_TO`,
-`SYNAPTIC` (пользовательские связи leaf↔leaf, #82). Лист несёт embedding
-`FLOAT[256]`; ANN-индекс — `var/state/vector.ann` (dim=256, nlist=2000,
-nprobe=2000, #206). Схема Ladybug — внутренняя, меняется без предупреждения;
-**клиенты никогда не парсят `var/kb.lbug` напрямую**, только read-контракт.
+`SYNAPTIC` (user leaf↔leaf links, #82). A sheet carries an embedding
+`FLOAT[256]`; the ANN index — `var/state/vector.ann` (dim=256, nlist=2000,
+nprobe=2000, #206). The Ladybug schema is internal, changes without notice;
+**clients never parse `var/kb.lbug` directly**, only the read contract.
 
-### 4.2 Запись: контракт + адаптеры корпуса + факт-слой
+### 4.2 Write: contract + corpus adapters + facts layer
 
-| Путь записи | Инструмент | Что пишет |
+| Write path | Tool | What it writes |
 |-------------|------------|-----------|
-| корпуса (docs/mail/chats/git) | адаптеры `internal/corpus` (`contract.Source`: `Name()` + `Stream(ctx, emit(Leaf))`) → драйвер `bin/brain/index.go` → `brain.WriteCorpus` | `root=info`, по одному наблюдению на файл/commit/сообщение |
-| факты | `bin/facts/extract.go` → `UpsertLeaf` (напрямую, без `FROM_FILE`) | `root=facts`, `kind=fact`, пара источников в `source` |
-| ручное добавление | `bin/brain/add.go` (`--root facts --source "a.md x b.md"`) | лист по контракту |
-| rebuild | `bin/brain/index.go --rebuild --with-mail --with-facts [--with-chats] [--git-root DIR]` | полный рехэш id = ContentHash, детерминированно |
+| corpora (docs/mail/chats/git) | adapters `internal/corpus` (`contract.Source`: `Name()` + `Stream(ctx, emit(Leaf))`) → driver `bin/brain/index.go` → `brain.WriteCorpus` | `root=info`, one observation per file/commit/message |
+| facts | `bin/facts/extract.go` → `UpsertLeaf` (directly, without `FROM_FILE`) | `root=facts`, `kind=fact`, a pair of sources in `source` |
+| manual addition | `bin/brain/add.go` (`--root facts --source "a.md x b.md"`) | a sheet per the contract |
+| rebuild | `bin/brain/index.go --rebuild --with-mail --with-facts [--with-chats] [--git-root DIR]` | full id rehash = ContentHash, deterministically |
 
-Факты пишутся **без `external_id`** (21 лист на живой БД) — прямой путь
-`UpsertLeaf` зафиксирован контрактом как допустимый (P-9.3, расхождение
-описано в `docs/brain/contract.md`). `observed_at` штампуется при записи,
-если пуст.
+Facts are written **without `external_id`** (21 sheets on the live DB) — the direct
+`UpsertLeaf` path is recorded by the contract as allowed (P-9.3, the discrepancy is
+described in `docs/brain/contract.md`). `observed_at` is stamped on write
+if empty.
 
-### 4.3 Чтение: read-контракт (один формат на всех поверхностях)
+### 4.3 Read: the read contract (one format on all surfaces)
 
-Read-контракт (`internal/contract/read.go`, версия **`1.0`**, MAJOR.MINOR):
-каждый ответ несёт `contract_version`; additive-правки — MINOR, breaking —
-MAJOR. Клиенты обязаны принимать любой ответ с тем же MAJOR, игнорировать
-неизвестные поля, отсутствие `contract_version` (сервис до контракта)
-пропускать через `--relax-version`.
+Read contract (`internal/contract/read.go`, version **`1.0`**, MAJOR.MINOR):
+every response carries `contract_version`; additive edits — MINOR, breaking —
+MAJOR. Clients must accept any response with the same MAJOR, ignore
+unknown fields, and pass the absence of `contract_version` (a service predating the contract)
+with `--relax-version`.
 
-| Поверхность | Команда / путь | Формат |
+| Surface | Command / path | Format |
 |-------------|----------------|--------|
-| CLI | `bin/brain/search.go "q" --json`, `get.go <id> --body --json`, `stats.go --json` | read-контракт |
-| HTTP (:8630) | `GET /search?q=`, `GET /get?id=`, `GET /stats`, `GET /audit`, `GET /openapi.json` | read-контракт (+ raw-граф: `/leafs`, `/edges`, `/path`) |
-| MCP | `POST /mcp`: tools `search` / `get` / `audit` (минимальная поверхность, D20; `stats`/`ingest` — HTTP-only) | read-контракт |
-| гейты | `bin/brain/read-contract.go`, `read-contract-db.go` (read-only) | валидация схемы |
+| CLI | `bin/brain/search.go "q" --json`, `get.go <id> --body --json`, `stats.go --json` | read contract |
+| HTTP (:8630) | `GET /search?q=`, `GET /get?id=`, `GET /stats`, `GET /audit`, `GET /openapi.json` | read contract (+ raw graph: `/leafs`, `/edges`, `/path`) |
+| MCP | `POST /mcp`: tools `search` / `get` / `audit` (minimal surface, D20; `stats`/`ingest` — HTTP-only) | read contract |
+| gates | `bin/brain/read-contract.go`, `read-contract-db.go` (read-only) | schema validation |
 
-Норматив форматов (search/get/stats/audit, отсутствие → отсутствие,
-`results` всегда массив) — [`docs/brain/read-contract.md`](read-contract.md).
+The normative formats (search/get/stats/audit, absence → absence,
+`results` always an array) — [`docs/brain/read-contract.md`](read-contract.md).
 
-### 4.4 Актуальное состояние БД (после полного rebuild, 2026-09-03)
+### 4.4 Current DB state (after a full rebuild, 2026-09-03)
 
-Замеры на живой БД (`/stats`, `/audit` сервиса :8630 и read-only
+Measurements on the live DB (`/stats`, `/audit` of the :8630 service and the read-only
 `bin/brain/audit-contract.go`):
 
-| Метрика | Значение |
+| Metric | Value |
 |---------|----------|
 | total leafs | **105,220** |
 | info | **105,199** = mail 105,027 + docs 172 |
-| facts | **21** = 19 docker/compose + 2 ssh-host (все `confidence: confirmed`, двух-источниковые) |
+| facts | **21** = 19 docker/compose + 2 ssh-host (all `confidence: confirmed`, two-source) |
 | root × confidence | facts 21 confirmed; info 105,199 confirmed |
 | ANN | 105,220 (loaded, `var/state/vector.ann`, dim=256) |
-| соответствие контракту | observed_at/how/loc/kind: 0 пропусков; `external_id` отсутствует ровно у 21 facts-листа (легальный путь записи фактов) |
+| contract conformance | observed_at/how/loc/kind: 0 gaps; `external_id` is absent from exactly 21 facts sheets (the legal facts write path) |
 
-Контекст цифр: полный rebuild 2026-09-02 (P-9.3 content-address dedup) сжал
-307,431 стримнутых mail-листов → 105,027 уникальных (live `var/corpus/mail` +
-legacy `var/mail` схлопнулись по ContentHash, #248). Ранее
-задокументированные ориентиры **сняты**: «info ≥ ~200k» и «~313k leafs»
-(см. §7). Между гейтом read-контракта 2026-09-02 (105,210) и замером
-2026-09-03 БД выросла на 10 docs-листов; нормативны актуальные цифры выше.
+Context for the numbers: the full rebuild on 2026-09-02 (P-9.3 content-address dedup) collapsed
+307,431 streamed mail sheets → 105,027 unique (live `var/corpus/mail` +
+legacy `var/mail` collapsed by ContentHash, #248). The previously
+documented reference points are **withdrawn**: "info ≥ ~200k" and "~313k leafs"
+(see §7). Between the read-contract gate on 2026-09-02 (105,210) and the measurement
+on 2026-09-03 the DB grew by 10 docs sheets; the current numbers above are normative.
 
-## 5. Границы: что brain НЕ делает
+## 5. Boundaries: what the brain does NOT do
 
-- **Inspector/auditor, не executor** (#52): 2dph не пишет состояние
-  job-пайплайна/cv/CRM, не отправляет сообщения, не меняет источники. Он
-  фильтрует, ищет, аудирует; единственная его запись — собственный канон
-  (leafs/факты/выводы) в `var/kb.lbug` (+ граф-слои Commit/Person/Message).
-- **Канон один на тип данных** (ADR-0012): данные → gator, структура бизнеса
-  → OnlyOffice CRM, правила → inventar/skills. 2dph **ссылается**, не
-  копирует; импорт в граф (mail/git) — premises/связи, не дубль канона.
-- **Дедукция не выходит за посылки** (границы рецептов L-9.4/L-9.5):
-  «что сделал» по message/files — гипотеза, не факт о намерении; 1 коммит ≠
-  «вся неделя на X»; алиасы email не склеиваются (сопряжение строго по
-  email); транзитивные цепочки «знакомые знакомых» — вне пилота (depth=1);
-  mail↔repo привязка не выдумывается.
-- **facts без выдумок**: в `root=facts` только двух-источниковые утверждения;
-  фактов-вакансий нет (SoT OPEN-0001), пока их не подтвердят ≥2 источника.
-- **Ответственность за подтверждение**: агент не выдаёт info/одиночный
-  источник за факт — обязателен маркер `(not confirmed)`; `web`-блок не
-  смешивается с графовыми hits.
+- **Inspector/auditor, not executor** (#52): 2dph does not write the state of the
+  job pipeline/cv/CRM, does not send messages, does not change sources. It
+  filters, searches, audits; its only write is its own canon
+  (leafs/facts/conclusions) in `var/kb.lbug` (+ graph layers Commit/Person/Message).
+- **One canon per data type** (ADR-0012): data → gator, business structure
+  → OnlyOffice CRM, rules → inventar/skills. 2dph **references**, does not
+  copy; import into the graph (mail/git) — premises/links, not a canon duplicate.
+- **Deduction does not go beyond the premises** (boundaries of the L-9.4/L-9.5 recipes):
+  "what they did" by message/files — a hypothesis, not a fact about intent; 1 commit ≠
+  "the whole week on X"; email aliases are not merged (joining strictly by
+  email); transitive chains "friends of friends" — outside the pilot (depth=1);
+  the mail↔repo binding is not invented.
+- **facts without inventions**: in `root=facts` only two-source claims;
+  there are no vacancy facts (SoT OPEN-0001) until ≥2 sources confirm them.
+- **Responsibility for confirmation**: the agent does not present info/a single
+  source as a fact — the `(not confirmed)` marker is mandatory; the `web` block is not
+  mixed with graph hits.
 
-## 6. Карта потребителей
+## 6. Consumer map
 
-| Потребитель | Поверхность | Контракт / инструмент |
+| Consumer | Surface | Contract / tool |
 |-------------|-------------|----------------------|
-| агенты (PicoClaw gateway, `cv/ai-bot`) | MCP `search → get → audit` (`POST /mcp`, :8630) | read-контракт (P-9.4); скилл `picoclaw`, `brain` |
-| gator и будущие сервисные клиенты | HTTP/CLI `--json` | read-контракт; P-9.5 (#241) клиенты поверх него; запись gator — свой контракт `contract.Record` (G-8.0, #73) |
-| cv / job-пайплайн | `search → get → audit`, `/stats` | read-контракт + аудит-рецепты (#52) |
-| скрипты стека | CLI `bin/brain/*.go --json` | read-контракт (версия `1.0`); гейты — `read-contract*.go` |
-| оператор/аудитор | `bin/brain/*`, `bin/facts/*`, `audit-card.go` | write-контракт (запись), read-контракт, SoT, L-9 |
+| agents (PicoClaw gateway, `cv/ai-bot`) | MCP `search → get → audit` (`POST /mcp`, :8630) | read contract (P-9.4); skills `picoclaw`, `brain` |
+| gator and future service clients | HTTP/CLI `--json` | read contract; P-9.5 (#241) clients on top of it; gator's write — its own contract `contract.Record` (G-8.0, #73) |
+| cv / job pipeline | `search → get → audit`, `/stats` | read contract + audit recipes (#52) |
+| stack scripts | CLI `bin/brain/*.go --json` | read contract (version `1.0`); gates — `read-contract*.go` |
+| operator/auditor | `bin/brain/*`, `bin/facts/*`, `audit-card.go` | write contract (writing), read contract, SoT, L-9 |
 
-Все клиенты обязаны: принимать MAJOR-совместимые ответы, игнорировать
-неизвестные поля, помечать не-facts ответы `(not confirmed)` и не парсить
-`var/kb.lbug` напрямую.
+All clients must: accept MAJOR-compatible responses, ignore
+unknown fields, mark non-facts answers `(not confirmed)` and not parse
+`var/kb.lbug` directly.
 
-## 7. Что изменено против ранее задокументированного
+## 7. What changed against what was documented earlier
 
-- **Снято правило «info ≥ ~200k»** (было в `skills/brain/SKILL.md`): после
-  полного rebuild 2026-09-02 актуальный ориентир — **total 105,220** =
-  info 105,199 + facts 21 (см. §4.4). Меньше → корпус недозаписан.
-- **Снят ориентир «~313k leafs»**: P-9.3 content-address dedup схлопнул
-  дубликаты mail (307k → 105k). Исторические 313k остаются только как
-  контекст в runbook (замеры ANN-параметров #192/#206).
-- Старые снапшоты в `docs/brain/contract.md` («на момент P-9.3», 313,817
-  leafs, «ещё не пересобрана») описывают состояние **до** rebuild; актуальные
-  цифры — §4.4 этого ADR.
+- **The "info ≥ ~200k" rule is withdrawn** (it was in `skills/brain/SKILL.md`): after
+  the full rebuild on 2026-09-02 the current reference point is — **total 105,220** =
+  info 105,199 + facts 21 (see §4.4). Less → the corpus is under-written.
+- **The "~313k leafs" reference point is withdrawn**: the P-9.3 content-address dedup collapsed
+  mail duplicates (307k → 105k). The historical 313k remain only as
+  context in the runbook (ANN parameter measurements #192/#206).
+- Old snapshots in `docs/brain/contract.md` ("as of P-9.3", 313,817
+  leafs, "not rebuilt yet") describe the state **before** the rebuild; the current
+  numbers are §4.4 of this ADR.
 
 ## 8. Cross-ref
 
-- Write-контракт: [`docs/brain/contract.md`](contract.md) (P-9.2/#235,
-  P-9.3/#13) + `internal/contract` (Leaf, ContentHash, адаптеры).
-- Read-контракт: [`docs/brain/read-contract.md`](read-contract.md)
+- Write contract: [`docs/brain/contract.md`](contract.md) (P-9.2/#235,
+  P-9.3/#13) + `internal/contract` (Leaf, ContentHash, adapters).
+- Read contract: [`docs/brain/read-contract.md`](read-contract.md)
   (P-9.4/#240) + `internal/contract/read.go` (`contract_version 1.0`).
-- Аудит: [`docs/facts/audit-recipes.md`](../facts/audit-recipes.md) (#52/#56),
+- Audit: [`docs/facts/audit-recipes.md`](../facts/audit-recipes.md) (#52/#56),
   L-9 (#229–234), SoT `var/audit/source-of-truth.yml` (L-9.1 #230),
-  `bin/facts/audit-card.go` (#231), формальные проверки (#232).
-- Факт-слой: `bin/facts/extract.go`, `docs/facts/ingest.md`, rebuild —
+  `bin/facts/audit-card.go` (#231), formal checks (#232).
+- Facts layer: `bin/facts/extract.go`, `docs/facts/ingest.md`, rebuild —
   `docs/brain/rebuild.md`.
-- Дизайн/дедукция: `docs/design.md` (D12/D16/D20/D24), скилл `brain`
-  (`skills/brain/SKILL.md`), `docs/picoclaw.md` (агентский профиль).
-- Зоны/каноны: ADR-0012 (ответственность зон), gator G-8.0 (#73) —
-  контракт записи данных; P-9.5 (#241) — сервисные клиенты.
+- Design/deduction: `docs/design.md` (D12/D16/D20/D24), skill `brain`
+  (`skills/brain/SKILL.md`), `docs/picoclaw.md` (agent profile).
+- Zones/canons: ADR-0012 (zone responsibility), gator G-8.0 (#73) —
+  data write contract; P-9.5 (#241) — service clients.

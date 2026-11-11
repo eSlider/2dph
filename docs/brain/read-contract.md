@@ -1,188 +1,188 @@
-# Контракт чтения brain (P-9.4)
+# Brain read contract (P-9.4)
 
-Нормативный формат ответов `search` / `get` / `stats` / `audit` — как клиенты
-и агенты читают факты, info и аудит из Ladybug. Зеркало write-контракта
-[`docs/brain/contract.md`](contract.md) (P-9.2/P-9.3): там — как писать leaf
-(source/external_id/kind/text, ContentHash, observed_at), здесь — как читать.
+Normative response format of `search` / `get` / `stats` / `audit` — how clients
+and agents read facts, info and audit from Ladybug. A mirror of the write contract
+[`docs/brain/contract.md`](contract.md) (P-9.2/P-9.3): there — how to write a leaf
+(source/external_id/kind/text, ContentHash, observed_at), here — how to read.
 
-Реализация схемы: `internal/contract/read.go` (cgo-free, версия
-`contract.ReadContractVersion`); продьюсеры ответов — `internal/brain`
-(search/get/stats/audit), HTTP-поверхность — `pkg/httpapi`
+Schema implementation: `internal/contract/read.go` (cgo-free, version
+`contract.ReadContractVersion`); response producers — `internal/brain`
+(search/get/stats/audit), HTTP surface — `pkg/httpapi`
 (`bin/brain/serve.go`, :8630) + MCP (`POST /mcp`), CLI — `bin/brain/*.go --json`;
-сервисный клиент для потребителей — `pkg/brainclient` (P-9.5, раздел
-[«Как клиенту читать brain»](#клиентский-слой-p-95)).
+the service client for consumers — `pkg/brainclient` (P-9.5, section
+["How a client reads the brain"](#client-layer-p-95)).
 
-## Поверхности чтения (один формат)
+## Read surfaces (one format)
 
-| Поверхность | Команда / путь |
+| Surface | Command / path |
 |-------------|----------------|
 | CLI | `bin/brain/search.go "q" --json`, `bin/brain/get.go <id> --json`, `bin/brain/stats.go --json` |
 | HTTP | `GET /search?q=`, `GET /get?id=`, `GET /stats`, `GET /audit` (:8630) |
-| MCP | tools `search` / `get` / `audit` (`POST /mcp`; `stats` — HTTP-only, минимальная MCP-поверхность D20) |
-| Клиент | SDK `pkg/brainclient`, CLI `bin/brain/client.go search|get|stats|audit` (P-9.5, раздел «Клиентский слой») |
+| MCP | tools `search` / `get` / `audit` (`POST /mcp`; `stats` — HTTP-only, minimal MCP surface D20) |
+| Client | SDK `pkg/brainclient`, CLI `bin/brain/client.go search|get|stats|audit` (P-9.5, section "Client layer") |
 
-Все поверхности отдают один и тот же JSON (схемы ниже); HTTP/MCP — тонкий
-транспорт над теми же структурами. **Клиенты читают brain только через эти
-форматы — никогда не парсят `var/kb.lbug` напрямую** (схема Ladybug —
-внутренняя, меняется без предупреждения).
+All surfaces return the same JSON (schemas below); HTTP/MCP — a thin
+transport over the same structures. **Clients read the brain only through these
+formats — never parse `var/kb.lbug` directly** (the Ladybug schema is
+internal, changes without notice).
 
-## Версионность контракта
+## Contract versioning
 
-Каждый ответ несёт поле **`contract_version`** (semver `MAJOR.MINOR`,
-сейчас `1.0`). Правки контракта:
+Every response carries the field **`contract_version`** (semver `MAJOR.MINOR`,
+currently `1.0`). Contract edits:
 
-- **additive** (minor bump): новое опциональное поле, уточнение доков, новый
-  домен значения. Обратно совместимо — старые клиенты работают без изменений.
-- **breaking** (major bump): удаление/переименование обязательного поля, смена
-  типа или семантики. Требует миграции всех клиентов.
+- **additive** (minor bump): a new optional field, a doc clarification, a new
+  value domain. Backward compatible — old clients work unchanged.
+- **breaking** (major bump): removal/renaming of a required field, a change of
+  type or semantics. Requires migration of all clients.
 
-Правила клиентов:
+Client rules:
 
-- Принимать **любой** ответ с совместимым MAJOR; не требовать точного MINOR.
-- Игнорировать неизвестные поля (additive evolution) — не валиться на них.
-- Отсутствие `contract_version` = ответ сформирован **до** контракта
-  (старый сервис); формат полей при этом тот же — гейт допускает такой ответ
-  через `--relax-version` (warning, не failure).
+- Accept **any** response with a compatible MAJOR; do not require an exact MINOR.
+- Ignore unknown fields (additive evolution) — do not fail on them.
+- The absence of `contract_version` = the response was formed **before** the
+  contract (an old service); the field format is the same — the gate admits such a response
+  via `--relax-version` (warning, not failure).
 
-Потребители контракта: агенты (PicoClaw gateway — `search → get → audit`),
-`gator`/`cv`-клиенты, `bin/brain`-инструменты, скрипты стека.
+Contract consumers: agents (PicoClaw gateway — `search → get → audit`),
+`gator`/`cv` clients, `bin/brain` tools, stack scripts.
 
-## Форматы ответов (JSON-схемы)
+## Response formats (JSON schemas)
 
-Общие правила: **отсутствие → отсутствие** — опциональное поле, которого нет,
-просто отсутствует в JSON (`omitempty`), не `null` и не пустая строка.
-Обязательные поля всегда присутствуют. `results`/`by_confidence` — всегда
-массив (может быть пустым), не `null`.
+Common rules: **absence → absence** — an optional field that is missing is
+simply absent from the JSON (`omitempty`), not `null` and not an empty string.
+Required fields are always present. `results`/`by_confidence` are always an
+array (may be empty), not `null`.
 
 ### search — `GET /search?q=…` / CLI `--json`
 
-| Поле | Тип | Обязательно | Смысл |
+| Field | Type | Required | Meaning |
 |------|-----|-------------|-------|
-| `contract_version` | string | да | версия контракта, `MAJOR.MINOR` |
-| `query` | string | да | переданный запрос |
-| `root_filter` | string | да | `facts` / `info`; `""` = все корни |
-| `as_of` | string | нет | `YYYY-MM-DD` (D24), фильтр валидности |
-| `count` | int | да | число результатов (`>= 0`) |
-| `results` | array | да | хиты (пусто, если нет совпадений) |
-| `web` | object | нет | второй независимый источник (SearXNG) |
+| `contract_version` | string | yes | contract version, `MAJOR.MINOR` |
+| `query` | string | yes | the submitted query |
+| `root_filter` | string | yes | `facts` / `info`; `""` = all roots |
+| `as_of` | string | no | `YYYY-MM-DD` (D24), validity filter |
+| `count` | int | yes | number of results (`>= 0`) |
+| `results` | array | yes | hits (empty if there are no matches) |
+| `web` | object | no | the second independent source (SearXNG) |
 
-Хит (`results[]`):
+Hit (`results[]`):
 
-| Поле | Тип | Обязательно | Смысл |
+| Field | Type | Required | Meaning |
 |------|-----|-------------|-------|
-| `id` | string | да | id листа |
-| `text` | string | да | полный текст листа |
-| `root` | string | да | `facts` / `info` |
-| `confidence` | string | нет | `confirmed` / `estimated` / `inferred` / … |
-| `score` | float | да | оценка релевантности (RRF/косинус) |
-| `snippet` | string | нет | до 280 рун текста |
-| `valid_from` / `valid_to` | string | нет | `YYYY-MM-DD` (D24) |
-| `hops` | array | нет | обход `--hop N` (`id`/`label`/`name`/`depth`) |
+| `id` | string | yes | sheet id |
+| `text` | string | yes | full sheet text |
+| `root` | string | yes | `facts` / `info` |
+| `confidence` | string | no | `confirmed` / `estimated` / `inferred` / … |
+| `score` | float | yes | relevance score (RRF/cosine) |
+| `snippet` | string | no | up to 280 runes of text |
+| `valid_from` / `valid_to` | string | no | `YYYY-MM-DD` (D24) |
+| `hops` | array | no | `--hop N` traversal (`id`/`label`/`name`/`depth`) |
 
-`web` блок: `status` (обязательно: `ok`/`throttled`/`skipped`/`refused`/…),
+`web` block: `status` (required: `ok`/`throttled`/`skipped`/`refused`/…),
 `note`, `cached`, `results[]` (`rank`/`title`/`url`/`snippet`/`engine`).
 
 ### get — `GET /get?id=…` / CLI `--json`
 
-| Поле | Тип | Обязательно | Смысл |
+| Field | Type | Required | Meaning |
 |------|-----|-------------|-------|
-| `contract_version` | string | да | версия контракта |
-| `id` | string | да | id листа |
-| `root` | string | да | `facts` / `info` |
-| `confidence` | string | да | `confirmed` / `estimated` / `inferred` / … |
-| `source` | string | да | корпус: `mail` / `git` / `chats` / `docs` / `facts` |
-| `type` | string | да | kind листа (`fact` / `mail` / `chat` / `commit` / …) |
-| `valid_from` / `valid_to` | string | нет | `YYYY-MM-DD` (D24) |
-| `snippet` | string | нет | без `--body` (до 280 рун) |
-| `text` | string | нет | только с `--body` (полный текст) |
+| `contract_version` | string | yes | contract version |
+| `id` | string | yes | sheet id |
+| `root` | string | yes | `facts` / `info` |
+| `confidence` | string | yes | `confirmed` / `estimated` / `inferred` / … |
+| `source` | string | yes | corpus: `mail` / `git` / `chats` / `docs` / `facts` |
+| `type` | string | yes | sheet kind (`fact` / `mail` / `chat` / `commit` / …) |
+| `valid_from` / `valid_to` | string | no | `YYYY-MM-DD` (D24) |
+| `snippet` | string | no | without `--body` (up to 280 runes) |
+| `text` | string | no | only with `--body` (full text) |
 
-`text` и `snippet` взаимоисключающие: `--body` → `text`, иначе `snippet`.
+`text` and `snippet` are mutually exclusive: `--body` → `text`, otherwise `snippet`.
 
 ### stats — `GET /stats` / CLI `--json`
 
-| Поле | Тип | Обязательно | Смысл |
+| Field | Type | Required | Meaning |
 |------|-----|-------------|-------|
-| `contract_version` | string | да | версия контракта |
-| `total` | int | да | всего leafs (`>= 0`) |
-| `by_root` | object | да | `{"facts": N, "info": N}` — фактические корни |
-| `db` | string | да | путь к kb.lbug |
-| `model` | string | нет | CLI-расширение: id embedding-модели |
-| `ann` | object | нет | HTTP-расширение: статус ANN-индекса |
+| `contract_version` | string | yes | contract version |
+| `total` | int | yes | total leafs (`>= 0`) |
+| `by_root` | object | yes | `{"facts": N, "info": N}` — actual roots |
+| `db` | string | yes | path to kb.lbug |
+| `model` | string | no | CLI extension: embedding model id |
+| `ann` | object | no | HTTP extension: ANN index status |
 
-Required-ядро едино для CLI и HTTP; `model` и `ann` — аддитивные расширения
-поверхностей (клиент не должен на них полагаться).
+The required core is the same for CLI and HTTP; `model` and `ann` are additive
+surface extensions (a client must not rely on them).
 
 ### audit — `GET /audit` / MCP `audit`
 
-| Поле | Тип | Обязательно | Смысл |
+| Field | Type | Required | Meaning |
 |------|-----|-------------|-------|
-| `contract_version` | string | да | версия контракта |
-| `status` | string | да | `"ok"` |
-| `by_confidence` | array | да | гистограмма root × confidence |
+| `contract_version` | string | yes | contract version |
+| `status` | string | yes | `"ok"` |
+| `by_confidence` | array | yes | root × confidence histogram |
 
-Строка `by_confidence[]`: `root` (`facts`/`info`), `confidence`, `count`
-(`>= 0`). Это **формат ответа** чтения аудита; сами аудит-карточки
-Vinogradov (L-9, issues #229–234) — отдельный домен (`docs/facts/`,
-`bin/facts/audit.go`), в этот контракт не входят. Аудит соответствия
-write-контракту — `bin/brain/audit-contract.go` (своя схема отчёта, P-9.2).
+The `by_confidence[]` row: `root` (`facts`/`info`), `confidence`, `count`
+(`>= 0`). This is the **read response format** of the audit; the Vinogradov
+audit cards themselves (L-9, issues #229–234) are a separate domain (`docs/facts/`,
+`bin/facts/audit.go`) and are not part of this contract. The conformance audit against the
+write contract — `bin/brain/audit-contract.go` (its own report schema, P-9.2).
 
-## Семантика: root, confidence, (not confirmed)
+## Semantics: root, confidence, (not confirmed)
 
-Единые термины с write-контрактом (contract.md):
+Terms shared with the write contract (contract.md):
 
-- **`root=facts`** — утверждение, подтверждённое **≥2 независимыми
-  источниками**, `confidence: confirmed`. Это единственный корень, с которого
-  ответ считается фактом.
-- **`root=info`** — описательный/нарративный leaf корпуса (mail/git/chats/docs),
-  поисковый, никогда не утверждается.
-- **`confidence`** — домен открыт: `confirmed` / `estimated` / `inferred` /
-  `hypothesis` / `partial` / …. Пустое значение (legacy leafs) трактуется
-  как `confirmed`.
-- **`(not confirmed)`** — ответ не сходит с facts-корня: info-хит,
-  hypothesis/partial, либо только один независимый источник. Агент обязан
-  помечать такой ответ `(not confirmed)`, а не выдавать за факт.
-- Дедuction-порядок поиска: facts → info → web. `--root facts` возвращает
-  только подтверждённые; без фильтра info-хиты помечаются `(not confirmed)`.
-- `web`-блок держится отдельно от графовых hits: «наши» vs «не наши».
-  `throttled`/`skipped`/`refused` — не доказательство отсутствия.
+- **`root=facts`** — a claim confirmed by **≥2 independent
+  sources**, `confidence: confirmed`. This is the only root from which an
+  answer counts as a fact.
+- **`root=info`** — a descriptive/narrative corpus leaf (mail/git/chats/docs),
+  searchable, never asserted.
+- **`confidence`** — an open domain: `confirmed` / `estimated` / `inferred` /
+  `hypothesis` / `partial` / …. An empty value (legacy leafs) is treated
+  as `confirmed`.
+- **`(not confirmed)`** — the answer does not come from the facts root: an info hit,
+  hypothesis/partial, or only one independent source. The agent must
+  mark such an answer `(not confirmed)` and not present it as a fact.
+- Deduction search order: facts → info → web. `--root facts` returns
+  only confirmed ones; without the filter info hits are marked `(not confirmed)`.
+- The `web` block is kept separate from the graph hits: "ours" vs "not ours".
+  `throttled`/`skipped`/`refused` — not proof of absence.
 
-## Время: `--as-of` (valid_from/valid_to) и observed_at
+## Time: `--as-of` (valid_from/valid_to) and observed_at
 
-- **`valid_from` / `valid_to`** — валидность факта **по дням** (D24,
-  `YYYY-MM-DD`), **ортогональна версии** (версия = id/ContentHash).
-  `--as-of YYYY-MM-DD` оставляет hits, чей интервал покрывает день: пустой
-  интервал = «всегда» (legacy), пустой `valid_to` = открытый конец, оба конца
-  включительно. Это фильтр по смыслу факта, не по дате записи.
-- **`observed_at`** — когда контент **увиден** (RFC3339), часть write-
-  контракта, **не входит в dedup-ключ** (ContentHash): тот же контент,
-  записанный позже, дедуплицируется к той же версии. В read-ответах поле
-  сейчас **не экспонируется** (аддитивное будущее); читается через аудит
-  write-контракта (`bin/brain/audit-contract.go`).
+- **`valid_from` / `valid_to`** — validity of the fact **by days** (D24,
+  `YYYY-MM-DD`), **orthogonal to the version** (version = id/ContentHash).
+  `--as-of YYYY-MM-DD` keeps hits whose interval covers the day: an empty
+  interval = "always" (legacy), an empty `valid_to` = an open end, both ends
+  inclusive. This is a filter by the meaning of the fact, not by the write date.
+- **`observed_at`** — when the content was **seen** (RFC3339), part of the write
+  contract, **not part of the dedup key** (ContentHash): the same content
+  written later dedups to the same version. In read responses the field is
+  currently **not exposed** (additive future); it is read via the write-contract
+  audit (`bin/brain/audit-contract.go`).
 
-## Гейт соответствия (read-only)
+## Conformance gate (read-only)
 
-Контракт проверяется скриптом, а не только текстом. Оба гейта read-only,
-работают параллельно с живым сервисом (Ladybug: второй RW-open невозможен,
-RO-open разрешён).
+The contract is checked by a script, not only by text. Both gates are read-only,
+work in parallel with the live service (Ladybug: a second RW-open is impossible,
+RO-open is allowed).
 
 ```bash
-# Формат ответов живого сервиса (HTTP :8630):
-./bin/brain/read-contract.go                       # строго (требует contract_version)
-./bin/brain/read-contract.go --relax-version       # сервис до контракта: формат проверяется, версия — warning
-./bin/brain/read-contract.go --base URL --token T  # другой сервис
-./bin/brain/read-contract.go --json                # машиночитаемый отчёт
+# Response format of the live service (HTTP :8630):
+./bin/brain/read-contract.go                       # strict (requires contract_version)
+./bin/brain/read-contract.go --relax-version       # service predating the contract: format is checked, version — warning
+./bin/brain/read-contract.go --base URL --token T  # another service
+./bin/brain/read-contract.go --json                # machine-readable report
 
-# Инварианты данных на живой kb.lbug (не нужен поднятый сервис):
+# Data invariants on the live kb.lbug (no running service needed):
 bin/cgo/zig go run -tags=system_ladybug,brain_readcontract_db bin/brain/read-contract-db.go
 bin/cgo/zig go run -tags=system_ladybug,brain_readcontract_db bin/brain/read-contract-db.go --json
 ```
 
-Что проверяет HTTP-гейт: search (общий + `root=facts` + `as_of`), get (с телом
-и без), stats, audit — обязательные поля, типы, домены (`root` ∈ facts|info,
-даты `YYYY-MM-DD`), отсутствие → отсутствие. DB-гейт воспроизводит формы
-ответов из живых данных и прогоняет те же валидаторы (выборка 200 leafs).
+What the HTTP gate checks: search (general + `root=facts` + `as_of`), get (with and
+without a body), stats, audit — required fields, types, domains (`root` ∈ facts|info,
+dates `YYYY-MM-DD`), absence → absence. The DB gate reproduces the response
+shapes from live data and runs the same validators (sample of 200 leafs).
 
-Прогон 2026-09-02 на живой kb.lbug (105210 leafs, сервис :8630):
+Run on 2026-09-02 against the live kb.lbug (105210 leafs, service :8630):
 
 ```
 $ bin/cgo/zig go run -tags=system_ladybug,brain_readcontract_db bin/brain/read-contract-db.go
@@ -192,69 +192,70 @@ read contract gate: db (contract_version=1.0)
   PASS   sample   search/get fields ok (sample=200)
 gate: PASS
 
-$ ./bin/brain/read-contract.go --relax-version   # live :8630 до редеплоя
+$ ./bin/brain/read-contract.go --relax-version   # live :8630 before redeploy
 read contract gate: http:http://127.0.0.1:8630 (contract_version=1.0)
   PASS*  search   ok (warnings)     # warning: service predates read-contract
   …
 gate: PASS
 ```
 
-## Клиентский слой (P-9.5)
+## Client layer (P-9.5)
 
-Единый клиентский слой поверх read-контракта, чтобы gator/cv/агенты/скрипты
-не звали HTTP/MCP/CLI каждый по-своему и не открывали `var/kb.lbug`:
+A single client layer on top of the read contract, so that gator/cv/agents/scripts
+do not call HTTP/MCP/CLI each in their own way and do not open `var/kb.lbug`:
 
-| Слой | Где | Что |
+| Layer | Where | What |
 |------|-----|-----|
-| SDK | `pkg/brainclient` (cgo-free) | typed-клиент: `Search`/`Get`/`Stats`/`Audit` → `internal/contract`-ответы; ответы валидируются контрактными валидаторами (формат + `contract_version`, несовместимый сервис — ошибка); «гейт facts» (`Gate`, `Facts`, `GateAudit`) |
-| CLI | `bin/brain/client.go` (shebang, `brain_client`) | подкоманды `search`/`get`/`stats`/`audit`, `--json`, `--root facts|info`, `--as-of`, `-n`, `--no-web`, `--base URL`, `--token T`; base по умолчанию из `internal/config` (host/port), иначе `127.0.0.1:8630` |
+| SDK | `pkg/brainclient` (cgo-free) | typed client: `Search`/`Get`/`Stats`/`Audit` → `internal/contract` responses; responses are validated by the contract validators (format + `contract_version`, an incompatible service — an error); the "facts gate" (`Gate`, `Facts`, `GateAudit`) |
+| CLI | `bin/brain/client.go` (shebang, `brain_client`) | subcommands `search`/`get`/`stats`/`audit`, `--json`, `--root facts|info`, `--as-of`, `-n`, `--no-web`, `--base URL`, `--token T`; base by default from `internal/config` (host/port), otherwise `127.0.0.1:8630` |
 
-Клиент ходит только через контракт (HTTP :8630, `bin/brain/serve.go`) — в
-коде клиента нет ни одного открытия kb.lbug, парсинга Ladybug-файла или
-запросов к внутренней схеме БД. Пакет cgo-free: тесты на httptest-фикстурах
-входят в обычный `go test ./...`.
+The client goes only through the contract (HTTP :8630, `bin/brain/serve.go`) — the
+client code contains not a single opening of kb.lbug, parsing of the Ladybug file, or
+query against the internal DB schema. The package is cgo-free: tests on httptest
+fixtures are part of the regular `go test ./...`.
 
 ```bash
-# CLI-примеры
+# CLI examples
 ./bin/brain/client.go search "onlyoffice postgres" --root facts --json
 ./bin/brain/client.go get <id> --body
 ./bin/brain/client.go stats
 ./bin/brain/client.go audit
 ```
 
-SDK-пример (агент/скрипт/сервис на Go):
+SDK example (an agent/script/service in Go):
 
 ```go
 import "github.com/eSlider/2dph/pkg/brainclient"
 
 cl := brainclient.New(brainclient.Config{Base: "http://127.0.0.1:8630"})
 facts, err := cl.Facts(ctx, "where is the lexicon", brainclient.SearchOptions{})
-for _, f := range facts.Confirmed { /* безопасно цитировать как факт */ }
-for _, nf := range facts.NotConfirmed { /* (not confirmed): только с пометкой */ }
+for _, f := range facts.Confirmed { /* safe to quote as a fact */ }
+for _, nf := range facts.NotConfirmed { /* (not confirmed): only with a marker */ }
 ```
 
-### Гейт facts
+### Facts gate
 
-Сервер отдаёт листья как они лежат в БД; за то, что **не подтверждённое не
-выдаётся за факт**, отвечает клиентский гейт (`pkg/brainclient`):
+The server returns sheets as they lie in the DB; the client-side gate
+(`pkg/brainclient`) is responsible for **what is not confirmed not being
+presented as a fact**:
 
-- `Gate(root, confidence)` — вердикт для одного хита: `true` только для
-  `root=facts` с `confidence=confirmed` (пустое = legacy, по семантике выше).
+- `Gate(root, confidence)` — the verdict for a single hit: `true` only for
+  `root=facts` with `confidence=confirmed` (empty = legacy, per the semantics above).
   `info`, `hypothesis`/`partial`/`estimated`/`inferred` → `false`.
-- `Client.Facts` = `search --root facts` + гейт: ответ разделяется на
-  `confirmed[]` (подтверждённые факты) и `not_confirmed[]` (отклонённое, с
-  полем `reason` — пометка `(not confirmed)`). 2v2-противоречия (D16) лежат
-  как `hypothesis` и в `confirmed` не попадают никогда.
-- `GateAudit` — гейт поверх `audit`-гистограммы: `confirmed_facts` vs
-  `not_confirmed_facts` на facts-корне. `not_confirmed_facts > 0` значит: на
-  facts-корне есть hypothesis/partial — такие листы нельзя подавать как
-  факты, пока их не разберёт `bin/facts/audit.go contradict` / audit-card
-  (L-9, #229–234). CLI `audit` в этом случае выходит с кодом 1.
-- Гейт — оборона на чтении; запись по-прежнему требует ≥2 независимых
-  источников (promote, `docs/brain/contract.md`). Клиент не «доверяет»
-  серверу: несовместимый формат/версия — ошибка, отклонённое — помечается.
+- `Client.Facts` = `search --root facts` + the gate: the response is split into
+  `confirmed[]` (confirmed facts) and `not_confirmed[]` (rejected, with a
+  `reason` field — the `(not confirmed)` marker). 2v2 contradictions (D16) lie
+  as `hypothesis` and never get into `confirmed`.
+- `GateAudit` — a gate over the `audit` histogram: `confirmed_facts` vs
+  `not_confirmed_facts` on the facts root. `not_confirmed_facts > 0` means: there are
+  hypothesis/partial sheets on the facts root — such sheets cannot be served as
+  facts until `bin/facts/audit.go contradict` / audit-card sorts them out
+  (L-9, #229–234). In this case the CLI `audit` exits with code 1.
+- The gate is a defense on read; writing still requires ≥2 independent
+  sources (promote, `docs/brain/contract.md`). The client does not "trust" the
+  server: an incompatible format/version — an error, a rejected one — is marked.
 
-### Пример 1: search-факт через клиент
+### Example 1: a search fact through the client
 
 ```bash
 ./bin/brain/client.go search "onlyoffice postgres" --root facts --json
@@ -279,13 +280,13 @@ for _, nf := range facts.NotConfirmed { /* (not confirmed): только с по
 }
 ```
 
-Если на facts-корне встретится hypothesis/partial (например 2v2-лист до
-аудита), он уйдёт в `not_confirmed[]` с `reason`, а не в `confirmed[]` —
-агент не сможет процитировать его как факт. `get <id> --body` показывает
-двухисточниковый `source` («docker ps x compose:docker-compose.yml») —
-доказательство по write-контракту.
+If a hypothesis/partial appears on the facts root (e.g. a 2v2 sheet before the
+audit), it goes into `not_confirmed[]` with a `reason`, not into `confirmed[]` —
+the agent will not be able to quote it as a fact. `get <id> --body` shows the
+two-source `source` ("docker ps x compose:docker-compose.yml") —
+evidence per the write contract.
 
-### Пример 2: audit-карточка (гигиена facts-корня)
+### Example 2: audit card (facts-root hygiene)
 
 ```bash
 ./bin/brain/client.go audit
@@ -294,27 +295,27 @@ info           confirmed    105199
 facts gate: confirmed=21 not_confirmed=0
 ```
 
-`facts gate: not_confirmed=0` — facts-корень чист: все 21 факта confirmed.
-Если гейт покажет `not_confirmed > 0`, это сигнал для L-9-карточки:
-`bin/facts/audit.go contradict` (2v2-разбор) или `bin/facts/audit-card.go`
-(вердикт в `var/audit/source-of-truth.yml`) — до разбора такие листы остаются
-`(not confirmed)` и в ответах клиента фактами не считаются.
+`facts gate: not_confirmed=0` — the facts root is clean: all 21 facts are confirmed.
+If the gate shows `not_confirmed > 0`, this is a signal for an L-9 card:
+`bin/facts/audit.go contradict` (2v2 analysis) or `bin/facts/audit-card.go`
+(a verdict into `var/audit/source-of-truth.yml`) — until the analysis such sheets remain
+`(not confirmed)` and are not counted as facts in client responses.
 
-### Кросс-репо потребители (gator/cv)
+### Cross-repo consumers (gator/cv)
 
-`internal/contract` — внутренний пакет модуля, поэтому сегодня клиент
-импортируют 2dph-инструменты и скиллы. Чтобы gator/cv импортировали
-клиент как внешний go-модуль, нужен вынос типов read-контракта и клиента в
-публичный `go-*` модуль — это решает P-9.6 (общий ADR модели
-фактов/аудита/памяти, эпик #239); до него внешние потребители читают brain по
-этому документу (форматы) и через HTTP/MCP/CLI без дублирования логики.
+`internal/contract` is an internal package of the module, so today the client is
+imported by 2dph tools and skills. For gator/cv to import the
+client as an external go module, the read-contract types and the client need to be moved into a
+public `go-*` module — this is decided by P-9.6 (the shared ADR of the
+facts/audit/memory model, epic #239); before that, external consumers read the brain by
+this document (formats) and via HTTP/MCP/CLI without duplicating logic.
 
 ## Cross-ref
 
-- Write-контракт: [`docs/brain/contract.md`](contract.md) (P-9.2/P-9.3,
-  issues #235/#13) — Leaf, ContentHash, observed_at, адаптеры корпуса.
-- Общий паттерн версионности / ADR: P-9.6, issue #16.
-- Аудит-карточки Vinogradov: L-9, issues #229–234 — отдельный домен
+- Write contract: [`docs/brain/contract.md`](contract.md) (P-9.2/P-9.3,
+  issues #235/#13) — Leaf, ContentHash, observed_at, corpus adapters.
+- Shared versioning pattern / ADR: P-9.6, issue #16.
+- Vinogradov audit cards: L-9, issues #229–234 — a separate domain
   (`docs/facts/audit-recipes.md`, `bin/facts/audit.go`).
-- Скилл `brain` (skills/brain) — как пользоваться поиском и добавлять корпус.
-- HTTP/MCP поверхность: `pkg/httpapi` (OpenAPI `GET /openapi.json`).
+- Skill `brain` (skills/brain) — how to use search and add a corpus.
+- HTTP/MCP surface: `pkg/httpapi` (OpenAPI `GET /openapi.json`).
