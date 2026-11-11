@@ -83,6 +83,37 @@ bin/brain/serve.go                                    # HTTP + OpenAPI + MCP :86
 Incremental write is `bin/brain/add.go`; background indexing runs in the
 compose `index-sync` cycle. Full setup: [docs/runbook.md](docs/runbook.md).
 
+### Run with Docker
+
+`ghcr.io/eslider/2dph` — the API image (HTTP + OpenAPI + MCP), `linux/amd64`
+only.
+
+```bash
+docker pull ghcr.io/eslider/2dph:latest
+
+docker run --rm -p 127.0.0.1:8630:8630 \
+  -v "$PWD/var:/data/var" \
+  -e HOME=/data -e KB_HOST=0.0.0.0 -e KBSEARCH_NO_DAEMON=1 \
+  --user "$(id -u):$(id -g)" \
+  ghcr.io/eslider/2dph:latest serve
+
+curl http://127.0.0.1:8630/health  # {"status":"ok"}
+```
+
+| Surface | URL / path |
+|---------|-------------|
+| API, OpenAPI | `http://127.0.0.1:8630` · `/openapi.json` |
+| MCP | `http://127.0.0.1:8630/mcp` |
+| Data | `./var` (`kb.lbug`, `state/vector.ann`) |
+
+The image carries no `kb.lbug`, so mount a `var/` built with
+`bin/brain/index.go --rebuild`; `--user` keeps the host uid as the DB owner
+(the DB is opened read-write, same rule as `KB_UID` in `compose.yaml`).
+
+Tags: `latest` = last stable release · `vX.Y.Z` = pinned release · `api` = edge
+of `main` · `sha-<12>` = one commit — which one to use, and how to read the
+image version: [docs/runbook.md#docker-images-and-tags](docs/runbook.md#docker-images-and-tags).
+
 ## What's inside
 
 | Path | Role |

@@ -30,6 +30,92 @@ eval "$(bin/cgo/zig env)"   # optional; bin/brain/{search,get,stats,eval,serve}.
 go test ./...
 ```
 
+## Docker images and tags
+
+`ghcr.io/eslider/2dph` is the API image (Go `serve` + Ladybug, Zig CGO) and the
+supported way to run 2dph away from the repo checkout. One platform only:
+**`linux/amd64`** — no arm64, no multi-arch.
+
+| Tag | What it is | Use |
+|-----|------------|-----|
+| `vX.Y.Z` | one stable release; treat as immutable | **production** — pin it |
+| `latest` | last stable release (moves on each release) | trying it out, demos |
+| `api` | edge build of `main` (moves on every merge) | tests only |
+| `sha-<12>` | one commit of `main` (first 12 chars of the SHA) | reproduce / bisect |
+
+- Production pins `vX.Y.Z` — neither `api` (it can be broken) nor `latest`
+  (an unrelated `docker pull` would upgrade you).
+- Upgrade = change the tag, `docker pull`, restart the container. A rollback is
+  the previous `vX.Y.Z` — with `latest`/`api` there is nothing to roll back to.
+- On a release the same build also carries `api`, so right after a release the
+  edge tag points at the released commit; the next merge into `main` moves it
+  forward.
+
+### Run
+
+```bash
+docker pull ghcr.io/eslider/2dph:vX.Y.Z
+
+docker run --rm -p 127.0.0.1:8630:8630 \
+  -v "$PWD/var:/data/var" \
+  -e HOME=/data -e KB_HOST=0.0.0.0 -e KBSEARCH_NO_DAEMON=1 \
+  --user "$(id -u):$(id -g)" \
+  ghcr.io/eslider/2dph:vX.Y.Z serve
+
+curl -sS http://127.0.0.1:8630/health   # {"status":"ok"}
+```
+
+Then `GET /openapi.json`, `POST /mcp`, MCP URL `http://127.0.0.1:8630/mcp`.
+
+- `KB_HOST=0.0.0.0` is **required** for a published port: `serve` binds
+  `127.0.0.1` by default, so `-p` alone would leave the port unreachable.
+- `--user "$(id -u):$(id -g)"` is the CLI equivalent of `KB_UID` in
+  `compose.yaml` (#195): `kb.lbug` is opened read-write, so the container uid
+  must own the mounted `var/`. Without it (image uid 1001, host `var/` owned by
+  uid 1000) the container exits with `OpenDatabase: failed to open database`.
+- The image carries no `kb.lbug` and no `etc/` (#208). Mount a `var/` that was
+  built by `bin/brain/index.go --rebuild`; an empty `var/` starts healthy but
+  with 0 leafs (`/stats` fails with `Table Leaf does not exist` until a DB
+  exists). Config, if any, comes from `/data/etc/brain` — `compose.yaml` mounts
+  the repo copy read-only.
+- Entrypoint verbs: `serve` (default), `search`, `watch`, `index`, `add`,
+  `ann`, `mail-graph`, `mail-leaf`, `index-loop`, `mail-sync`, `runner`,
+  `shell`.
+
+### Which version is in an image
+
+The image has no `version` subcommand today (the verbs are listed above), so the
+release version is read from the standard OCI labels, stamped by the release
+pipeline (#9):
+
+```bash
+# local image
+docker image inspect ghcr.io/eslider/2dph:vX.Y.Z \
+  --format '{{index .Config.Labels "org.opencontainers.image.version"}}'
+
+# registry, without pulling
+docker buildx imagetools inspect ghcr.io/eslider/2dph:vX.Y.Z \
+  --format '{{json .Image.Config.Labels}}'
+```
+
+Labels: `org.opencontainers.image.version` (the release, e.g. `v0.24.13`),
+`.revision` (the commit SHA), `.source` (repo URL), `.created`. The label must
+equal the tag. An empty `version` means the image predates the label job
+(today's `api` and `sha-*` images): identify those by `revision`/digest, and
+prefer a released tag where one exists.
+
+### How releases are cut
+
+- Releases are **manual**: a `workflow_dispatch` run (input: the line, e.g.
+  `0.24`) builds, smoke-tests (`/health`, `/openapi.json`, MCP `tools/list`) and
+  pushes `vX.Y.Z` + `latest` + `api` + `sha-<12>` in that single run (#9).
+- A push/merge to `main` publishes **only** `api` + `sha-<12>`; it never creates
+  a release tag.
+- Until the first manual release has run, GHCR has only `api` and `sha-*` — that
+  is expected, not a broken pull.
+- A dispatch with an explicit `version` re-points an existing digest to
+  `vX.Y.Z` + `latest` via `docker buildx imagetools create` (no rebuild, #9).
+
 ## Config
 
 | File / env | Purpose |
