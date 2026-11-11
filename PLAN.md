@@ -63,8 +63,8 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D23 | CLI | **flaggy** (`github.com/integrii/flaggy`, 0 deps). Flags at any position. Wrapper `pkg/cli`. Bash complete: `source <(./bin/shell/complete.go bash)`. No cobra, no stdlib `flag` in Go tools. Search does not intercept the word `completion`. [#34](https://git.produktor.io/eSlider/2dph/issues/34). |
 | D24 | fact intervals | Leaf `valid_from` / `valid_to` (YYYY-MM-DD, inclusive; empty = open/legacy). Search `--as-of` / MCP `as_of` keeps facts active that day. Not D16 `temporal_freshness` (source stale vs HEAD). Empty interval = always visible. [#36](https://git.produktor.io/eSlider/2dph/issues/36). |
 | D25 | deploy data path | Brain serves from host `var/`, not named volumes. Compose binds `./var:/data/var` (kb.lbug at `/data/var/kb.lbug`), HF model from `var/hf`, Ladybug FTS/VECTOR extensions mounted read-only into `$HOME/.lbdb/extension`. `brain` uses `network_mode: host` so `127.0.0.1:8630` works with any image (KB_HOST-independent). Named volumes `kb-model`/`kb-var` dropped — live data is host `var/` (gitignored). |
-| D26 | search A/B (#201/#202) | Ничего не «лучше» без A/B. `bin/brain/bench.go` + golden-set (`internal/brain/testdata/golden-set.json`, ~50 запросов, рус+англ, факты/mail/docs/git/ssh). Метрики: latency p50/p95/mean, recall@5/@10 (fragment-гейт как eval.go + A/B vs baseline IDs), CPU/RSS из /proc. Гейты: recall@5 ≥ 0.95, кандидат p50 ≤ baseline × 1.5. Baseline: линейный скан 313k = p50 ~31s. Кандидаты (ANN/SIMD/FTS-first) — child issues эпика #201. |
-| D32 | ANN вне liblbug (#201/#204) | Инкрементальный векторный индекс в `internal/brain/ann`: **IVF** (k-means + точный косинус по probed-ячейкам, чистый Go; `coder/hnsw`/HNSW отброшен — на 313k реальных достижимы 34% узлов, recall@5 0.16). Индекс `var/state/vector.ann` + append-only WAL (`upsert` = только новые leafs, без rebuild). `bin/brain/ann.go` (build/upsert/ensure/stats/api/search), wave-шаг `ann-build` (#206). `queryVector`: индекс top-k → point-lookup метаданных → слияние с FTS (rank не тронут); fallback на скан при отсутствии/повреждении. Конфиг `vector.ann` (NList=2000, NProbe=128 — дефолты пакета; прод-конфиг nprobe=2000, решение #206). A/B: baseline p50 ~31s → кандидат p50 ~0.4s, recall@5 vs baseline 1.0 (цифры в #204/#206). |
+| D26 | search A/B (#201/#202) | Nothing is "better" without an A/B. `bin/brain/bench.go` + golden-set (`internal/brain/testdata/golden-set.json`, ~50 queries, Russian+English, facts/mail/docs/git/ssh). Metrics: latency p50/p95/mean, recall@5/@10 (fragment gate like eval.go + A/B vs baseline IDs), CPU/RSS from /proc. Gates: recall@5 ≥ 0.95, candidate p50 ≤ baseline × 1.5. Baseline: linear scan 313k = p50 ~31s. Candidates (ANN/SIMD/FTS-first) — child issues of epic #201. |
+| D32 | ANN outside liblbug (#201/#204) | Incremental vector index in `internal/brain/ann`: **IVF** (k-means + exact cosine over probed cells, pure Go; `coder/hnsw`/HNSW discarded — at 313k real vectors only 34% of nodes are reachable, recall@5 0.16). Index `var/state/vector.ann` + append-only WAL (`upsert` = only new leafs, no rebuild). `bin/brain/ann.go` (build/upsert/ensure/stats/api/search), wave step `ann-build` (#206). `queryVector`: index top-k → point lookup of metadata → merge with FTS (rank untouched); fallback to scan when missing/corrupt. Config `vector.ann` (NList=2000, NProbe=128 — package defaults; prod config nprobe=2000, decision #206). A/B: baseline p50 ~31s → candidate p50 ~0.4s, recall@5 vs baseline 1.0 (numbers in #204/#206). |
 | D26 | repo layout | `bin/{subject}` = tools only (`{verb}-{object}.go`); executables/orchestration → `scripts/`; data tree `var/{tmp,dist,log,state,cache,hf,kb.lbug,corpus/{git,mail,chats,docs}}`; configs `etc/{subject}` + central `etc/brain/config.yml`. CI guard fails on absolute paths and Python remnants. [#89](https://git.produktor.io/eSlider/2dph/issues/89) |
 | D27 | config system | All external sources (paths, URLs, endpoints) via `github.com/eslider/go-config` (`internal/config`): stack `etc/brain/config.yml` → `config.local.yml` → `.env` → process env; one load per process into a strict typed struct; deep merge (maps recurse, scalars last-write-wins, keys lower+alnum); no ad-hoc `os.Getenv`; legacy `KB_*` / `BRAIN_SEARCH_*` env names honored transitionally. [#90](https://git.produktor.io/eSlider/2dph/issues/90), [#91](https://git.produktor.io/eSlider/2dph/issues/91) |
 | D28 | no hardcoded paths/URLs | Nothing like `/mnt/…`, `/home/<user>/…`, or pinned host URLs in code/comments/tests; missing config key = explicit error pointing at `etc/brain/config.yml`. CI-enforced. [#89](https://git.produktor.io/eSlider/2dph/issues/89) |
@@ -74,8 +74,8 @@ detective method: **a fact needs ≥2 independent sources or it is
 | D32 | zero-alloc hot paths | Pre-allocation, buffer reuse (`buf[:0]`), `sync.Pool` with reset, `strings.Builder` over `+`, sets as `map[K]struct{}`, structs over maps; proven by `-benchmem`. Applies to hot paths only — no premature optimization. |
 | D33 | sync-ETL reimplementation | Pipeline `Source.Fetch(ctx,cursor)→[]Blob→Registry.Decode→Transform→Load`; one Handler per format (eml=emersion/go-message `Walk()`, zip=`archive/zip`, html=`x/net/html` optional, pdf=Ghostscript normalize→pdftotext/tesseract); lazy children, walker safety limits; single implementation per transformer; canonical `Conversation` model on disk (`var/corpus`) → brain graph (`SENT/TO/CC/BCC/REPLY_TO/PART_OF`); URL addressing `scheme://platform/path[#anchor]` with `sha256(URL)[:16]` node IDs. Epic [#88](https://git.produktor.io/eSlider/2dph/issues/88): [#95](https://git.produktor.io/eSlider/2dph/issues/95)–[#102](https://git.produktor.io/eSlider/2dph/issues/102). |
 | D34 | synapse edges | User-defined edges between neurons modeled as a `SYNAPTIC (FROM Leaf TO Leaf, type STRING)` rel table (leafs = neurons, edges = synapses); adjacency = both directions; path = `[:SYNAPTIC* ALL SHORTEST 1..N]` (Ladybug exposes only intermediate nodes → rebuild `[from, mid…, to]`). Service `bin/brain/synapse-matrix.go`, auth = token OR loopback bind, config section `synapse`. [#82](https://git.produktor.io/eSlider/2dph/issues/82) |
-| D35 | ANN в проде (#206) | Победитель A/B (#204) включён по умолчанию: `vector.ann.enabled: true` (serve + CLI), **nprobe=2000** — замерено на живом корпусе 313689 векторов (11 запросов golden-set): p50 471ms recall@5=1.0 vs 256 (p50 262ms recall@5 0.818) — корректность сначала, тюнинг позже. Волна: шаг `ann-build` = `ann.go ensure` — полный build только когда индекса нет/устарел (>10% отставания по счётчику leafs), иначе инкрементальный WAL-upsert (+100 <1s, никогда rebuild на волну). `serve` — тёплый старт: индекс грузится при старте (WarmANN), при пустом/битом — fallback на скан, build делает волна (single-writer, #204). A/B прод: p50 471ms vs baseline 33.6s (0.014x), recall@5 vs baseline 1.0. |
-| D36 | FTS-фаза rebuild (#244) | После write-фазы `brain-index` закрывает хэндл и переоткрывает БД с автоподобранным пулом `max(1GB, chars×32)` для `CREATE_FTS_INDEX`: на полном корпусе (280MB текста) 1GB-пул падает и оставляет орфан `0_id_appears_info`, недостижимый через SQL (внутренний каталог). Замеры порога: 10.3MB→64/128MB, 10.8MB→192/256MB, прод 280MB→1GB/10GB. Двухфазный workaround из rebuild.md автоматизирован (отменён как ручной). C-потолок (замер #244): write-фаза ~140KB/leaf линейно, пул 1GB не ограничивает, CHECKPOINT/embedding не влияют, close не освобождает в том же процессе; FTS — пул ~9GB на полном корпусе. Критерий #237 (RSS ≤2-4GB) переформулирован: Go-часть — да; C-сторона — задокументированный потолок (~14-15GB write + ~9GB FTS на 105k). |
+| D35 | ANN in prod (#206) | The A/B winner (#204) is on by default: `vector.ann.enabled: true` (serve + CLI), **nprobe=2000** — measured on the live corpus of 313689 vectors (11 golden-set queries): p50 471ms recall@5=1.0 vs 256 (p50 262ms recall@5 0.818) — correctness first, tuning later. Wave: step `ann-build` = `ann.go ensure` — a full build only when the index is missing/stale (>10% lag by leaf counter), otherwise incremental WAL-upsert (+100 <1s, never a rebuild per wave). `serve` — warm start: the index loads at startup (WarmANN), if empty/broken — fallback to scan, the build is done by the wave (single-writer, #204). Prod A/B: p50 471ms vs baseline 33.6s (0.014x), recall@5 vs baseline 1.0. |
+| D36 | FTS phase of rebuild (#244) | After the write phase `brain-index` closes the handle and reopens the DB with an auto-sized pool `max(1GB, chars×32)` for `CREATE_FTS_INDEX`: on the full corpus (280MB of text) the 1GB pool fails and leaves an orphan `0_id_appears_info`, unreachable via SQL (internal catalog). Threshold measurements: 10.3MB→64/128MB, 10.8MB→192/256MB, prod 280MB→1GB/10GB. The two-phase workaround from rebuild.md is automated (retired as manual). C ceiling (measurement #244): write phase ~140KB/leaf linear, the 1GB pool is not the limit, CHECKPOINT/embedding have no effect, close does not release in the same process; FTS — a pool of ~9GB on the full corpus. Criterion #237 (RSS ≤2-4GB) restated: the Go part — yes; the C side — a documented ceiling (~14-15GB write + ~9GB FTS for 105k). |
 
 ## Architecture
 
@@ -92,7 +92,7 @@ detective method: **a fact needs ≥2 independent sources or it is
     brain/get.go stats.go eval.go watch.go model.go   # Go read/ops (cgo)
     facts/extract.go audit.go crm.go  # 2-source pairing, confidence, CRM proof
     mail/sync.go import.go convert-mbox.go ocr.go    # mail ETL (Gmail/OO/M365), PDF OCR
-    mail/incubator.go       # legacy .eml → doveadm save в mail-server-инкубатор (#252/эпик #250)
+    mail/incubator.go       # legacy .eml → doveadm save into the mail-server incubator (#252/epic #250)
     chats/sync.go import.go facts.go apply.go  # conversations (no chats index)
     contacts/*.go           CRM contacts importer
     web/search.go           SearXNG client (throttled ≠ absence)
@@ -120,9 +120,9 @@ detective method: **a fact needs ≥2 independent sources or it is
 ## Schema (first pass)
 
 Node tables: `Person, Service, Host, Container, Repo, File, Commit, Leaf`.
-`Leaf(embedding FLOAT[N])` — FTS on `text`. Векторный поиск: ANN IVF вне
-liblbug (`internal/brain/ann`, #204; штатный liblbug HNSW Leaf_vec крашится
-на росте графа, #192 → встроенный скан как fallback).
+`Leaf(embedding FLOAT[N])` — FTS on `text`. Vector search: ANN IVF outside
+liblbug (`internal/brain/ann`, #204; the stock liblbug HNSW Leaf_vec crashes
+as the graph grows, #192 → built-in scan as fallback).
 Edges: `RUNS / USES / FROM_FILE / HAS_VERSION / AUTHORED / ABOUT / ASSOCIATED / SIMILAR_0.85`.
 `FROM_FILE` / `HAS_VERSION` / `AUTHORED`: `bin/brain/search.go --hop N` walks
 them from each hit (1=File, 2=Commit, 3=Person). Rebuild writes
@@ -237,94 +237,95 @@ Narrative: [docs/roadmap.md](docs/roadmap.md).
 
 Does **not** block epic close: OQ4. OCR [#6](https://git.produktor.io/eSlider/2dph/issues/6), OQ1 [#29](https://git.produktor.io/eSlider/2dph/issues/29), OQ3 [#30](https://git.produktor.io/eSlider/2dph/issues/30) are **in**.
 
-## 2026-09-03 — L-9.3: формальные проверки URL: identity/contradiction/excluded-middle/sufficient-reason (gitea #232, epic #229)
+## 2026-09-03 — L-9.3: formal URL checks: identity/contradiction/excluded-middle/sufficient-reason (gitea #232, epic #229)
 
-Goal: перевести эмпирические URL-рецепты (#56) в машинные проверки законов
-Vinogradov на уровне URL: identity (канонический URL — одно написание),
-contradiction (¬(P∧¬P) на одном URL), excluded middle (нечёткие claim → не
-FACT, а open_questions), sufficient reason (verdict accept только на
-FACT-/OPEN- premises). Ядро — cgo-free `internal/facts` (по образцу
-Adjudicate/CheckFactRow), CLI — подкоманда `bin/facts/audit.go formal`
-(JSON facts/cards на stdin → JSON-флаги, exit 0/1).
+Goal: turn the empirical URL recipes (#56) into machine checks of Vinogradov's
+laws at the URL level: identity (a canonical URL — one spelling),
+contradiction (¬(P∧¬P) on a single URL), excluded middle (a fuzzy claim → not
+FACT but open_questions), sufficient reason (verdict accept only on
+FACT-/OPEN- premises). The core is cgo-free `internal/facts` (modelled on
+Adjudicate/CheckFactRow), the CLI is the subcommand `bin/facts/audit.go formal`
+(JSON facts/cards on stdin → JSON flags, exit 0/1).
 
 | Item | Status |
 |------|--------|
-| `facts.CanonicalURL` — локальная канонизация URL по конвенции gator G-8.1 (lowercase scheme/host, default-port, utm_*/ref/gh_jid/token, сортировка query, без фрагмента/trailing slash); gator-модуль не импортируется | done |
-| `internal/facts/formal.go`: `URLFact` (id/url/claim/attr/neg/conf/from/to) + `CheckURLIdentity` (merge/flag weaken), `CheckURLContradiction` (reject; только confirmed, пересечение D24), `CheckExcludedMiddle` (weaken → open_questions), `CheckSufficientReason` (accept без FACT-/OPEN- premises → reject), `CheckFormal` (агрегат, детерминизм) | done |
-| CLI `bin/facts/audit.go formal` (shebang, hand-formatted): JSON {facts,cards} на stdin → {mode,ok,problems}; пример acceptance «вакансия активна» vs «вакансия closed» → contradiction verdict=reject | done |
-| TDD: `canonical_test.go` (кросс-канал/utm/детерминизм/нормализация/ошибки) + `formal_test.go` (identity merge, contradiction acceptance + не-противоречия: same polarity/разный attr/weak/disjoint D24, excluded-middle fuzzy→OPEN, sufficient-reason accept premises) | done — `go test -race ./internal/facts` green |
-| Совместимость с #56/#231: `go test ./internal/facts` + `bin/facts/audit.go self` зелёные (CI-гейт) | done |
-| Документация: docs/facts/audit-recipes.md §Формальные проверки URL (L-9.3 #232) + PLAN.md | done |
+| `facts.CanonicalURL` — local URL canonicalization per the gator G-8.1 convention (lowercase scheme/host, default-port, utm_*/ref/gh_jid/token, query sorting, no fragment/trailing slash); the gator module is not imported | done |
+| `internal/facts/formal.go`: `URLFact` (id/url/claim/attr/neg/conf/from/to) + `CheckURLIdentity` (merge/flag weaken), `CheckURLContradiction` (reject; confirmed only, D24 intersection), `CheckExcludedMiddle` (weaken → open_questions), `CheckSufficientReason` (accept without FACT-/OPEN- premises → reject), `CheckFormal` (aggregate, determinism) | done |
+| CLI `bin/facts/audit.go formal` (shebang, hand-formatted): JSON {facts,cards} on stdin → {mode,ok,problems}; example: acceptance "vacancy is active" vs "vacancy closed" → contradiction verdict=reject | done |
+| TDD: `canonical_test.go` (cross-channel/utm/determinism/normalization/errors) + `formal_test.go` (identity merge, contradiction acceptance + non-contradictions: same polarity/different attr/weak/disjoint D24, excluded-middle fuzzy→OPEN, sufficient-reason accept premises) | done — `go test -race ./internal/facts` green |
+| Compatibility with #56/#231: `go test ./internal/facts` + `bin/facts/audit.go self` green (CI gate) | done |
+| Documentation: docs/facts/audit-recipes.md §Formal URL checks (L-9.3 #232) + PLAN.md | done |
 
 Verification: `go test -race ./internal/facts/` green, `go vet ./internal/facts/` clean,
 `./bin/facts/audit.go self` ok. Branch `feat/facts-formal-checks#232` off `main`.
 
-## 2026-09-02 — L-9.4: git-commits → Commit/Person/AUTHORED граф (gitea #233, epic #229)
+## 2026-09-02 — L-9.4: git commits → Commit/Person/AUTHORED graph (gitea #233, epic #229)
 
-Goal: заполнить Commit/Person/AUTHORED (InitSchema write.go:130-133 уже создаёт
-таблицы, писателя не было) из git-истории репо git.produktor.io — источник
-фактов «кто над чем работал, когда» для аудита L-9 и оси проекта сети #234.
-Дизайн: [docs/brain/graph-git-commits.md](docs/brain/graph-git-commits.md).
+Goal: fill Commit/Person/AUTHORED (InitSchema write.go:130-133 already creates
+the tables, there was no writer) from the git history of the git.produktor.io
+repos — the source of facts "who worked on what, when" for the L-9 audit and
+the network project axis #234.
+Design: [docs/brain/graph-git-commits.md](docs/brain/graph-git-commits.md).
 
 | Item | Status |
 |------|--------|
-| Канон git-коммита: `(repo, sha)`, `Commit.id = <repo>:<sha>` (repo = RepoName origin-remote); чтение — `gitlog.Log` (go-git, тот же канон, что premises-корпус: merge пропущены, автор = Author, дата RFC3339) | done |
-| `internal/gitgraph` (cgo-free): Resolve (root-скан/--repo), ReadAll, ToInputs (email lowercase — Person.id канон mail D-1 #257, dedup, сортировка по дате ASC), ComputeStats, WeakSubject | done |
-| `internal/brain/commitplan.go` (cgo-free): CommitInput, MERGE-запросы commit/AUTHORED, commitAuthor (Person.id=email); `gitcommit.go` (cgo): UpsertCommit/UpsertCommits (транзакция, идемпотентно) | done |
-| CLI `bin/git/graph.go`: dry-run/--commit, --repo/--root/--since/--limit, --skip-existing, live-holder guard, батчи; отчёт before→after Commit/Person/AUTHORED | done |
-| CLI `bin/git/facts.go` (read-only): факт-карточки «кто работал над repo когда» + audit card (claim/premises/inference/gaps/verdict; слабый subject → weaken+OPEN) | done |
-| TDD: юнит cgo-free (commitplan + gitgraph: канон/маппинг/dedup/Resolve/ReadAll/WeakSubject/GroupFacts/BuildFacts) + cgo на живой Ladybug (temp DB): запись/перечитывание, повтор = 0 дублей, Person mail↔git сопряжение, сосуществование с Leaf/Message | done |
-| Документация: docs/brain/graph-git-commits.md + шаблон audit card в docs/facts/audit-recipes.md | done |
-| Live-пилот: 2dph + gator dry-run → --commit в kb.lbug (бэкап, live-holder guard), idempotency-повтор, git-facts спот-чек | done |
+| Git commit canon: `(repo, sha)`, `Commit.id = <repo>:<sha>` (repo = RepoName origin-remote); reading — `gitlog.Log` (go-git, the same canon as the premises corpus: merges skipped, author = Author, date RFC3339) | done |
+| `internal/gitgraph` (cgo-free): Resolve (root scan/--repo), ReadAll, ToInputs (email lowercase — Person.id canon mail D-1 #257, dedup, sort by date ASC), ComputeStats, WeakSubject | done |
+| `internal/brain/commitplan.go` (cgo-free): CommitInput, MERGE queries commit/AUTHORED, commitAuthor (Person.id=email); `gitcommit.go` (cgo): UpsertCommit/UpsertCommits (transaction, idempotent) | done |
+| CLI `bin/git/graph.go`: dry-run/--commit, --repo/--root/--since/--limit, --skip-existing, live-holder guard, batches; before→after report Commit/Person/AUTHORED | done |
+| CLI `bin/git/facts.go` (read-only): fact cards "who worked on which repo when" + audit card (claim/premises/inference/gaps/verdict; weak subject → weaken+OPEN) | done |
+| TDD: cgo-free unit (commitplan + gitgraph: canon/mapping/dedup/Resolve/ReadAll/WeakSubject/GroupFacts/BuildFacts) + cgo against live Ladybug (temp DB): write/read-back, repeat = 0 duplicates, Person mail↔git junction, coexistence with Leaf/Message | done |
+| Documentation: docs/brain/graph-git-commits.md + audit card template in docs/facts/audit-recipes.md | done |
+| Live pilot: 2dph + gator dry-run → --commit into kb.lbug (backup, live-holder guard), idempotency repeat, git-facts spot check | done |
 
-Verification: `go test ./...` + `go vet ./...` green (CI-режим);
-`bin/cgo/zig go test -tags system_ladybug ./internal/brain/` green (весь пакет);
+Verification: `go test ./...` + `go vet ./...` green (CI mode);
+`bin/cgo/zig go test -tags system_ladybug ./internal/brain/` green (whole package);
 `bin/cgo/zig go vet -tags system_ladybug ./internal/brain/` green.
 Branch `feat/git-commits#233` off `main`.
 
-## 2026-09-02 — L-9.5: сеть связей «кто с кем и через кого» (gitea #234, epic #229)
+## 2026-09-02 — L-9.5: relationship network "who with whom and through whom" (gitea #234, epic #229)
 
-Goal: инструмент сети поверх готового графа (mail D-1 #257 + git L-9.4 #233):
-Person↔Person по общим письмам/тредам/получателям (SENT/TO/CC/BCC/REPLY_TO) и
-общим проектам (AUTHORED Commit.repo), с premises (Message.id/Commit.id) и
-verdict по audit-картам (accept/weaken); экспорт accept в CRM (ADR-0012 п.4).
-Read-only: ничего не пишет, схему не меняет. Дизайн:
+Goal: a network tool on top of the finished graph (mail D-1 #257 + git L-9.4 #233):
+Person↔Person via shared mails/threads/recipients (SENT/TO/CC/BCC/REPLY_TO) and
+shared projects (AUTHORED Commit.repo), with premises (Message.id/Commit.id) and
+a verdict per audit card (accept/weaken); export accept to CRM (ADR-0012 item 4).
+Read-only: writes nothing, does not change the schema. Design:
 [docs/brain/graph-network.md](docs/brain/graph-network.md).
 
 | Item | Status |
 |------|--------|
-| `internal/network` (cgo-free): BuildLinks — деривации mail (прямой контакт sender↔recipient, вес TO/CC/BCC, общий получатель, REPLY_TO-диалог, треды) + git (общий проект по AUTHORED Commit.repo), premises, период, verdict accept/weaken+OPEN, ранжирование | done |
-| Read-only запросы графа `internal/network/query.go` (cgo): LoadRows — Message/Person/рёбра SENT/TO/CC/BCC/REPLY_TO + Commit/AUTHORED → строки сети | done |
-| CLI `bin/network/network.go` (read-only): `--person` (обязателен), `--project`, `--since/--until`, `--limit`, `--json`, `--accept-only` (CRM-экспорт YAML) | done |
-| TDD: юнит cgo-free (деривации/вес/вердикты/ранжирование/premises на synthetic Alice/Bob/Carol) + cgo на живой Ladybug (temp DB): LoadRows→BuildLinks end-to-end | done |
-| Live-пилот: eslider@gmail.com / andriy.oblivantsev@wheregroup.com на живой kb.lbug (read-only) — топ связей, premises, CRM-экспорт accept | done |
-| Документация: docs/brain/graph-network.md + PLAN.md | done |
+| `internal/network` (cgo-free): BuildLinks — mail derivations (direct contact sender↔recipient, TO/CC/BCC weight, shared recipient, REPLY_TO dialog, threads) + git (shared project via AUTHORED Commit.repo), premises, period, verdict accept/weaken+OPEN, ranking | done |
+| Read-only graph queries `internal/network/query.go` (cgo): LoadRows — Message/Person/SENT/TO/CC/BCC/REPLY_TO edges + Commit/AUTHORED → network rows | done |
+| CLI `bin/network/network.go` (read-only): `--person` (required), `--project`, `--since/--until`, `--limit`, `--json`, `--accept-only` (CRM export YAML) | done |
+| TDD: cgo-free unit (derivations/weight/verdicts/ranking/premises on synthetic Alice/Bob/Carol) + cgo against live Ladybug (temp DB): LoadRows→BuildLinks end-to-end | done |
+| Live pilot: eslider@gmail.com / andriy.oblivantsev@wheregroup.com on the live kb.lbug (read-only) — top links, premises, CRM export accept | done |
+| Documentation: docs/brain/graph-network.md + PLAN.md | done |
 
-Verification: `go test ./...` + `go vet ./...` green (CI-режим);
+Verification: `go test ./...` + `go vet ./...` green (CI mode);
 `bin/cgo/zig go test -tags system_ladybug ./internal/network/ ./internal/brain/`
 green (cgo). Branch `feat/network#234` off `main`.
 
-## 2026-09-02 — D-1.2: Message/Person граф-схема + write-путь (gitea #259, epic #257)
+## 2026-09-02 — D-1.2: Message/Person graph schema + write path (gitea #259, epic #257)
 
-Goal: перенести conversation-канон ([#99](https://git.produktor.io/eSlider/2dph/issues/99),
-`internal/canon`) в рабочую Ladybug-схему kb.lbug: узел **Message** + рёбра
-**SENT/TO/CC/BCC/REPLY_TO** рядом с существующими Leaf/Person; идемпотентная
-запись (MERGE). Дизайн: [docs/brain/graph-gator-mail.md](docs/brain/graph-gator-mail.md)
-(D-1.1 #258). По итогу почта в 2dph живёт как граф сущностей, а не Leaf-текст
-из сырья.
+Goal: move the conversation canon ([#99](https://git.produktor.io/eSlider/2dph/issues/99),
+`internal/canon`) into a working Ladybug schema kb.lbug: a **Message** node +
+**SENT/TO/CC/BCC/REPLY_TO** edges next to the existing Leaf/Person; idempotent
+write (MERGE). Design: [docs/brain/graph-gator-mail.md](docs/brain/graph-gator-mail.md)
+(D-1.1 #258). As a result, mail in 2dph lives as a graph of entities rather than
+as Leaf text from the raw data.
 
 | Item | Status |
 |------|--------|
-| `InitSchema` аддитивно (`IF NOT EXISTS`): `Message` node (id/thread_id/folder/subject/sent_at/gator_ref/body, PK id) + rel `SENT (Person→Message)`, `TO/CC/BCC (Message→Person)`, `REPLY_TO (Message→Message)`; Person/Leaf/Commit не тронуты | done |
-| `internal/brain/graphplan.go` (cgo-free): `MessageInput` (canon.Message + folder/subject/gator_ref), `planGraph` — уникальные Person (From→To→CC→BCC, name первого вхождения), рёбра = `canon.Edges()` минус PART_OF/само-REPLY_TO; генерация MERGE-запросов (person/message/edge), `edgeSchema` | done |
-| `internal/brain/graph.go` (cgo): `UpsertMessage`/`UpsertMessages` — пачка в одной транзакции, MERGE по message_id/email; Person name-мердж «последний sync побеждает» (SET в MERGE); gator_ref на Message | done |
-| TDD: юнит cgo-free (план persons/edges, детерминизм, формы MERGE-запросов, sentAtText); cgo-тесты на живой Ladybug (temp DB): запись+перечитывание, повторный прогон = 0 дублей, name-мердж, сосуществование с Leaf + EnsureIndexes | done — 8 юнит + 4 cgo зелёные |
-| Документация: §8 «Реализация D-1.2» в дизайн-доке (схема + write-путь) | done |
-| Импорт gator kind=mail → граф (wheregroup 3984) | #260 (следующий) |
+| `InitSchema` additively (`IF NOT EXISTS`): `Message` node (id/thread_id/folder/subject/sent_at/gator_ref/body, PK id) + rel `SENT (Person→Message)`, `TO/CC/BCC (Message→Person)`, `REPLY_TO (Message→Message)`; Person/Leaf/Commit untouched | done |
+| `internal/brain/graphplan.go` (cgo-free): `MessageInput` (canon.Message + folder/subject/gator_ref), `planGraph` — unique Persons (From→To→CC→BCC, name of the first occurrence), edges = `canon.Edges()` minus PART_OF/self-REPLY_TO; generation of MERGE queries (person/message/edge), `edgeSchema` | done |
+| `internal/brain/graph.go` (cgo): `UpsertMessage`/`UpsertMessages` — a batch in one transaction, MERGE by message_id/email; Person name merge "last sync wins" (SET in MERGE); gator_ref on Message | done |
+| TDD: cgo-free unit (persons/edges plan, determinism, MERGE query shapes, sentAtText); cgo tests against live Ladybug (temp DB): write+read-back, repeat run = 0 duplicates, name merge, coexistence with Leaf + EnsureIndexes | done — 8 unit + 4 cgo green |
+| Documentation: §8 "D-1.2 implementation" in the design doc (schema + write path) | done |
+| Import gator kind=mail → graph (wheregroup 3984) | #260 (next) |
 
 Verification: `bin/cgo/zig go test -race -tags system_ladybug ./internal/brain/` green
-(весь пакет, ~6 мин); `go vet ./...` + `go test ./...` green (CI-режим);
-`go test ./internal/canon/` — 14 тестов green (canon #99 не изменён).
+(whole package, ~6 min); `go vet ./...` + `go test ./...` green (CI mode);
+`go test ./internal/canon/` — 14 tests green (canon #99 unchanged).
 Branch `feat/graph-schema#259` off `main` (cc40235).
 
 ## 2026-08-18 — Go-only write path sync (gitea #41)
@@ -387,7 +388,7 @@ Goal: replace `jhillyerd/enmime/v2` with `emersion/go-message` in
 | -benchmem before(env v2.4.1)/after(emersion v0.18.2): ~6–9× faster ns/op, B/op ≈ half, allocs ≈ 40–55% lower | done — bench in `eml_test.go` |
 
 Branch `feat/mime-emersion#95`: c8f7120 (test) → 7015ffc (feat) → 9b4425d (chore/deps).
-## 2026-08-22 — mailsync v1 мелкие фиксы (gitea #111, epic #88)
+## 2026-08-22 — mailsync v1 small fixes (gitea #111, epic #88)
 
 Goal: small defects found porting mailsync v1 — `mailconv.FromEML` folder
 extraction and the Dockerfile `pkg/` copy.
@@ -505,7 +506,7 @@ double-open stays forbidden inside one process; bulk rebuild keeps its own
 process (`bin/brain/index.go`). Out of scope: corpus CLI path (single-goroutine
 index process), model singleton cache (#110).
 
-## 2026-08-23 — ETL-реестр обработчиков + безопасный walker (gitea #96, epic #88)
+## 2026-08-23 — ETL handler registry + safe walker (gitea #96, epic #88)
 
 Goal: base layer for sync-ETL. A concurrency-safe registry of per-format ETL
 handlers plus a hardened file walker (path traversal / symlink-escape /
@@ -607,7 +608,7 @@ Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/
 clean; touched files gofmt-clean; cgo Zig build of `bin/brain/search.go`
 (`-tags system_ladybug`) green. Branch `audit/concurrency#94` off `release/v1`.
 
-## 2026-08-23 — URL-адресация контента, селекторы, гранулярный сплит (gitea #100)
+## 2026-08-23 — URL content addressing, selectors, granular split (gitea #100)
 
 Goal: stable content addressing for the ETL graph. Every extracted node gets a
 canonical URL `scheme://platform/thread/msg/path-segments[#anchor]`, node ID =
@@ -629,86 +630,86 @@ Verification: `go test -race -count=1 ./internal/...` green; `go vet ./internal/
 clean; new packages gofmt-clean. Branch `feat/content-url-addressing#100` off
 `release/v1`. No end-to-end graph write (that's #99/#101 + Ladybug).
 
-## 2026-08-23 — secret-scan в CI всех репо (gitea #142)
+## 2026-08-23 — secret scan in CI of all repos (gitea #142)
 
-Goal: не допустить новых утечек секретов на этапе PR/push (после #140 — 8 HIGH-файлов в matrix).
+Goal: prevent new secret leaks at the PR/push stage (after #140 — 8 HIGH files in matrix).
 
 | Step | Status |
 |------|--------|
-| Выбор инструмента: **gitleaks** (официальный образ `zricethezav/gitleaks`) — diff/commit-скан, fail-on-leak, generic+private-key правила | done |
-| CI job `secret-scan` (pull_request + push, сканирует только diff новых коммитов) в 2dph (ci.yml), go-onlyoffice (test.yml), go-config (secret-scan.yml), matrix (.gitea/workflows/secret-scan.yml) | done — PR 2dph#143, go-onlyoffice#5, go-config#1, matrix#6 |
-| git pre-push + pre-commit хуки `scripts/githooks/` (+ install.sh), блокируют push/commit при находке | done |
-| Скилы git-workflow + devops: правило «скан перед любым push»; синхронизированы в ai-fabric (release/v2) | done |
-| Верификация: скан ловит реальные утечки matrix #140 (14 findings, exit 1); pre-push блокирует push с секретом | done |
+| Tool choice: **gitleaks** (official image `zricethezav/gitleaks`) — diff/commit scan, fail-on-leak, generic+private-key rules | done |
+| CI job `secret-scan` (pull_request + push, scans only the diff of new commits) in 2dph (ci.yml), go-onlyoffice (test.yml), go-config (secret-scan.yml), matrix (.gitea/workflows/secret-scan.yml) | done — PR 2dph#143, go-onlyoffice#5, go-config#1, matrix#6 |
+| git pre-push + pre-commit hooks `scripts/githooks/` (+ install.sh), block push/commit on a finding | done |
+| Skills git-workflow + devops: rule "scan before any push"; synchronized to ai-fabric (release/v2) | done |
+| Verification: the scan catches real leaks in matrix #140 (14 findings, exit 1); pre-push blocks a push that carries a secret | done |
 
-## 2026-08-23 — Conversation-канон: модель + диск + манифест + граф (gitea #99, epic #88)
+## 2026-08-23 — Conversation canon: model + disk + manifest + graph (gitea #99, epic #88)
 
-Goal: единая каноническая модель для почты и чатов — `Message{ID,ThreadID,Platform,
-From,ReplyTo,To,CC,BCC,SentAt,Body,Attachments(lazy)}`; хранение на диске под
-`var/corpus/{mail,chats}` как JSON + манифест sha256 (идемпотентный upsert); граф
+Goal: one canonical model for mail and chats — `Message{ID,ThreadID,Platform,
+From,ReplyTo,To,CC,BCC,SentAt,Body,Attachments(lazy)}`; stored on disk under
+`var/corpus/{mail,chats}` as JSON + sha256 manifest (idempotent upsert); graph
 `(:Person)-[:SENT]->(:Message)-[:TO|CC|BCC]->(:Person)`, `[:REPLY_TO]`, `[:PART_OF]`
-параграфы. Первый mergeable инкремент: ядро схемы + диск + манифест + round-trip
-и golden-тест (один `.eml` и один telegram-экспорт дают одинаковую схему графа).
+paragraphs. First mergeable increment: schema core + disk + manifest + round-trip
+and a golden test (one `.eml` and one telegram export produce the same graph schema).
 
 | Step | Status |
 |------|--------|
-| `internal/canon` (evidence-слой, пакет-домен): `Person`/`Attachment`(lazy `Open(ctx)`, без буферизации тела)/`Message`/`Edge`/`EdgeType` (SENT/TO/CC/BCC/REPLY_TO/PART_OF), `Edges()`, `GraphSchema()` | done |
-| `Store{root}`: `Write` (идемпотентный upsert по sha256 тела), `Read` (скипает битые файлы), `LoadManifest`/`SaveManifest` (атомарный); layout `root/<platform>/<thread>/<id>.json`; сегменты путей через `pkg/utils.SafeSegment` | done |
-| `FromMail(r)` на emersion/go-message: envelope (From/To/Cc/Bcc через mail.Header.AddressList), ThreadID из References/Message-Id, ReplyTo из In-Reply-To, тело text/plain (fallback text/html → mailconv.StripHTML), вложения lazy (метаданные) | done |
-| `FromChat(platform,thread,text,from,ts,replyTo)`: Person id = `platform:handle`, парсинг ts (RFC3339), ReplyTo-цепочка | done |
-| TDD (offline, фикстуры synthetic Alice/Bob/example.com): round-trip write→read→canon для mail и chat; идемпотентный повторный write; манифест = sha256(JSON); layout; Edges/схема; golden — mail и telegram дают одинаковую `GraphSchema()` | done — 13 тестов, `-race` зелёные |
-| docs/PLAN.md: секция #99 (этот блок) | done |
+| `internal/canon` (evidence layer, package-domain): `Person`/`Attachment`(lazy `Open(ctx)`, no body buffering)/`Message`/`Edge`/`EdgeType` (SENT/TO/CC/BCC/REPLY_TO/PART_OF), `Edges()`, `GraphSchema()` | done |
+| `Store{root}`: `Write` (idempotent upsert by sha256 of the body), `Read` (skips corrupt files), `LoadManifest`/`SaveManifest` (atomic); layout `root/<platform>/<thread>/<id>.json`; path segments via `pkg/utils.SafeSegment` | done |
+| `FromMail(r)` on emersion/go-message: envelope (From/To/Cc/Bcc via mail.Header.AddressList), ThreadID from References/Message-Id, ReplyTo from In-Reply-To, body text/plain (fallback text/html → mailconv.StripHTML), attachments lazy (metadata) | done |
+| `FromChat(platform,thread,text,from,ts,replyTo)`: Person id = `platform:handle`, ts parsing (RFC3339), ReplyTo chain | done |
+| TDD (offline, fixtures synthetic Alice/Bob/example.com): round-trip write→read→canon for mail and chat; idempotent repeated write; manifest = sha256(JSON); layout; Edges/schema; golden — mail and telegram produce the same `GraphSchema()` | done — 13 tests, `-race` green |
+| docs/PLAN.md: section #99 (this block) | done |
 
-Осталось (вне первого инкремента): конверторы существующих источников (gmail/onlyoffice
-`mailconv.Message`, `mailsync.Message`, whatsapp/linkedin экспорт) → канон; запись графа
-в Ladybug (`(:Person)/:Message/:Paragraph` узлы + `SENT|TO|CC|BCC|REPLY_TO|PART_OF`
-рёбра) — будет отдельным инкрементом на #99; миграция `bin/*/import` на канон.
+Left over (outside the first increment): converters for the existing sources (gmail/onlyoffice
+`mailconv.Message`, `mailsync.Message`, whatsapp/linkedin export) → canon; graph write
+into Ladybug (`(:Person)/:Message/:Paragraph` nodes + `SENT|TO|CC|BCC|REPLY_TO|PART_OF`
+edges) — will be a separate increment on #99; migration of `bin/*/import` to the canon.
 
 Verification: `go build ./...` green; `go vet ./internal/canon/... ./pkg/utils/...`
 clean; `go test -race ./internal/canon/... ./pkg/utils/...` green. Branch
 `feat/conversation-canon#99` off `release/v1`.
 
-## 2026-08-25 — OO Mail: HTML-шаблон + render-check до отправки (gitea #76)
+## 2026-08-25 — OO Mail: HTML template + render check before sending (gitea #76)
 
-Goal: из wave-1 письма уходили plain-text одной строкой; теперь брендированный
-HTML-шаблон + гейт рендер-проверки, блокирующий send, пока черновик не пройдёт
-assert (абзацы, подпись, logo cid, chat-line без дублей).
+Goal: from wave-1 the mails went out as plain text in one line; now a branded
+HTML template + a render-check gate that blocks send until the draft passes
+assert (paragraphs, signature, logo cid, chat-line without duplicates).
 
 | Step | Status |
 |------|--------|
-| `internal/oohtml` (новый пакет-домен): брендированный шаблон produktor.io (палитра #76: cream `#FAF5EA`, ink `#0A0A0A`, navy `#142039`/`#0E1626`, CTA `#F2C849`, primary `#143A6F`; system-ui; inline-стили; логотип `cid:produktor-logo.gif` без remote-URL) | done |
-| `RenderCheck(html, TemplateData)` — типизированный ассерт: paragraphs ≥2, greeting, offer+CTA, signature+site, logo cid, отсутствие дублей текстовых блоков (`Code` enum) | done |
-| `Mailer.Send(ctx, SendParams)` — TDD-гейт: `Build` → `SaveMailDraft`(HTML) → `GetMailMessage` back → `RenderCheck` → `SendMail` только при чистой проверке; иначе error «render check failed, send blocked» | done |
-| `BuildMessage(w, …)` — MIME `multipart/related` через `emersion/go-message`: HTML-часть + inline `image/gif` с `Content-ID` = логотип (cid-embedding, не remote fetch) | done |
-| Лого-ассеты `etc/onlyoffice/assets/produktor-logo.{png,gif,-64.gif}` | готовы |
-| TDD offline (фикстуры synthetic Alice/Bob/example.com; fakeStore вместо сети): 10 тестов, `-race` зелёные | done |
+| `internal/oohtml` (new package-domain): branded produktor.io template (palette #76: cream `#FAF5EA`, ink `#0A0A0A`, navy `#142039`/`#0E1626`, CTA `#F2C849`, primary `#143A6F`; system-ui; inline styles; logo `cid:produktor-logo.gif` without remote URL) | done |
+| `RenderCheck(html, TemplateData)` — typed assert: paragraphs ≥2, greeting, offer+CTA, signature+site, logo cid, no duplicate text blocks (`Code` enum) | done |
+| `Mailer.Send(ctx, SendParams)` — TDD gate: `Build` → `SaveMailDraft`(HTML) → `GetMailMessage` back → `RenderCheck` → `SendMail` only on a clean check; otherwise error "render check failed, send blocked" | done |
+| `BuildMessage(w, …)` — MIME `multipart/related` via `emersion/go-message`: HTML part + inline `image/gif` with `Content-ID` = logo (cid embedding, not remote fetch) | done |
+| Logo assets `etc/onlyoffice/assets/produktor-logo.{png,gif,-64.gif}` | ready |
+| TDD offline (fixtures synthetic Alice/Bob/example.com; fakeStore instead of the network): 10 tests, `-race` green | done |
 
 Verification: `go vet ./...` clean; `go test -race ./internal/oohtml/` green (10/10).
-Branch `feat/ooo-mail-html-template#76` off `release/v1`. Осталось вне объёма:
-wiring в OnlyOffice CLI (`oo mails send`) и фактическая отправка с вложенным
-cid-логотипом через драфт-API OnlyOffice.
+Branch `feat/ooo-mail-html-template#76` off `release/v1`. Left out of scope:
+wiring into the OnlyOffice CLI (`oo mails send`) and the actual send with an attached
+cid logo through the OnlyOffice draft API.
 
 ## 2026-08-25 — CRM association two-source rule (gitea #55, epic #52)
 
-Goal: `bin/facts/prove-crm` (issue references it as `bin/facts/crm`) должен
-доказывать person→company И company→project как `root=facts` только когда оба
-источника (corpus SoT `eslider/cv/projects/knowledge-mesh-seed.yaml` × ooCRM
-`graph.json`) согласны; односторонние — mismatch, никогда fact.
+Goal: `bin/facts/prove-crm` (the issue references it as `bin/facts/crm`) must
+prove person→company AND company→project as `root=facts` only when both
+sources (corpus SoT `eslider/cv/projects/knowledge-mesh-seed.yaml` × ooCRM
+`graph.json`) agree; one-sided ones are a mismatch, never a fact.
 
 | Step | Status |
 |------|--------|
-| merge-правило вынесено из `main()` в `internal/facts.CRMAssocFacts` (single implementation, rule #10): person→company (companies_with_persons) + company→project (projects_contacts) | done |
-| фикс ложного совпадения: generic-токены (`client`, `gmbh`, `ag`, `systems`, `platform`, …) больше не двигают company-match (`significantTokens` stopwords) — «Markets Platform (client)» больше не матчит «Client not named yet» | done |
-| дедуп mismatches (раньше employer-kind loop дублировал «not found») + отчёт CRM-only компаний и проектов без company | done |
-| TDD offline на synthetic-фикстурах: two-source rule + все mismatch-пути + generic-token регрессия, `-race` зелёные | done |
+| merge rule moved out of `main()` into `internal/facts.CRMAssocFacts` (single implementation, rule #10): person→company (companies_with_persons) + company→project (projects_contacts) | done |
+| false-match fix: generic tokens (`client`, `gmbh`, `ag`, `systems`, `platform`, …) no longer drive the company match (`significantTokens` stopwords) — "Markets Platform (client)" no longer matches "Client not named yet" | done |
+| dedup of mismatches (previously the employer-kind loop duplicated "not found") + report of CRM-only companies and of projects without a company | done |
+| TDD offline on synthetic fixtures: two-source rule + all mismatch paths + generic-token regression, `-race` green | done |
 
-Verification: `go test -race ./internal/facts/` green (тесты crm/company-merge).
-Против реального SoT (dry-run): proven=0; 9 corpus-org не в CRM; 4 CRM-only
-компании (Capitole, Client not named yet, Teksystems, talabat); 198 проектов
-без company — `projects_contacts[].companies` в `graph.json` пуст у всех
-(данные заполняет внешний `graph.py`, вне репо). company→project пока недоказуем
-из-за этого data-gap; person→company недоказуем — CRM-компании с персонами не
-совпадают с corpus orgs. Branch `feat/crm-assoc#55`.
+Verification: `go test -race ./internal/facts/` green (crm/company-merge tests).
+Against the real SoT (dry-run): proven=0; 9 corpus orgs are not in the CRM; 4 CRM-only
+companies (Capitole, Client not named yet, Teksystems, talabat); 198 projects
+without a company — `projects_contacts[].companies` in `graph.json` is empty for all
+of them (the data is filled by the external `graph.py`, outside the repo). company→project is not provable
+yet because of this data gap; person→company is not provable — CRM companies with persons do not
+match the corpus orgs. Branch `feat/crm-assoc#55`.
 
 ## 2026-08-25 — facts lookup + contradiction-as-not-confirmed test plan (gitea #58, epic #52)
 
@@ -724,8 +725,8 @@ contradiction-as-`(not confirmed)` path (D16), offline with synthetic fixtures.
 Verification: `go vet ./internal/facts/... ./internal/brain/rank/...` clean;
 `go test -race ./internal/brain/rank/ ./internal/facts/` green
 (`TestDealSearchGetAuditConfirmedFlow`, `TestDealContradictionNotConfirmedUntilAudited`).
-Блокер #53 закрыт; live `get` против `var/kb.lbug` + OnlyOffice CRM остаётся
-вне объёма (offline-план доказывает cgo-free логику). Branch `test/facts-lookup#58`.
+Blocker #53 closed; a live `get` against `var/kb.lbug` + OnlyOffice CRM stays
+out of scope (the offline plan proves the cgo-free logic). Branch `test/facts-lookup#58`.
 
 ## 2026-08-25 — facts-root ingestion: repair empty facts layer (gitea #181)
 
@@ -749,228 +750,228 @@ Verification: `go vet ./internal/brain/ ./bin/facts/` clean;
 Live write to `var/kb.lbug` requires the brain stopped + DB-owner (uid 1001/root)
 write access — procedure in `docs/facts/ingest.md`. Branch `feat/facts-ingest#181`.
 
-## 2026-08-25 — импорт-гэп почты/контактов с /mnt/8TB (gitea #79)
+## 2026-08-25 — mail/contacts import gap from /mnt/8TB (gitea #79)
 
-Goal: закрыть гэп импорта дисковых источников почты/контактов на /mnt/8TB,
-которые не были в пайплайне (#68/#74 импортировали только var/mail). Wave-1
-(#84) уже импортировал mbox/.eml: tb-andriy-profile 35,368 · tb-backup-128g
-39,435 · tb-2010-zip 1,289 · contacts-eml 125 (Krylov исключён). Этот шаг —
-вынести mbox-сплиттер в тестируемый слой + доказать импорт тестами.
+Goal: close the import gap for the disk sources of mail/contacts on /mnt/8TB
+that were not in the pipeline (#68/#74 imported only var/mail). Wave-1
+(#84) already imported mbox/.eml: tb-andriy-profile 35,368 · tb-backup-128g
+39,435 · tb-2010-zip 1,289 · contacts-eml 125 (Krylov excluded). This step —
+move the mbox splitter into a testable layer + prove the import with tests.
 
 | Step | Status |
 |------|--------|
-| инвентарь источников подтверждён на диске (read-only): TB-профиль Mail/ImapMail, оба PST (265 KB), Backup E-Mails, zip-2010, VCF/MAB — таблица-истина в `docs/mail-sources.md` | done |
-| mbox-сплиттер вынесен из build-tag скрипта в `internal/mailconv` (single implementation): `SplitMbox`, `SplitMboxDir`, `MboxMessage`, `LooksMbox`; `bin/mail/convert-mbox.go` — тонкая обёртка | done |
-| TDD: `TestSplitMbox`, `TestMboxMessage` (mbox→Message + source-тег), `TestSplitMboxDirIdempotent` (повторный прогон без дублей, контент-адресация sha256:16), `TestFromEMLFlatRoot` (contacts-eml плоский root) — `go test -race ./internal/mailconv/` зелёные | done |
-| PST: `readpst` НЕ установлен → источник остаётся ЗАБЛОКИРОВАН; путь закрытия (libpst-utils → readpst -e → .eml → FromEML) задокументирован, не подделан | done |
-| docs: `docs/mail-sources.md` (таблица-истина), runbook-секция, конфиг/abs-путей в коммитах нет | done |
+| source inventory confirmed on disk (read-only): TB profile Mail/ImapMail, both PSTs (265 KB), Backup E-Mails, zip-2010, VCF/MAB — table of truth in `docs/mail-sources.md` | done |
+| mbox splitter moved out of the build-tag script into `internal/mailconv` (single implementation): `SplitMbox`, `SplitMboxDir`, `MboxMessage`, `LooksMbox`; `bin/mail/convert-mbox.go` — a thin wrapper | done |
+| TDD: `TestSplitMbox`, `TestMboxMessage` (mbox→Message + source tag), `TestSplitMboxDirIdempotent` (repeat run without duplicates, content addressing sha256:16), `TestFromEMLFlatRoot` (contacts-eml flat root) — `go test -race ./internal/mailconv/` green | done |
+| PST: `readpst` is NOT installed → the source stays BLOCKED; the closure path (libpst-utils → readpst -e → .eml → FromEML) is documented, not faked | done |
+| docs: `docs/mail-sources.md` (table of truth), runbook section, no config/abs paths in the commits | done |
 
 Verification: `go vet ./internal/mailconv/ ./bin/mail/` clean;
 `go test -race ./internal/mailconv/ ./internal/source/ ./internal/mailsync/
-./internal/canon/ ./pkg/contact/` green. Исключения политики (#79): Krylov,
-Drafts/Templates/Trash/Junk/Spam/Unsent, *.msf. Mail-send путь не трогали.
+./internal/canon/ ./pkg/contact/` green. Policy exclusions (#79): Krylov,
+Drafts/Templates/Trash/Junk/Spam/Unsent, *.msf. The mail-send path was not touched.
 Branch `feat/mail-import-gap#79`.
 
-## 2026-08-25 — docs/skills: синк под текущий тулзверь агентов (gitea #81)
+## 2026-08-25 — docs/skills: sync to the current agent toolset (gitea #81)
 
-Goal: свежий агент по AGENTS.md делает sync-волну, reconcile report,
-interaction write — без вопросов в чат. Git ops truth: git = HTTPS+token,
-tea CLI для issues/PR (SSH deploy-key :222 на write сломан, #73 closed
+Goal: a fresh agent following AGENTS.md runs the sync wave, reconcile report,
+interaction write — without asking in chat. Git ops truth: git = HTTPS+token,
+tea CLI for issues/PR (the SSH deploy-key :222 is broken on write, #73 closed
 obsoleted-by).
 
 | Step | Status |
 |------|--------|
-| AGENTS.md: git-ops truth (#81/#73), go-onlyoffice split «примитивы→lib, флоу→2dph», Tools-блок с sync-волной + reconcile + interaction, source map #79 + exclusion policy | done |
-| skills: `api-client` — go-onlyoffice split; `etl-handler` — sync-волна + OO-флоу | done |
-| `docs/runbook.md` — секция «Sync wave + OO CRM» с verified-командами | done |
-| verify: sync `--dry-run` печатает волну; reconcile/import-interaction `--help` и корпус-скан работают; OO-запись — только с env-кредами | done |
+| AGENTS.md: git-ops truth (#81/#73), go-onlyoffice split "primitives→lib, flow→2dph", Tools block with sync wave + reconcile + interaction, source map #79 + exclusion policy | done |
+| skills: `api-client` — go-onlyoffice split; `etl-handler` — sync wave + OO flow | done |
+| `docs/runbook.md` — section "Sync wave + OO CRM" with verified commands | done |
+| verify: sync `--dry-run` prints the wave; reconcile/import-interaction `--help` and corpus scan work; OO write — only with env credentials | done |
 
 Verification: `go run ./bin/stack/sync.go --dry-run` ok;
 `go run -tags=onlyoffice_reconcile_contact ./bin/onlyoffice/reconcile-contact.go --help`
-и `go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --help`
-ok (флаги `--sources/--write/--limit` совпадают с докой). Найдено при
-верификации: `--only` в `bin/stack/sync.go` принимает имена шагов
-(`mail,mail-import,chats,contact-brain,git-brain,contact-crm`), а не логические
-группы — хелп-строка флага это врёт; документировано как есть, баг — на PO
-(#81-коммент). Branch `docs/skills-sync#81`.
+and `go run -tags=onlyoffice_import_interaction ./bin/onlyoffice/import-interaction.go --help`
+ok (flags `--sources/--write/--limit` match the docs). Found during
+verification: `--only` in `bin/stack/sync.go` accepts step names
+(`mail,mail-import,chats,contact-brain,git-brain,contact-crm`), not logical
+groups — the flag help line lies about it; documented as-is, bug — to the PO
+(#81 comment). Branch `docs/skills-sync#81`.
 
-## 2026-08-25 — HNSW Leaf_vec краш → in-process cosine scan (gitea #192)
+## 2026-08-25 — HNSW Leaf_vec crash → in-process cosine scan (gitea #192)
 
-Goal: liblbug 0.19.0 SIGSEGV на вставке в HNSW Leaf_vec (NULL deref в
-simsimd_cos_f32, OnDiskHNSWIndex::shrinkForNode) при графе >~1300 нод — наш
-канон с ~28k leafs был под крашом (rc=139, тихий рестарт). Порт фикса mdx-1
-(medex/brain-stack 6e0f379). Bug A (close/reopen race) у нас уже закрыт #109.
+Goal: liblbug 0.19.0 SIGSEGV on insert into the HNSW Leaf_vec (NULL deref in
+simsimd_cos_f32, OnDiskHNSWIndex::shrinkForNode) once the graph exceeds ~1300 nodes — our
+canon with ~28k leafs was under that crash (rc=139, silent restart). Port of the mdx-1 fix
+(medex/brain-stack 6e0f379). Bug A (close/reopen race) is already closed for us by #109.
 
 | Step | Status |
 |------|--------|
-| `rank/query.go`: VecStmt удалён (комментарий с rationale) | done |
-| `search.go`: queryVector → brute-force cosine scan по `l.embedding` (vecScanStmt), cosineToQuery + sqrt64; импорты math/sort | done |
-| `write.go`: EnsureIndexes создаёт только FTS `id`; Leaf_vec не создаётся/не требуется, существующий не дропается | done |
-| TDD: `vector_test.go` — cosine known-vectors, zero-norm → 0 (не NaN), float64-элементы, truncation | done — `zig go test -tags system_ladybug ./internal/brain/` green (кроме пре-существующих modeldir env-failures), vet clean, gofmt clean |
-| reindex live kb.lbug (`bin/brain/index.go --rebuild`) — ждёт PO-подтверждения | pending |
-| PLAN.md блок | done |
+| `rank/query.go`: VecStmt removed (comment with rationale) | done |
+| `search.go`: queryVector → brute-force cosine scan over `l.embedding` (vecScanStmt), cosineToQuery + sqrt64; math/sort imports | done |
+| `write.go`: EnsureIndexes creates only the FTS `id`; Leaf_vec is not created/required, an existing one is not dropped | done |
+| TDD: `vector_test.go` — cosine known-vectors, zero-norm → 0 (not NaN), float64 elements, truncation | done — `zig go test -tags system_ladybug ./internal/brain/` green (except pre-existing modeldir env failures), vet clean, gofmt clean |
+| reindex live kb.lbug (`bin/brain/index.go --rebuild`) — waits for PO confirmation | pending |
+| PLAN.md block | done |
 
 Verification: `bin/cgo/zig go test -tags system_ladybug -skip TestModelDir
-./internal/brain/` ok; `go test ./internal/brain/rank/` ok. Пре-существующие
-падения `TestModelDir*` (HF-модель уже локально в models/, окружение) — не
-связаны с этим изменением. Branch `fix/hnsw-cosine-scan#192`.
+./internal/brain/` ok; `go test ./internal/brain/rank/` ok. The pre-existing
+`TestModelDir*` failures (the HF model is already local in models/, environment) are not
+related to this change. Branch `fix/hnsw-cosine-scan#192`.
 
-## 2026-08-26 — весь mail-корпус в brain (gitea #199)
+## 2026-08-26 — whole mail corpus in the brain (gitea #199)
 
-Goal: оба корпуса — live `var/corpus/mail` и legacy `var/mail` (#184) — в
-brain; шаг волны `mail-index`. Решение B: `LoadMailLeafs` расширен на
-несколько root-ов, дедуп по sha256 content-address (одинаковое письмо в
-обоих корпусах → один leaf), без копирования данных.
+Goal: both corpora — the live `var/corpus/mail` and the legacy `var/mail` (#184) — in the
+brain; wave step `mail-index`. Decision B: `LoadMailLeafs` extended to
+multiple roots, dedup by sha256 content address (the same mail in
+both corpora → one leaf), without copying data.
 
 | Step | Status |
 |------|--------|
-| `internal/brain/mail_corpus.go`: `MailRoots` + `LoadMailLeafs` multi-root + dedup; вынесен из `corpus.go` (cgo-free) | done |
+| `internal/brain/mail_corpus.go`: `MailRoots` + `LoadMailLeafs` multi-root + dedup; extracted from `corpus.go` (cgo-free) | done |
 | `bin/brain/index.go --with-mail` → `brain.MailRoots(root)` | done |
-| `bin/stack/sync.go`: шаг `mail-index` (после mail-import, `--with-mail`), brain runner с Zig CGO-тегами `brain_index` | done |
-| TDD: `mail_corpus_test.go` (multi-root, dedup, since, limit, attachment) + `sync_test.go` (mail-index план, runner-теги) | done — `go test -race ./internal/brain/... ./bin/stack/... ./internal/mailconv/...` green |
-| Полный индекс `index.go --skip --with-mail` в существующую kb.lbug | done — 304 544 leafs, +7 712 новых (прошлый индекс был частичным после corrupt-199); итог info 313 786 |
-| Идемпотентность (повтор `--skip --with-mail`) | done — 0 новых |
-| Search реальных писем (e2e-outbound, PST-тема) | done — count ≥ 1 |
-| docs: AGENTS.md / runbook `--only` список + `--with-mail` | done |
-| Известное ограничение: векторный поиск — линейный скан (#192), ~32s при 313k leafs | open — отдельный issue на оптимизацию |
+| `bin/stack/sync.go`: `mail-index` step (after mail-import, `--with-mail`), brain runner with the Zig CGO tags `brain_index` | done |
+| TDD: `mail_corpus_test.go` (multi-root, dedup, since, limit, attachment) + `sync_test.go` (mail-index plan, runner tags) | done — `go test -race ./internal/brain/... ./bin/stack/... ./internal/mailconv/...` green |
+| Full index `index.go --skip --with-mail` into the existing kb.lbug | done — 304 544 leafs, +7 712 new (the previous index was partial after corrupt-199); total info 313 786 |
+| Idempotency (repeat `--skip --with-mail`) | done — 0 new |
+| Search of real mails (e2e-outbound, PST subject) | done — count ≥ 1 |
+| docs: AGENTS.md / runbook `--only` list + `--with-mail` | done |
+| Known limitation: vector search is a linear scan (#192), ~32s at 313k leafs | open — separate issue for the optimization |
 
 Branch `feat/mail-corpus-brain#199`, PR #200 → release/v1.
 
-## 2026-08-25 — импорт Outlook PST: readpst -e → .eml → пайплайн (gitea #185)
+## 2026-08-25 — Outlook PST import: readpst -e → .eml → pipeline (gitea #185)
 
-Goal: закрыть остаток #79 — два PST-файла (Andriy + копия в бэкапе 128Gb).
-`readpst -e` → набор `.eml` → существующий `mailconv.FromEML` (source-тег `pst/`).
-Конвертер по решению PO: readpst из пакета `pst-utils` (Ubuntu 24.04; бывший
+Goal: close the remainder of #79 — two PST files (Andriy + a copy in the 128Gb backup).
+`readpst -e` → a set of `.eml` → the existing `mailconv.FromEML` (source tag `pst/`).
+Converter by PO decision: readpst from the `pst-utils` package (Ubuntu 24.04; formerly
 `libpst-utils`).
 
 | Step | Status |
 |------|--------|
-| readpst на хост: системная установка `apt-get install pst-utils` заблокирована (нет passwordless sudo) — установлен локально в `var/dist/readpst` (dpkg-deb -x, `pst.readpst` в config.local.yml) | done (блокер зафиксирован в issue) |
-| `internal/source/pst.go`: адаптер `source.PST` (#97-паттерн) — `readpst -e` в вытираемый scratch (`var/tmp/pst/<label>`), политика #79 через `mailconv.SkipFolder` (немецкие имена: Entwürfe/Vorlagen/Gelöschte Objekte/Junk-E-Mail/Postausgang), контент-адресный копирование в корпус `Out/<label>/<folder>/<sha256:16>/<sha256:16>.eml`; `ImportPST`/`PlanPST` (sync + `mailconv.FromEML`), `--dry-run` план | done |
-| нормализация `LibPST-iamunique-<n>` MIME-boundary (readpst вставляет случайный токен на каждом прогоне) — иначе контент-ID нестабильны и повторный прогон плодит дубли | done (найдено на реальных данных, TDD-тест) |
-| `bin/mail/import-pst.go`: тонкая CLI-обёртка (flaggy, конфиг pst.*, ctx-first, идемпотентность, state `var/state/pst.json`) | done |
-| конфиг: `Config.PST` + секция `pst:` в `etc/brain/config.yml` (sources/readpst/out/state; отсутствие sources = явная ошибка с указанием на конфиг) | done |
-| TDD offline (synthetic Alice/Bob/example.com, фейковый readpst через test-seam hook): конверсия .eml→canon (folder=Posteingang), идемпотентный повтор (0 дублей), state-чекпойнт, dry-run, policy-исключения, resolveReadPST (override→PATH→var/dist→ошибка), идентичные архивы (дедуп по seen-set) | done — `go test -race ./internal/source/ ./internal/mailconv/ ./internal/config/` green |
-| Прогон реальных PST (оба файла байт-идентичны, sha256 совпадает): 1 уникальное письмо (Outlook-приветствие 2005, `Posteingang`) × 2 лейбла; повторный прогон new=0 skipped=2, дублей нет; readpst извлёк также 78 VCF + 6 ICS (импортируются другими пайплайнами, #68) | done |
-| docs: `docs/mail-sources.md` (статусы PST → импортировано, секция PST-импорт), PLAN.md (этот блок) | done |
+| readpst on the host: the system install `apt-get install pst-utils` is blocked (no passwordless sudo) — installed locally into `var/dist/readpst` (dpkg-deb -x, `pst.readpst` in config.local.yml) | done (blocker recorded in the issue) |
+| `internal/source/pst.go`: adapter `source.PST` (#97 pattern) — `readpst -e` into a wipeable scratch (`var/tmp/pst/<label>`), policy #79 via `mailconv.SkipFolder` (German names: Entwürfe/Vorlagen/Gelöschte Objekte/Junk-E-Mail/Postausgang), content-addressed copy into the corpus `Out/<label>/<folder>/<sha256:16>/<sha256:16>.eml`; `ImportPST`/`PlanPST` (sync + `mailconv.FromEML`), `--dry-run` plan | done |
+| normalization of the `LibPST-iamunique-<n>` MIME boundary (readpst injects a random token on every run) — otherwise content IDs are unstable and a repeat run breeds duplicates | done (found on real data, TDD test) |
+| `bin/mail/import-pst.go`: thin CLI wrapper (flaggy, pst.* config, ctx-first, idempotency, state `var/state/pst.json`) | done |
+| config: `Config.PST` + `pst:` section in `etc/brain/config.yml` (sources/readpst/out/state; missing sources = explicit error pointing at the config) | done |
+| TDD offline (synthetic Alice/Bob/example.com, fake readpst via a test-seam hook): .eml→canon conversion (folder=Posteingang), idempotent repeat (0 duplicates), state checkpoint, dry-run, policy exclusions, resolveReadPST (override→PATH→var/dist→error), identical archives (dedup by seen-set) | done — `go test -race ./internal/source/ ./internal/mailconv/ ./internal/config/` green |
+| Run of the real PSTs (both files are byte-identical, sha256 matches): 1 unique mail (Outlook greeting 2005, `Posteingang`) × 2 labels; repeat run new=0 skipped=2, no duplicates; readpst also extracted 78 VCF + 6 ICS (imported by other pipelines, #68) | done |
+| docs: `docs/mail-sources.md` (PST statuses → imported, PST import section), PLAN.md (this block) | done |
 
-Verification: `go build ./...` (кроме pre-existing build-tag пакетов bin/{reasoner,onlyoffice,postgres} — main без тега), `go vet ./...`, `go test -race ./...` зелёные; gofmt чист (shebang-файлы исключены). Корпус: `var/corpus/mail/pst/{pst-andriy,pst-backup-128g-vorlagen}` + state `var/state/pst.json` (1 seen-id). Branch `feat/pst-import#185`.
+Verification: `go build ./...` (except pre-existing build-tag packages bin/{reasoner,onlyoffice,postgres} — main without a tag), `go vet ./...`, `go test -race ./...` green; gofmt clean (shebang files excluded). Corpus: `var/corpus/mail/pst/{pst-andriy,pst-backup-128g-vorlagen}` + state `var/state/pst.json` (1 seen-id). Branch `feat/pst-import#185`.
 
-## 2026-09-02 — D-1.3: импорт gator wheregroup → граф (gitea #260, epic #257)
+## 2026-09-02 — D-1.3: import gator wheregroup → graph (gitea #260, epic #257)
 
-Goal: пилот импорта канала **wheregroup** (3984 письма, канон gator kind=mail)
-в kb.lbug как Message/Person узлы + рёбра SENT/TO/CC/BCC/REPLY_TO по write-пути
-D-1.2 (#259) и коннектору D-1.1 (#258). Доказать связку «gator канон → граф
-2dph» до gmail (D-1.4 #261). Read path не тронут; сырьё var/mail не читается.
-
-| Item | Status |
-|------|--------|
-| `pkg/duckdb`: `Exec`/`QueryRows` — произвольный SELECT поверх read_parquet как JSON-совместимые rows (gator-паттерн; LIST(STRUCT)→[]any из map, DECIMAL→float64) | done |
-| `internal/mailgraph` (cgo-free): типизированный Row (message_id/folder/from/to/cc/bcc/in_reply_to/subject/date/body/content_hash), `MapRow`/`MapRows` (email lowercase, date RFC3339/TIMESTAMP, NULL-списки), `ReadSQL` (latest на message_id по observed_at + tombstone deleted исключён + channel), `ResolveThreads` (thread_id = корень цепочки in_reply_to, dangling → внешний корень, цикл → fallback), `SortByDate` (родители раньше ответов), `ToInputs` → `brain.MessageInput`, `ComputeStats` (folder-раскладка/REPLY_TO/уникальные email) | done |
-| конфиг: `Config.Gator.MailHive` (`gator.mailhive`, шаблон etc/brain/config.yml + config.local.yml, флаг `--hive` / env `GATOR_MAIL_HIVE`) | done |
-| `bin/mail/graph.go` (cgo+system_ladybug+mail_graph): `--channel` + dry-run по умолчанию / `--commit`, `--db`, `--skip-existing` (инкремент), live-holder guard (--force), батч-транзакции, отчёт узлы/рёбра после записи | done |
-| TDD: юнит cgo-free (MapRow null/регистр/date-форматы, Input/gator_ref `kind=mail#v-<hash8>`, SortByDate, ResolveThreads root/dangling/цикл, Stats порядок-независим, ReadSQL latest/tombstone/экранирование) + pkg/duckdb roundtrip parquet | done — зелёные |
-| cgo-интеграция (temp Ladybug + synthetic hive parquet): полный цикл → узлы/рёбра, повтор = 0 дублей, `--skip-existing` = 0 новых, dangling REPLY_TO не создаётся | done — `TestImportCycle` (gcc ladybug+duckdb; CI-шаг добавлен, zig duckdb ABI не тянет) |
-| live-прогон wheregroup 3984 → `var/kb.lbug` (бэкап `kb.lbug.pre-d13-260.bak`, compose brain остановлен на запись) | done — Message 0→3984, Person 0→167, рёбра SENT 3984 / TO 4855 / CC 302 / BCC 2 / REPLY_TO 639 (после повтора; первый прогон 630 — 9 рёбер досоздались, родитель позже ответа по date) |
-| повторный прогон идемпотентен; `--skip-existing` = 0 записанных | done |
-| спот-чек: folder INBOX 3143 / Sent 479 / INBOX/Unmatched 362 (сверка с gator), Person andriy.oblivantsev@wheregroup.com, gator_ref `kind=mail#v-<hash8>`, REPLY_TO-цепи, thread_id заполнен | done |
-
-Verification: `go vet ./internal/...` + `go test -race ./internal/mailgraph/ ./internal/config/ ./pkg/duckdb/ ./internal/canon/` green; cgo `go test -tags system_ladybug ./internal/mailgraph/` green (gcc); CLI dry-run/commit/повтор на live. Branch `feat/graph-import-wheregroup#260` off `main`.
-
-## 2026-09-03 — N-1.1: фильтр «люди/компании vs сервис-аккаунты» для accept-сетей (gitea #268, epic #267)
-
-Goal: детерминированный классификатор адреса сети (L-9.5 #234) —
-`person | company | service` — чтобы CRM-экспорт (`--accept-only`) не тащил
-сервис-аккаунты/подсистемы/рассылки (GitLab/PayPal/LinkedIn/
-markets-platform/chiliproject@trac), а реальные люди и компании-контекст
-проходили. База — sender-эвристики `mailconv.IsMachineSender`
-(junkDomains/junkLocalParts). Правила: docs/brain/crm-network-filter.md.
+Goal: pilot import of the **wheregroup** channel (3984 mails, gator canon kind=mail)
+into kb.lbug as Message/Person nodes + SENT/TO/CC/BCC/REPLY_TO edges per the write path
+of D-1.2 (#259) and the connector of D-1.1 (#258). Prove the link "gator canon → 2dph
+graph" before gmail (D-1.4 #261). The read path is untouched; the var/mail raw data is not read.
 
 | Item | Status |
 |------|--------|
-| `internal/mailconv/classify.go` (cgo-free): `ClassifySender(ParsedAddress)` → kind; каскад: релеи людей (linkedin hit-reply/inmail-hit-reply) → person; junk-домены mailconv (общий `isJunkDomain`, одна реализация) + сервис-домены сети (gitlab/paypal/markets-platform/xing/djinni/wellfound/…); local-автоматы (noreply/mailer-daemon/robot/рассылки/security); tool-имена подсистем (chiliproject/projeqtor/trac/wiki/…) в local и левом лейбле домена; `*-request`/`*-owner`/`lists.*` списки; имя-эвристика (Title/ALLCAPS/инициалы/частицы, org/role-слова); fallback first.last@домен; иначе company | done |
-| `internal/network`: поле `Link.Kind` в BuildLinks (аддитивно, #234 API не ломает) | done |
-| `bin/network`: `--exclude-services` + `--accept-only` исключает kind=service; kind в text/YAML/JSON | done |
-| TDD: юнит классификатора (домены/паттерны/границы noreply@люди, robots.txt в имени, релеи) + сети (Kind проставляется, сервисы не в accept-экспорте) | done — зелёные |
-| Live-пилот на kb.lbug (read-only): гдеgroup top-60 accept = 44 person / 5 company / 11 service; eslider@ 1240 accept = 317 person / 494 company / 429 service; топ-сервисы eslider@ и chiliproject@trac — service, Astrid Emde/Ruby Rodriguez/Celine Schlindwein — person | done (таблица на #268) |
-| Документация: docs/brain/crm-network-filter.md (правила/границы OPEN) + graph-network.md + PLAN.md | done |
+| `pkg/duckdb`: `Exec`/`QueryRows` — arbitrary SELECT over read_parquet as JSON-compatible rows (gator pattern; LIST(STRUCT)→[]any from map, DECIMAL→float64) | done |
+| `internal/mailgraph` (cgo-free): typed Row (message_id/folder/from/to/cc/bcc/in_reply_to/subject/date/body/content_hash), `MapRow`/`MapRows` (email lowercase, date RFC3339/TIMESTAMP, NULL lists), `ReadSQL` (latest per message_id by observed_at + tombstone deleted excluded + channel), `ResolveThreads` (thread_id = root of the in_reply_to chain, dangling → external root, cycle → fallback), `SortByDate` (parents before replies), `ToInputs` → `brain.MessageInput`, `ComputeStats` (folder layout/REPLY_TO/unique emails) | done |
+| config: `Config.Gator.MailHive` (`gator.mailhive`, template etc/brain/config.yml + config.local.yml, flag `--hive` / env `GATOR_MAIL_HIVE`) | done |
+| `bin/mail/graph.go` (cgo+system_ladybug+mail_graph): `--channel` + dry-run by default / `--commit`, `--db`, `--skip-existing` (incremental), live-holder guard (--force), batch transactions, nodes/edges report after the write | done |
+| TDD: cgo-free unit (MapRow null/register/date formats, Input/gator_ref `kind=mail#v-<hash8>`, SortByDate, ResolveThreads root/dangling/cycle, Stats order-independent, ReadSQL latest/tombstone/escaping) + pkg/duckdb roundtrip parquet | done — green |
+| cgo integration (temp Ladybug + synthetic hive parquet): full cycle → nodes/edges, repeat = 0 duplicates, `--skip-existing` = 0 new, dangling REPLY_TO is not created | done — `TestImportCycle` (gcc ladybug+duckdb; CI step added, zig duckdb ABI does not hold) |
+| live run wheregroup 3984 → `var/kb.lbug` (backup `kb.lbug.pre-d13-260.bak`, compose brain stopped for the write) | done — Message 0→3984, Person 0→167, edges SENT 3984 / TO 4855 / CC 302 / BCC 2 / REPLY_TO 639 (after the repeat; the first run 630 — 9 edges were created later, parent later than the reply by date) |
+| the repeat run is idempotent; `--skip-existing` = 0 written | done |
+| spot check: folder INBOX 3143 / Sent 479 / INBOX/Unmatched 362 (cross-check with gator), Person andriy.oblivantsev@wheregroup.com, gator_ref `kind=mail#v-<hash8>`, REPLY_TO chains, thread_id filled | done |
+
+Verification: `go vet ./internal/...` + `go test -race ./internal/mailgraph/ ./internal/config/ ./pkg/duckdb/ ./internal/canon/` green; cgo `go test -tags system_ladybug ./internal/mailgraph/` green (gcc); CLI dry-run/commit/repeat on live. Branch `feat/graph-import-wheregroup#260` off `main`.
+
+## 2026-09-03 — N-1.1: "people/companies vs service accounts" filter for accept networks (gitea #268, epic #267)
+
+Goal: a deterministic classifier of a network address (L-9.5 #234) —
+`person | company | service` — so that the CRM export (`--accept-only`) does not pull
+service accounts/subsystems/mailing lists (GitLab/PayPal/LinkedIn/
+markets-platform/chiliproject@trac), while real people and company context
+get through. Basis — the sender heuristics of `mailconv.IsMachineSender`
+(junkDomains/junkLocalParts). Rules: docs/brain/crm-network-filter.md.
+
+| Item | Status |
+|------|--------|
+| `internal/mailconv/classify.go` (cgo-free): `ClassifySender(ParsedAddress)` → kind; cascade: human relays (linkedin hit-reply/inmail-hit-reply) → person; mailconv junk domains (shared `isJunkDomain`, one implementation) + network service domains (gitlab/paypal/markets-platform/xing/djinni/wellfound/…); local automata (noreply/mailer-daemon/robot/mailing lists/security); tool names of subsystems (chiliproject/projeqtor/trac/wiki/…) in the local and left domain label; `*-request`/`*-owner`/`lists.*` lists; name heuristic (Title/ALLCAPS/initials/particles, org/role words); fallback first.last@domain; otherwise company | done |
+| `internal/network`: field `Link.Kind` in BuildLinks (additive, does not break the #234 API) | done |
+| `bin/network`: `--exclude-services` + `--accept-only` excludes kind=service; kind in text/YAML/JSON | done |
+| TDD: classifier unit (domains/patterns/boundaries noreply@people, robots.txt in the name, relays) + network (Kind is set, services are not in the accept export) | done — green |
+| Live pilot on kb.lbug (read-only): wheregroup top-60 accept = 44 person / 5 company / 11 service; eslider@ 1240 accept = 317 person / 494 company / 429 service; top services of eslider@ and chiliproject@trac — service, Astrid Emde/Ruby Rodriguez/Celine Schlindwein — person | done (table on #268) |
+| Documentation: docs/brain/crm-network-filter.md (rules/OPEN boundaries) + graph-network.md + PLAN.md | done |
 
 Verification: `go test ./internal/mailconv/ ./internal/network/` + `go vet ./...`
 green; cgo `bin/cgo/zig go vet -tags system_ladybug,network_cli ./bin/network/`
 green. Branch `feat/network-human-filter#268` off `main`.
 
-## 2026-09-03 — N-1.2: коннектор OO: импорт accept-манифеста сети в CRM (gitea #269, epic #267)
+## 2026-09-03 — N-1.2: OO connector: import the network accept manifest into the CRM (gitea #269, epic #267)
 
-Goal: write-инструмент — манифест accept-связей (bin/network --accept-only,
-network.Manifest) → контакт Person в OnlyOffice CRM (email/имя/тег источника
-`2dph:network:<target>`/about со сводкой + premises), идемпотентно по email;
-сервис-аккаунты (N-1.1 #268) пропущены; dry-run/report-only ничего не пишет.
+Goal: a write tool — the manifest of accept links (bin/network --accept-only,
+network.Manifest) → a Person contact in the OnlyOffice CRM (email/name/source tag
+`2dph:network:<target>`/about with a summary + premises), idempotent by email;
+service accounts (N-1.1 #268) skipped; dry-run/report-only writes nothing.
 
 | Item | Status |
 |------|--------|
-| `internal/network/manifest.go`: тип `network.Manifest` (crmDoc/crmLink из bin/network, L-9.5 #234) — общий контракт продюсера и коннектора; bin/network печатает его | done |
-| `internal/ooimport` (cgo-free): `ParseManifest` → `BuildPlan` (маппинг person/company→Person: имя через mailconv.SplitPersonName, fallback локальная часть email; kind=service/без email → skipped; тег default `2dph:network:<target-email>`; about: `{msgs} писем / {threads} тредов / {replies} ответов, период {period}; premises: mail/commit … (+N ещё); source: <manifest>`) → `Run` (BuildContactEmailIndex один проход → matched skip / create: CreatePerson + AddContactInfo email primary + CreateContactTag/AddContactTag; rollback созданного при сбое email/тега; dry-run/limit) | done |
-| CLI `bin/onlyoffice/import-network.go` (shebang, tag onlyoffice_import_network): `--manifest <file|->` (обязателен), `--dry-run`/`--write` (mutually exclusive), `--limit N`, `--tag`; report only по умолчанию; отчёт created/matched/skipped/failed/pending | done |
-| Маппинг-решения: linkedin-релеи людей (hit-reply@linkedin.com, display name реальный) — Person как есть (email=релей, имя=человек); роль-ящики/компании (info@/alle@, kind=company) — Person с fallback-именем (компания-группировка — N-1.4 #271); kind=service не идёт | done (док: docs/brain/oo-network-import.md) |
-| TDD офлайн: ParseManifest (+roundtrip продюсер-консьюмер yaml), BuildPlan (имя/email lowercase/тег/about-точная строка/sort/skip), splitByExisting (повтор = 0 новых) | done — зелёные |
-| Интеграция с живым OO (`//go:build integration`, creds ONLYOFFICE_URL/USER/PASS, без creds — skip): dry-run ничего не пишет → write создаёт контакт email/тег/about → повтор = 0 новых/all matched; --limit создаёт часть, добивание — остальное; тестовый контакт удаляется в t.Cleanup (тег остаётся 0-count — API не удаляет теги) | done — зелёные на office.produktor.io |
-| Документация: docs/brain/oo-network-import.md (маппинг/команды/границы) + graph-network.md §4 + PLAN.md | done |
+| `internal/network/manifest.go`: type `network.Manifest` (crmDoc/crmLink from bin/network, L-9.5 #234) — the shared contract of producer and connector; bin/network prints it | done |
+| `internal/ooimport` (cgo-free): `ParseManifest` → `BuildPlan` (person/company→Person mapping: name via mailconv.SplitPersonName, fallback the local part of the email; kind=service/no email → skipped; default tag `2dph:network:<target-email>`; about: `{msgs} mails / {threads} threads / {replies} replies, period {period}; premises: mail/commit … (+N more); source: <manifest>`) → `Run` (BuildContactEmailIndex one pass → matched skip / create: CreatePerson + AddContactInfo email primary + CreateContactTag/AddContactTag; rollback of what was created on an email/tag failure; dry-run/limit) | done |
+| CLI `bin/onlyoffice/import-network.go` (shebang, tag onlyoffice_import_network): `--manifest <file|->` (required), `--dry-run`/`--write` (mutually exclusive), `--limit N`, `--tag`; report only by default; report created/matched/skipped/failed/pending | done |
+| Mapping decisions: linkedin human relays (hit-reply@linkedin.com, real display name) — Person as-is (email=relay, name=person); role mailboxes/companies (info@/alle@, kind=company) — Person with a fallback name (company grouping — N-1.4 #271); kind=service is not included | done (doc: docs/brain/oo-network-import.md) |
+| TDD offline: ParseManifest (+producer-consumer yaml roundtrip), BuildPlan (name/email lowercase/tag/exact about string/sort/skip), splitByExisting (repeat = 0 new) | done — green |
+| Integration with live OO (`//go:build integration`, creds ONLYOFFICE_URL/USER/PASS, without creds — skip): dry-run writes nothing → write creates a contact email/tag/about → repeat = 0 new/all matched; --limit creates a part, the catch-up run — the rest; the test contact is deleted in t.Cleanup (the tag stays at 0-count — the API does not delete tags) | done — green on office.produktor.io |
+| Documentation: docs/brain/oo-network-import.md (mapping/commands/boundaries) + graph-network.md §4 + PLAN.md | done |
 
 Verification: `go test ./internal/network/ ./internal/mailconv/ ./internal/ooimport/`
 + `go vet ./...` green; integration `go test -tags=integration ./internal/ooimport/`
-green (live OO); CLI dry-run на fixture — report-only, ничего не пишет.
+green (live OO); CLI dry-run on a fixture — report-only, writes nothing.
 Branch `feat/oo-crm-connector#269` off `main`.
 
-## 2026-09-03 — N-1.4: компания-группировка по домену + дописывание тега/about matched (gitea #271, epic #267)
+## 2026-09-03 — N-1.4: company grouping by domain + appending tag/about to matched contacts (gitea #271, epic #267)
 
-Goal: по итогам пилота N-1.3 (#270) довести гдеgroup-импорт до структуры
-«деловой контакт»: (1) role-ящики/компании гдеgroup сгруппировать под
-компанией по домену email; (2) существующим matched-контактам (32 из #270,
-в т.ч. топ-5 из #85) **аддитивно** дописать тег `2dph:network:<target>` +
-about-premises-сводку (решение владельца #267); (3) дедуп — только report
-(реальных дублей пилот не выявил, мульти-адреса — YAGNI эпика).
+Goal: following the N-1.3 pilot (#270), bring the wheregroup import up to a
+"business contact" structure: (1) group role mailboxes/companies of wheregroup under
+a company by the email domain; (2) for existing matched contacts (32 from #270,
+incl. the top-5 from #85) **additively** append the tag `2dph:network:<target>` +
+an about-premises summary (owner decision #267); (3) dedup — report only
+(the pilot found no real duplicates, multi-addresses are YAGNI for the epic).
 
 | Item | Status |
 |------|--------|
-| `internal/ooimport`: поле `Contact.Kind` (класс связи манифеста person/company; service отфильтрован) — основа для группировки | done |
-| `company.go`: `CompanyRule` (домен→компания), `ParseCompanies` (YAML, валидация: домен с точкой, не email, без повторов; сорт), `EmailDomain`, `GroupCompanyLinks` (только kind=company → компания по домену; person-kind не трогаем; company без правила — unmapped; два домена → одна компания схлопываются) | done |
-| `RunCompanies` (write/dry-run): FindCompany → если нет CreateCompany → GetContact + UpdatePerson с companyId; повтор = 0 изменений (found/already); роль-ящик не в CRM — notfound | done |
-| `backfill.go`: `BackfillChanges` (тег если нет; about-сводка только если about пуст/пробельный — ручные правки не перезаписываем), `RunBackfill` (hasTag по ListContactsByTag, about/имена GetContact; dry-run Would; CreateContactTag идемпотентно; повтор = 0 Updated) | done |
-| CLI `import-network.go`: флаги `--backfill`, `--companies <yaml|->` (после Run; оба идемпотентны; отчёты updated/would/unchanged + found/created/linked/already/unmapped) | done |
-| Косметика: `mailconv.SplitPersonName` снимает трейлинговую « (Org)»-декорацию («Astrid Emde (FOSSGIS e.V.)» → Astrid/Emde; пилот #270: given «Astrid Emde (FOSSGIS»/family «e.V.)») | done |
-| TDD офлайн: mailconv SplitPersonName (декорация/без/вложенная/вся-в-скобках → fallback), ParseCompanies (сорт/трим/ошибки), GroupCompanyLinks (role-ящики/сорт/unmapped/person-kind не трогаем), BackfillChanges (аддитивность: ручной about цел, пробельный about — сводка) | done — зелёные |
-| Интеграция с живым OO (`//go:build integration`, без creds — skip): role-ящик → компания создана+слинкован → повтор already=1; matched: тег+about дописаны, ручной about B не перезаписан, повтор = 0 Updated | done (office.produktor.io) |
-| Документация: docs/brain/oo-network-import.md (N-1.4: --backfill/--companies, границы: person-kind не линкуем, Name маппинга = display name компании CRM) + PLAN.md | done |
+| `internal/ooimport`: field `Contact.Kind` (manifest link class person/company; service filtered out) — the basis for grouping | done |
+| `company.go`: `CompanyRule` (domain→company), `ParseCompanies` (YAML, validation: domain with a dot, not an email, no repeats; sort), `EmailDomain`, `GroupCompanyLinks` (only kind=company → company by domain; person-kind untouched; company without a rule — unmapped; two domains → one company collapse) | done |
+| `RunCompanies` (write/dry-run): FindCompany → if missing CreateCompany → GetContact + UpdatePerson with companyId; repeat = 0 changes (found/already); role mailbox not in the CRM — notfound | done |
+| `backfill.go`: `BackfillChanges` (tag if absent; about summary only if about is empty/whitespace — we do not overwrite manual edits), `RunBackfill` (hasTag via ListContactsByTag, about/names GetContact; dry-run Would; CreateContactTag idempotent; repeat = 0 Updated) | done |
+| CLI `import-network.go`: flags `--backfill`, `--companies <yaml|->` (after Run; both idempotent; reports updated/would/unchanged + found/created/linked/already/unmapped) | done |
+| Cosmetics: `mailconv.SplitPersonName` strips the trailing " (Org)" decoration ("Astrid Emde (FOSSGIS e.V.)" → Astrid/Emde; pilot #270: given "Astrid Emde (FOSSGIS"/family "e.V.)") | done |
+| TDD offline: mailconv SplitPersonName (decoration/none/nested/all-in-parentheses → fallback), ParseCompanies (sort/trim/errors), GroupCompanyLinks (role mailboxes/sort/unmapped/person-kind untouched), BackfillChanges (additivity: manual about intact, whitespace about — summary) | done — green |
+| Integration with live OO (`//go:build integration`, without creds — skip): role mailbox → company created+linked → repeat already=1; matched: tag+about appended, manual about B not overwritten, repeat = 0 Updated | done (office.produktor.io) |
+| Documentation: docs/brain/oo-network-import.md (N-1.4: --backfill/--companies, boundaries: person-kind not linked, mapping Name = CRM company display name) + PLAN.md | done |
 
 Verification: `go test ./internal/mailconv/ ./internal/ooimport/ ./internal/network/`
 + `go vet ./...` green; integration `go test -tags=integration ./internal/ooimport/`
 green (live OO); CLI `go vet -tags=onlyoffice_import_network ./bin/onlyoffice/`.
-Дедуп: реальных дублей Person/компаний пилот не выявил — merge не
-применялся (только report; правило #271 «строго по явному списку»).
+Dedup: the pilot found no real Person/company duplicates — merge was not
+applied (report only; rule #271 "strictly per explicit list").
 Branch `feat/oo-crm-company#271` off `main`.
 
-## 2026-09-03 — P-9.5: сервисные клиенты поверх read-контракта (gitea #241, epic #239)
+## 2026-09-03 — P-9.5: service clients over the read contract (gitea #241, epic #239)
 
-Goal: единый клиентский слой чтения brain — typed-клиент поверх read-контракта
-(P-9.4 #240) вместо того, что каждый потребитель зовёт bin/brain/HTTP/MCP
-по-своему; плюс «гейт facts» (клиент не выдаёт not-confirmed как подтверждённое).
-Клиент читает только через контракт (HTTP :8630), kb.lbug напрямую не открывает.
+Goal: a single client-side layer for reading the brain — a typed client over the read contract
+(P-9.4 #240) instead of every consumer calling bin/brain/HTTP/MCP
+its own way; plus the "facts gate" (the client does not serve not-confirmed as confirmed).
+The client reads only through the contract (HTTP :8630), never opens kb.lbug directly.
 
 | Item | Status |
 |------|--------|
-| `pkg/brainclient` (cgo-free): `Client` (Config base/token/timeout, транспорт) + typed `Search`/`Get`/`Stats`/`Audit` → `internal/contract`-ответы; ответы валидируются контрактными валидаторами (формат + contract_version; несовместимый сервис — ошибка) | done |
-| Гейт facts: `Gate(root, confidence)` (confirmed только facts+confirmed/legacy-пустое), `Client.Facts` (search --root facts → confirmed[] / not_confirmed[] с reason), `GateAudit` (гистограмма facts-корня; not_confirmed>0 = нарушение). 2v2-противоречия (hypothesis, D16) в confirmed не попадают | done |
-| CLI `bin/brain/client.go` (shebang, brain_client, cgo-free): search/get/stats/audit, --json/--root facts\|info/--as-of/-n/--no-web/--base/--token; реализация в `pkg/brainclient/cli` (Run, покрыта тестами); audit при not_confirmed>0 → exit 1 | done |
-| TDD: gate-таблицы (facts+confirmed/legacy vs hypothesis/partial/info), GateSearch/GateAudit на фикстурах; httptest-клиент (typed-декод, валидация, ошибки HTTP, auth-header, root=facts параметр); CLI-проводка (флаги, JSON-формы, exit-коды) | done — `go test ./pkg/brainclient/...` зелёные |
-| Live на :8630 (db 105220 leafs): stats/audit (facts=21 confirmed, not_confirmed=0, exit 0), search --root facts (onlyoffice postgres → 1 confirmed), get --body (source «docker ps x compose:...»), info-хиты в default-режиме помечены (not confirmed) | done |
-| Документация: docs/brain/read-contract.md §«Клиентский слой (P-9.5)» (SDK/CLI, гейт, примеры search-факт + audit-карточка, кросс-репо путь через P-9.6) + skills/brain/SKILL.md §«Read через контракт» + PLAN.md | done |
+| `pkg/brainclient` (cgo-free): `Client` (Config base/token/timeout, transport) + typed `Search`/`Get`/`Stats`/`Audit` → `internal/contract` responses; responses are validated by the contract validators (format + contract_version; an incompatible service is an error) | done |
+| Facts gate: `Gate(root, confidence)` (confirmed only facts+confirmed/legacy-empty), `Client.Facts` (search --root facts → confirmed[] / not_confirmed[] with reason), `GateAudit` (histogram of the facts root; not_confirmed>0 = violation). 2v2 contradictions (hypothesis, D16) never land in confirmed | done |
+| CLI `bin/brain/client.go` (shebang, brain_client, cgo-free): search/get/stats/audit, --json/--root facts\|info/--as-of/-n/--no-web/--base/--token; implementation in `pkg/brainclient/cli` (Run, covered by tests); audit with not_confirmed>0 → exit 1 | done |
+| TDD: gate tables (facts+confirmed/legacy vs hypothesis/partial/info), GateSearch/GateAudit on fixtures; httptest client (typed decode, validation, HTTP errors, auth header, root=facts parameter); CLI wiring (flags, JSON shapes, exit codes) | done — `go test ./pkg/brainclient/...` green |
+| Live on :8630 (db 105220 leafs): stats/audit (facts=21 confirmed, not_confirmed=0, exit 0), search --root facts (onlyoffice postgres → 1 confirmed), get --body (source "docker ps x compose:..."), info hits in default mode marked (not confirmed) | done |
+| Documentation: docs/brain/read-contract.md §"Client layer (P-9.5)" (SDK/CLI, gate, examples search-fact + audit card, cross-repo path via P-9.6) + skills/brain/SKILL.md §"Read through the contract" + PLAN.md | done |
 
-Кросс-репо (gator/cv): вынос read-контракта и клиента в публичный go-* модуль —
-P-9.6 (ADR, эпик #239); до него внешние потребители читают по форматам
-read-contract.md через HTTP/MCP/CLI.
+Cross-repo (gator/cv): moving the read contract and the client into a public go-* module —
+P-9.6 (ADR, epic #239); until then external consumers read by the formats of
+read-contract.md via HTTP/MCP/CLI.
 
 Verification: `go vet ./...` + `go test ./pkg/brainclient/...` green
-(CLI-логика в pkg/brainclient/cli входит в обычный ./...; bin/brain — shebang-
-mains за эксклюзивными тегами, по D14 компилируются пофайлово) —
-bin/brain/client.go собран и прогнан `go run -tags=brain_client`;
+(CLI logic in pkg/brainclient/cli is part of the regular ./...; bin/brain — shebang
+mains behind exclusive tags, per D14 compiled file by file) —
+bin/brain/client.go is built and run with `go run -tags=brain_client`;
 `./bin/facts/audit.go self` ok. Branch `feat/brain-client#241` off `main`.
