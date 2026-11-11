@@ -194,7 +194,7 @@ func queryFTS(text string, limit int) ([]Hit, error) {
 }
 
 func queryVector(emb []float64, limit int) ([]Hit, error) {
-	// ANN path (issue #204): top-k from the incremental HNSW index, then
+	// ANN path (issue #204): top-k from the incremental IVF index, then
 	// metadata via point lookups. Falls back to the brute-force scan when
 	// the index is absent/corrupt/disabled — search never fails because of
 	// ANN.

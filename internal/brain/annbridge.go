@@ -14,7 +14,7 @@ import (
 	"github.com/eSlider/2dph/internal/config"
 )
 
-// ANN integration (issue #204): an incremental HNSW index outside liblbug
+// ANN integration (issue #204): an incremental IVF index outside liblbug
 // (whose own HNSW SIGSEGVs on grown graphs, #192). The index lives at
 // var/state/vector.ann (+ .wal), is built/upserted by bin/brain/ann.go and
 // read here for the query vector path. Missing/corrupt/disabled index falls
