@@ -22,15 +22,22 @@ on:
         description: "Backfill: существующий тег-источник"
         type: string
         default: "api"
+      retention:
+        description: "Запустить GHCR-retention вне расписания (только sha-*)"
+        type: boolean
+        default: false
   # Weekly GHCR cleanup (#11): deletes only old `sha-*` versions, see `retention`.
   schedule:
     - cron: '17 3 * * 1'
 
-# The schedule run must not cancel an in-flight CI run on the same ref, so it
-# gets its own concurrency group. Everything else keeps the old `ci-<ref>` key.
+# #13: every event gets its own concurrency group (`...-push`, `...-workflow_dispatch`,
+# `...-schedule`, `...-pull_request`), so a manual dispatch can no longer cancel an
+# in-flight push run (and vice versa). Cancellation only applies to pull_request:
+# superseding an outdated PR run is wanted, killing a push run is not (its
+# release/docker/smoke artefacts would be lost).
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name == 'schedule' && 'retention' || 'ci' }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -43,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -71,11 +78,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -139,7 +146,7 @@ jobs:
             LD_LIBRARY_PATH="$PWD/lib-ladybug${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
             go test -tags system_ladybug ./internal/mailgraph/ -run TestImportCycle -count=1
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: ~/.cache/huggingface
           key: ${{ runner.os }}-hf-potion-multilingual-128M
@@ -166,7 +173,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -213,8 +220,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       - name: OCR tests (tesseract in docker, no apt)
@@ -248,11 +255,11 @@ jobs:
       tag: ${{ steps.semver.outputs.tag }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
@@ -305,7 +312,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -481,9 +488,12 @@ jobs:
   # versions are kept. `api`, `latest` and `v*` are unreachable by construction.
   retention:
     name: Retention (GHCR sha-* versions)
+    # #13: schedule only, or an explicit `retention: true` dispatch. A release or
+    # backfill dispatch must not delete image versions as a side effect.
     if: >-
       github.server_url == 'https://github.com'
-      && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+      && (github.event_name == 'schedule'
+      || (github.event_name == 'workflow_dispatch' && inputs.retention == true))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
