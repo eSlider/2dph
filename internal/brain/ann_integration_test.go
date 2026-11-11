@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain/ann"
+	"github.com/eSlider/2dph/internal/brain/rank"
 )
 
 func itoa(i int) string { return strconv.Itoa(i) }
@@ -173,7 +174,7 @@ func TestANNQueryVectorUsesIndex(t *testing.T) {
 	// A query near cluster 1 must return hits through the ANN path, with
 	// metadata loaded from the graph (text/root populated).
 	leafs := annFixtureLeafs(n, nClusters)
-	hits, err := annQueryVector(leafs[1].Embedding, 5)
+	hits, err := annQueryVector(leafs[1].Embedding, 5, rank.Filter{})
 	if err != nil {
 		t.Fatalf("annQueryVector: %v", err)
 	}
@@ -195,14 +196,14 @@ func TestANNQueryVectorFallbackOnMissingIndex(t *testing.T) {
 	// annQueryVector alone must yield nothing (empty index → fallback);
 	// queryVector must still return hits via the brute-force scan.
 	leafs := annFixtureLeafs(200, 8)
-	hits, err := annQueryVector(leafs[3].Embedding, 5)
+	hits, err := annQueryVector(leafs[3].Embedding, 5, rank.Filter{})
 	if err != nil {
 		t.Fatalf("annQueryVector: %v", err)
 	}
 	if len(hits) != 0 {
 		t.Fatal("annQueryVector without an index must return no hits")
 	}
-	all, err := queryVector(leafs[3].Embedding, 5)
+	all, err := queryVector(leafs[3].Embedding, 5, rank.Filter{})
 	if err != nil {
 		t.Fatalf("queryVector: %v", err)
 	}
@@ -340,7 +341,7 @@ func TestANNRecallParityWithScan(t *testing.T) {
 		}
 		truth := ann.ExactRank(toFloat32(q, EmbedDim), rows, 5)
 		setAnnMode(annForceOn)
-		annHits, err := queryVector(q, 5)
+		annHits, err := queryVector(q, 5, rank.Filter{})
 		if err != nil {
 			t.Fatal(err)
 		}

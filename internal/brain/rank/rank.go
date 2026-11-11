@@ -4,9 +4,6 @@ package rank
 
 import (
 	"sort"
-	"strings"
-
-	"github.com/eSlider/2dph/internal/facts"
 )
 
 type HopNode struct {
@@ -50,16 +47,7 @@ func RankAndFilterAsOf(fts, vec []Hit, root, repo, asOf string, limit int) []Hit
 // sortDate is true the fused list is ordered by ValidFrom before the limit cut
 // so `--sort date` orders the full result set, not just the top N.
 func RankAndFilterSort(fts, vec []Hit, root, repo, asOf string, limit int, sortDate, desc bool) []Hit {
-	out := Hybrid(fts, vec, 0)
-	if root != "" {
-		out = FilterRoot(out, root)
-	}
-	if repo != "" {
-		out = FilterRepo(out, repo)
-	}
-	if asOf != "" {
-		out = FilterAsOf(out, asOf)
-	}
+	out := FilterHits(Hybrid(fts, vec, 0), Filter{Root: root, Repo: repo, AsOf: asOf})
 	if sortDate {
 		out = SortByDate(out, desc)
 	}
@@ -96,16 +84,7 @@ func SortByDate(hits []Hit, desc bool) []Hit {
 // FilterAsOf keeps hits whose [valid_from, valid_to] covers asOf (D24).
 // Empty intervals stay (legacy leafs). Empty asOf keeps all.
 func FilterAsOf(hits []Hit, asOf string) []Hit {
-	if asOf == "" {
-		return hits
-	}
-	var out []Hit
-	for _, h := range hits {
-		if facts.ActiveAt(h.ValidFrom, h.ValidTo, asOf) {
-			out = append(out, h)
-		}
-	}
-	return out
+	return FilterHits(hits, Filter{AsOf: asOf})
 }
 
 // Hybrid merges FTS and vector hits by reciprocal rank fusion.
@@ -150,21 +129,9 @@ func Hybrid(fts, vec []Hit, limit int) []Hit {
 }
 
 func FilterRoot(hits []Hit, root string) []Hit {
-	var out []Hit
-	for _, h := range hits {
-		if h.Root == root {
-			out = append(out, h)
-		}
-	}
-	return out
+	return FilterHits(hits, Filter{Root: root})
 }
 
 func FilterRepo(hits []Hit, repo string) []Hit {
-	var out []Hit
-	for _, h := range hits {
-		if strings.Contains(h.Source, repo) {
-			out = append(out, h)
-		}
-	}
-	return out
+	return FilterHits(hits, Filter{Repo: repo})
 }

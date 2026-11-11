@@ -136,7 +136,7 @@ func TestIngestSwapRaceSafe(t *testing.T) {
 				}
 				emb := make([]float64, EmbedDim)
 				emb[0] = 0.5
-				if _, err := queryVector(emb, 5); err != nil {
+				if _, err := queryVector(emb, 5, rank.Filter{}); err != nil {
 					t.Errorf("vector: %v", err)
 					return
 				}

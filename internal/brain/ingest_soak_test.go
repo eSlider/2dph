@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/eSlider/2dph/internal/brain/rank"
 	"github.com/eSlider/2dph/internal/config"
 )
 
@@ -160,11 +161,11 @@ func TestIngestSoakWritePath(t *testing.T) {
 					t.Errorf("get: %v", err)
 					return
 				}
-				if _, err := queryFTS("zebra", 5); err != nil {
+				if _, err := queryFTS("zebra", 5, rank.Filter{}); err != nil {
 					t.Errorf("fts: %v", err)
 					return
 				}
-				if _, err := queryVector(vec, 5); err != nil {
+				if _, err := queryVector(vec, 5, rank.Filter{}); err != nil {
 					t.Errorf("vector: %v", err)
 					return
 				}
@@ -188,7 +189,7 @@ func TestIngestSoakWritePath(t *testing.T) {
 	if _, err := h.Stats(ctx); err != nil {
 		t.Fatalf("stats failed after soak: %v", err)
 	}
-	hits, err := queryFTS("zebra", soakIngestIterations+10)
+	hits, err := queryFTS("zebra", soakIngestIterations+10, rank.Filter{})
 	if err != nil {
 		t.Fatalf("fts failed after soak: %v", err)
 	}

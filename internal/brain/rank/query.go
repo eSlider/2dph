@@ -6,6 +6,19 @@ const FTSStmt = "CALL QUERY_FTS_INDEX('Leaf', 'id', $q) " +
 	"RETURN node.id, node.text, node.root, node.source, score, node.confidence, " +
 	"node.valid_from, node.valid_to ORDER BY score DESC LIMIT $n"
 
+// FTSStmtFiltered is FTSStmt with the --root/--repo pre-filter pushed into the
+// Cypher query (issue #3), so the top-n candidates are already eligible and a
+// rare root (facts = 0.09% of the corpus) is not crowded out of the cut by
+// info leafs. The predicate is static text with bound parameters ($root/$repo);
+// an empty parameter disables that clause. --as-of stays a metadata filter in
+// brain (it needs D24 interval semantics) and is served by over-fetch
+// escalation (rank.EscalateCandidates).
+const FTSStmtFiltered = "CALL QUERY_FTS_INDEX('Leaf', 'id', $q) WITH node, score " +
+	"WHERE ($root = '' OR node.root = $root) " +
+	"AND ($repo = '' OR contains(node.source, $repo)) " +
+	"RETURN node.id, node.text, node.root, node.source, score, node.confidence, " +
+	"node.valid_from, node.valid_to ORDER BY score DESC LIMIT $n"
+
 // VecStmt was removed: vector ranking now runs in-process as a brute-force
 // cosine scan over l.embedding (see brain/queryVector), because liblbug's
 // HNSW QUERY_VECTOR_INDEX (Leaf_vec) SIGSEGVs on grown graphs (>= ~1300
