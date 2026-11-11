@@ -55,7 +55,7 @@ func stubEmbeddings(t *testing.T) {
 	t.Cleanup(func() { embedIngestLeafs = prev })
 }
 
-// soakSeedDB builds a pre-built corpus (schema + leafs + FTS/HNSW indexes)
+// soakSeedDB builds a pre-built corpus (schema + leafs + FTS index)
 // the way production serves over an existing kb.lbug, returning two seed ids.
 func soakSeedDB(t *testing.T) (idA, idB string) {
 	t.Helper()

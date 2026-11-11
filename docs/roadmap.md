@@ -53,7 +53,7 @@ None for epic #16 (closed). Remaining v2: OQ4 (deferred).
 ```
 question
     │
-    ├─ FTS + HNSW          ← in
+    ├─ FTS + IVF ANN       ← in
     ├─ facts / info roots  ← in
     ├─ web (D17)           ← in
     ├─ brain/add ACID      ← in
