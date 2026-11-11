@@ -14,6 +14,23 @@ vector search. One query runs a deduction pass: confirmed facts first,
 supporting notes second, web search as the independent second source when the
 local graph cannot confirm.
 
+## What it solves
+
+A normal RAG answer is fluent but unsourced, and an LLM will happily invent
+the missing part. 2dph answers from a graph where a fact needs two independent
+sources — and says `(not confirmed)` when it cannot.
+
+| You ask | You get |
+|---------|---------|
+| “Where does the onlyoffice postgres run?” | the host and container, plus the sources that agree — or `(not confirmed)` if one source is gone |
+| “When did the last invoice from this supplier arrive?” | the mail leaf with the message and its date; mail is a first-class corpus |
+| “What is rule R-F14?” | the exact rule text — rulebooks and decisions are searchable reference leafs, not a paraphrase |
+| “Who worked on this file?” | `--hop` walks File → Commit → Person, so history is a graph query, not a log grep |
+
+The same HTTP/MCP `search` is what an agent calls before answering. The model
+receives evidence-backed facts with source and confidence, not raw chunks, so
+it cannot silently turn a guess into a fact.
+
 ## How it works
 
 - **Two roots, one transaction** — `facts` (confirmed) and `info` (context)
