@@ -3,9 +3,25 @@ name: Tests
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Создать релиз: тег + версионный образ"
+        type: boolean
+        default: false
+      line:
+        description: "Release line, e.g. 0.24"
+        type: string
+        default: "0.24"
+      backfill_version:
+        description: "Backfill: версия для перетегирования, e.g. v0.24.13"
+        type: string
+        default: ""
+      backfill_source:
+        description: "Backfill: существующий тег-источник"
+        type: string
+        default: "api"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -199,35 +215,51 @@ jobs:
             -v "$PWD":/work:ro -w /work/internal/ocr \
             jitesoft/tesseract-ocr:latest -c '/ocr.test -test.v'
 
+  # Release: tag + GitHub Release, on demand only.
+  #
+  # No `push: tags` trigger: `gh release create` runs with GITHUB_TOKEN, and
+  # GitHub never starts new workflow runs for events caused by GITHUB_TOKEN.
+  # That is why the old tag-triggered docker job never ran (#9) and
+  # `latest` / `v*` were never published. The versioned image is now built in
+  # this very run by the docker job, using this job's `tag` output.
   release:
     name: Release (semver)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.server_url == 'https://github.com'
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.release == true
+      && inputs.backfill_version == '' && github.server_url == 'https://github.com'
     needs: [test, ocr]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
 
+    outputs:
+      tag: ${{ steps.semver.outputs.tag }}
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
 
-      - name: Compute next semver from conventional commits
+      - name: Compute next semver for the release line
         id: semver
+        env:
+          LINE: ${{ inputs.line }}
         run: |
-          bin/semver/next.go > /tmp/next
-          echo "next=$(cat /tmp/next)" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          chmod +x bin/semver/next.go
+          TAG="$(./bin/semver/next.go --line "$LINE")"
+          echo "next tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Create tag + GitHub Release
-        if: steps.semver.outputs.next != 'none'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.semver.outputs.next }}
+          TAG: ${{ steps.semver.outputs.tag }}
         run: |
           set -euo pipefail
           PREV=$(git tag --sort=-v:refname | grep -v "^$TAG$" | head -1 || true)
@@ -244,8 +276,17 @@ jobs:
 
   docker:
     name: Docker (api image)
-    if: github.event_name == 'push' && github.server_url == 'https://github.com' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-    needs: [test, ocr]
+    # always(): the release job is skipped on push/workflow_dispatch without
+    # `release: true`, and :api + :sha-* must still be published. Versioned
+    # tags are added from needs.release.outputs.tag when a release was made.
+    # An on-demand backfill run retags an existing image instead (backfill job).
+    if: >-
+      always() && github.server_url == 'https://github.com'
+      && needs.test.result == 'success'
+      && (needs.ocr.result == 'success' || needs.ocr.result == 'skipped')
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && inputs.backfill_version == ''
+    needs: [test, ocr, release]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -267,13 +308,21 @@ jobs:
 
       - name: Image tags
         id: meta
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
         run: |
+          set -euo pipefail
           REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            echo "tags=$REPO:api,$REPO:$GITHUB_REF_NAME,$REPO:latest" >> "$GITHUB_OUTPUT"
-          else
-            echo "tags=$REPO:api,$REPO:sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+          TAGS="$REPO:api,$REPO:sha-${GITHUB_SHA::12}"
+          VERSION="edge"
+          # A release run also publishes the versioned tag and moves `latest`.
+          if [ -n "${RELEASE_TAG:-}" ]; then
+            TAGS="$TAGS,$REPO:$RELEASE_TAG,$REPO:latest"
+            VERSION="$RELEASE_TAG"
           fi
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push api image
         uses: docker/build-push-action@v6
@@ -284,5 +333,126 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=2dph
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  smoke:
+    name: Smoke (api image)
+    needs: [docker]
+    if: >-
+      always() && needs.docker.result == 'success'
+      && github.server_url == 'https://github.com'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && inputs.backfill_version == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # No DB fixture: /health, /openapi.json and MCP tools/list are served
+      # without touching kb.lbug. Two container details are load-bearing:
+      #   * --tmpfs /data/var — the image runs as uid 1001 and /data is
+      #     root-owned, but brain-serve opens $KB_ROOT/var/kb.lbug at startup
+      #     and the parent dir must exist and be writable;
+      #   * KB_HOST=0.0.0.0 — the default bind is 127.0.0.1, which is not
+      #     reachable through the published port.
+      - name: Run api image and probe endpoints
+        env:
+          CONTAINER: 2dph-smoke
+          PORT: 18630
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA::12}"
+          cleanup() { docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --rm --name "$CONTAINER" \
+            --tmpfs /data/var:uid=1001,gid=1001 \
+            -p "${PORT}:8630" \
+            -e KB_HOST=0.0.0.0 \
+            -e KBSEARCH_NO_DAEMON=1 \
+            "$IMAGE"
+
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+              ok=1
+              echo "/health ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::/health not ready after 30s"
+            docker logs "$CONTAINER" || true
+            exit 1
+          fi
+
+          curl -fsS "http://127.0.0.1:${PORT}/openapi.json" >/dev/null
+          echo "openapi.json: ok"
+
+          MCP="$(curl -fsS -X POST "http://127.0.0.1:${PORT}/mcp" \
+            -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')"
+          printf '%s' "$MCP" | grep -q '"tools"'
+          echo "mcp tools/list: ok"
+
+  # Retag an existing image (no rebuild): `backfill_version=v0.24.13` +
+  # `backfill_source=api` publishes :v0.24.13 and :latest from the current
+  # :api image. Runs standalone — no needs, it does not rebuild anything.
+  backfill:
+    name: Backfill (retag existing image)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.backfill_version != ''
+      && github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Retag source image as version + latest
+        env:
+          VERSION: ${{ inputs.backfill_version }}
+          SOURCE: ${{ inputs.backfill_source }}
+        run: |
+          set -euo pipefail
+          REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::backfill_version '$VERSION' must match ^v[0-9]+\.[0-9]+\.[0-9]+$"
+            exit 1
+          fi
+          if [ -z "${SOURCE:-}" ]; then
+            echo "::error::backfill_source must not be empty"
+            exit 1
+          fi
+          echo "retagging $REPO:$SOURCE -> $REPO:$VERSION + $REPO:latest"
+          docker buildx imagetools create \
+            -t "$REPO:$VERSION" \
+            -t "$REPO:latest" \
+            "$REPO:$SOURCE"

@@ -4,6 +4,7 @@
 //
 //	bin/semver/next.go                      # last tag..HEAD
 //	bin/semver/next.go v0.1.0 v0.1.0..HEAD  # explicit tag + range
+//	bin/semver/next.go --line 0.24          # max v0.24.N in git tags -> v0.24.N+1
 //	prints: v0.1.1 | v0.2.0 | v1.0.0 | none
 //
 // Bump rules (conventional commits):
@@ -17,9 +18,11 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -109,8 +112,46 @@ func bumpVersion(current, bump string) *string {
 	return &out
 }
 
+// nextForLine returns the next patch tag of a release line. tags is the
+// output of `git tag --list "v<line>.*"`; the max numeric tail wins, so
+// v0.24.9 < v0.24.10. No tag in the line -> v<line>.0.
+func nextForLine(tags []string, line string) (string, error) {
+	if !lineRe.MatchString(line) {
+		return "", fmt.Errorf("invalid release line %q: want MAJOR.MINOR, e.g. 0.24", line)
+	}
+	prefix := "v" + line + "."
+	max := -1
+	for _, t := range tags {
+		if !strings.HasPrefix(t, prefix) {
+			continue
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(t, prefix))
+		if err != nil {
+			continue
+		}
+		if n > max {
+			max = n
+		}
+	}
+	return fmt.Sprintf("%s%d", prefix, max+1), nil
+}
+
+var lineRe = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
+
 func main() {
-	args := os.Args[1:]
+	line := flag.String("line", "", "release line MAJOR.MINOR, e.g. 0.24 (max v<line>.N in git tags)")
+	flag.Parse()
+	if *line != "" {
+		next, err := nextForLine(git("tag", "--list", "v"+*line+".*"), *line)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "semver:", err)
+			os.Exit(2)
+		}
+		fmt.Println(next)
+		return
+	}
+
+	args := flag.Args()
 	tag := ""
 	if len(args) > 1 {
 		tag = args[0]
