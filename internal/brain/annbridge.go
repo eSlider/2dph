@@ -43,12 +43,14 @@ var (
 )
 
 type annInfo struct {
-	Loaded  bool   `json:"loaded"` // true when a non-empty index is serving (Len > 0)
-	Len     int    `json:"len"`
-	Path    string `json:"path"`
-	Params  string `json:"params,omitempty"`
-	Skipped int    `json:"skipped,omitempty"`
-	Err     string `json:"error,omitempty"`
+	Loaded     bool    `json:"loaded"` // true when a non-empty index is serving (Len > 0)
+	Len        int     `json:"len"`
+	Tombstones int     `json:"tombstones,omitempty"`
+	TombRatio  float64 `json:"tombstone_ratio,omitempty"`
+	Path       string  `json:"path"`
+	Params     string  `json:"params,omitempty"`
+	Skipped    int     `json:"skipped,omitempty"`
+	Err        string  `json:"error,omitempty"`
 }
 
 func setAnnMode(m annMode) {
@@ -104,8 +106,18 @@ func annIndex() (*ann.Index, error) {
 	annStats.Loaded = idx.Len() > 0
 	annStats.Len = idx.Len()
 	annStats.Skipped = idx.Skipped()
+	annStats.Tombstones = idx.Tombstones()
+	ratio := idx.TombstoneRatio()
+	annStats.TombRatio = ratio
 	annStats.Params = fmt.Sprintf("dim=%d nlist=%d nprobe=%d", p.Dim, p.NList, p.NProbe)
-	log.Printf("brain/ann: index %s loaded (%d vectors, %s)", path, idx.Len(), annStats.Params)
+	log.Printf("brain/ann: index %s loaded (%d live, %d tombstoned (%.1f%%), %s)",
+		path, idx.Len(), idx.Tombstones(), ratio*100, annStats.Params)
+	if ratio > 0.10 {
+		// Dead rows never rank, but they shrink the top-k budget. serve must
+		// not rebuild (single-writer, #204) — the wave's ann-build does
+		// (annEnsurePlan rebuilds above the same 10% threshold, #4).
+		log.Printf("brain/ann: %.1f%% of the index is tombstoned — the wave's ann-build will rebuild it", ratio*100)
+	}
 	return idx, nil
 }
 
@@ -216,8 +228,9 @@ func annStatsJSON() annInfo {
 	defer annMu.RUnlock()
 	out := annStats
 	if annIdx != nil {
-		out.Len = annIdx.Len()
-		out.Skipped = annIdx.Skipped()
+		st := annIdx.Stats()
+		out.Len, out.Skipped = st.Live, st.Skipped
+		out.Tombstones, out.TombRatio = st.Tombstones, st.Ratio
 	}
 	return out
 }

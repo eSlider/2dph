@@ -39,19 +39,22 @@ func captureToolStdout(t *testing.T, fn func()) string {
 
 // annEnsureReport is the JSON contract of `bin/brain/ann.go ensure --json`.
 type annEnsureReport struct {
-	Action    string  `json:"action"`
-	Reason    string  `json:"reason,omitempty"`
-	Indexed   int     `json:"indexed"`
-	Added     int     `json:"added"`
-	Skipped   int     `json:"skipped,omitempty"`
-	DirtyWAL  int     `json:"dirty_wal,omitempty"`
-	Rebuild   bool    `json:"rebuild"`
-	Compacted bool    `json:"compacted,omitempty"`
-	ExtractS  float64 `json:"extract_s,omitempty"`
-	BuildS    float64 `json:"build_s,omitempty"`
-	UpsertS   float64 `json:"upsert_s,omitempty"`
-	SaveS     float64 `json:"save_s,omitempty"`
-	Index     string  `json:"index"`
+	Action     string  `json:"action"`
+	Reason     string  `json:"reason,omitempty"`
+	Indexed    int     `json:"indexed"`
+	Added      int     `json:"added"`
+	Skipped    int     `json:"skipped,omitempty"`
+	DirtyWAL   int     `json:"dirty_wal,omitempty"`
+	Reconciled int     `json:"reconciled,omitempty"`
+	Tombstones int     `json:"tombstones"`
+	TombRatio  float64 `json:"tombstone_ratio"`
+	Rebuild    bool    `json:"rebuild"`
+	Compacted  bool    `json:"compacted,omitempty"`
+	ExtractS   float64 `json:"extract_s,omitempty"`
+	BuildS     float64 `json:"build_s,omitempty"`
+	UpsertS    float64 `json:"upsert_s,omitempty"`
+	SaveS      float64 `json:"save_s,omitempty"`
+	Index      string  `json:"index"`
 }
 
 func parseEnsureReport(t *testing.T, out string) annEnsureReport {
@@ -96,29 +99,37 @@ func buildFixtureIndex(t *testing.T, dbpath, idxPath string) {
 	}
 }
 
-// TestAnnEnsurePlan pins the build/upsert decision: a missing index and a
-// stale index (missing >10% of the DB vectors) trigger a full build;
-// steady-state growth (a few hundred new leafs on 313k) stays incremental.
+// TestAnnEnsurePlan pins the build/upsert decision: a missing index, a stale
+// index (missing >10% of the DB vectors) and a tombstone-heavy index (>10% of
+// its rows are deleted leafs) trigger a full build; steady-state growth (a
+// few hundred new leafs on 313k) stays incremental.
 func TestAnnEnsurePlan(t *testing.T) {
 	cases := []struct {
-		name          string
-		idxLen, rowsN int
-		wantBuild     bool
-		wantReasonSub string
+		name               string
+		idxLen, rowsN, tom int
+		wantBuild          bool
+		wantReasonSub      string
 	}{
-		{"no index", 0, 100, true, "no index"},
-		{"empty db", 0, 0, false, "nothing"},
-		{"fresh", 313000, 313000, false, "incremental"},
-		{"wave growth +100", 313000, 313100, false, "incremental"},
-		{"wave growth +1000", 313000, 314000, false, "incremental"},
-		{"stale -10%", 280000, 313000, true, "stale"},
-		{"stale -90%", 10000, 313000, true, "stale"},
+		{"no index", 0, 100, 0, true, "no index"},
+		{"empty db", 0, 0, 0, false, "nothing"},
+		{"fresh", 313000, 313000, 0, false, "incremental"},
+		{"wave growth +100", 313000, 313100, 0, false, "incremental"},
+		{"wave growth +1000", 313000, 314000, 0, false, "incremental"},
+		{"stale -10%", 280000, 313000, 0, true, "stale"},
+		{"stale -90%", 10000, 313000, 0, true, "stale"},
+		// #4: dead leafs stay in the index until a compaction; once >10% of
+		// the rows are tombstones the top-k budget is too small — rebuild.
+		{"tombstones 11%", 89000, 100000, 11000, true, "tombstone ratio"},
+		{"tombstones 50%", 50000, 100000, 50000, true, "tombstone ratio"},
+		{"tombstones 10% (at threshold)", 90000, 100000, 10000, false, "incremental"},
+		{"tombstones 1% + wave growth", 297000, 313100, 3000, false, "incremental"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			build, reason := annEnsurePlan(c.idxLen, c.rowsN)
+			build, reason := annEnsurePlan(c.idxLen, c.rowsN, c.tom)
 			if build != c.wantBuild {
-				t.Fatalf("annEnsurePlan(%d,%d) build = %v, want %v (reason %q)", c.idxLen, c.rowsN, build, c.wantBuild, reason)
+				t.Fatalf("annEnsurePlan(%d,%d,%d) build = %v, want %v (reason %q)",
+					c.idxLen, c.rowsN, c.tom, build, c.wantBuild, reason)
 			}
 			if !strings.Contains(reason, c.wantReasonSub) {
 				t.Errorf("reason %q does not mention %q", reason, c.wantReasonSub)
