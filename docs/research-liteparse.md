@@ -6,36 +6,36 @@ related:
   - docs/runbook.md
 ---
 
-# A/B: internal/ocr.PDFFile vs liteparse — качество md + PDF→JSON→YAML (issue #221)
+# A/B: internal/ocr.PDFFile vs liteparse — md quality + PDF→JSON→YAML (issue #221)
 
-Исследование в рамках эпика [#219](https://git.produktor.io/eSlider/2dph/issues/219)
-(структурная экстракция документов). Сравнивали существующий PDF-конвейер 2dph
-(baseline) с [liteparse](https://github.com/run-llama/liteparse) (candidate) на
-трёх изолированных сэмплах из [#220](https://git.produktor.io/eSlider/2dph/issues/220):
+Research within epic [#219](https://git.produktor.io/eSlider/2dph/issues/219)
+(structural document extraction). We compared the existing 2dph PDF pipeline
+(baseline) with [liteparse](https://github.com/run-llama/liteparse) (candidate) on
+three isolated samples from [#220](https://git.produktor.io/eSlider/2dph/issues/220):
 
-- `invoice-text.pdf` — text-layer счёт: заголовок, таблица (3 строки), список.
-- `invoice-scan.pdf` — scan-подобный: full-page изображение (тёмная полоса) + один текстовый run.
-- `liteparse-sample.pdf` — публичный одностраничный PDF (lorem ipsum + заголовок).
+- `invoice-text.pdf` — text-layer invoice: heading, table (3 rows), list.
+- `invoice-scan.pdf` — scan-like: a full-page image (dark band) + one text run.
+- `liteparse-sample.pdf` — a public one-page PDF (lorem ipsum + heading).
 
-Прод-корпус `var/corpus` не трогали; всё — в `var/research/` (gitignored).
+The production corpus `var/corpus` was not touched; everything is in `var/research/` (gitignored).
 
-## Как воспроизвести
+## How to reproduce
 
 ```bash
-# тесты (офлайн; docker-тест skip при отсутствии docker/образа)
+# tests (offline; the docker test skips when docker/image is absent)
 go test -tags=research_ab ./bin/research/... -count=1
 
-# прогон на samples (запускает liteparse через docker)
+# run on samples (starts liteparse through docker)
 ./bin/research/ab.go
 ```
 
-Инструмент: `bin/research/ab.go` (build tag `research_ab`). Для каждого документа
-гоняет: `lit is-complex` verdict, baseline (`internal/ocr.PDFFile`), `lit parse
---format markdown --extract-blocks --no-ocr` (+ OCR-вариант, если verdict просит),
-и `lit parse --format json --extract-blocks` с конвертацией в YAML. Результат —
-`var/research/out/metrics.json` + артефакты `*.md`, `*.ocr.md`, `*.json`, `*.yaml`.
+Tool: `bin/research/ab.go` (build tag `research_ab`). For each document it
+runs: the `lit is-complex` verdict, the baseline (`internal/ocr.PDFFile`), `lit parse
+--format markdown --extract-blocks --no-ocr` (+ the OCR variant, if the verdict asks for it),
+and `lit parse --format json --extract-blocks` with conversion to YAML. The result is
+`var/research/out/metrics.json` + artifacts `*.md`, `*.ocr.md`, `*.json`, `*.yaml`.
 
-Команда запуска liteparse (docker-обёртка в инструменте делает то же самое):
+The liteparse launch command (the docker wrapper in the tool does the same thing):
 
 ```bash
 P=/usr/local/lib/pdfium-rs/chromium_7897/pdfium-linux-x64/lib
@@ -45,49 +45,49 @@ docker run --rm -e PDFIUM_LIB_PATH=$P -e LD_LIBRARY_PATH=$P \
   --format markdown --extract-blocks --no-ocr -o /o/<f>.md
 ```
 
-Образ `ghcr.io/run-llama/liteparse:latest` (lit 2.14.0). Путь pdfium и образ —
-константы инструмента, переопределяются флагами `--pdfium-lib-path`/`--image`
-или env `LITEPARSE_PDFIUM_LIB_PATH`/`LITEPARSE_IMAGE`.
+The image `ghcr.io/run-llama/liteparse:latest` (lit 2.14.0). The pdfium path and the image are
+constants of the tool, overridden by the flags `--pdfium-lib-path`/`--image`
+or the env `LITEPARSE_PDFIUM_LIB_PATH`/`LITEPARSE_IMAGE`.
 
-## Метрики (прогон 2026-08-29, docker 26.1.4)
+## Metrics (run 2026-08-29, docker 26.1.4)
 
-| Документ | verdict (`is-complex`) | baseline ms / байт | lit md ms / байт | lit md OCR ms / байт | lit json ms / байт | blocks (kind) | bboxes |
+| Document | verdict (`is-complex`) | baseline ms / bytes | lit md ms / bytes | lit md OCR ms / bytes | lit json ms / bytes | blocks (kind) | bboxes |
 |---|---|---|---|---|---|---|---|
 | invoice-text.pdf | needs-ocr (sparse-text) | 7 / 154 | 644 / 117 | 2519 / 117 | 2285 / 4860 | heading=1, paragraph=3 | 14 |
 | invoice-scan.pdf | needs-ocr (scanned) | 23 / 11 | 699 / 11 | 2748 / 11 | 2552 / 665 | paragraph=1 | 1 |
-| liteparse-sample.pdf | text (OCR не нужен) | 12 / 2851 | 672 / 2852 | — | 669 / 46969 | heading=1, paragraph=2 | 147 |
+| liteparse-sample.pdf | text (OCR not needed) | 12 / 2851 | 672 / 2852 | — | 669 / 46969 | heading=1, paragraph=2 | 147 |
 
-Разбор цифр:
+Reading the numbers:
 
-- **baseline** (pdftotext fast path) — 7–23 ms. `internal/ocr.PDFFile` до OCR не
-  доходит ни на одном сэмпле: у `invoice-scan.pdf` текстовый run `SCAN-9F31A1`
-  делает fast path успешным. Tesseract на хосте не установлен — ветка
-  gs+tesseract в этом прогоне не срабатывала (это честное поведение конвейера).
-- **liteparse md** — 644–699 ms, из них ~0.5–0.7 s — старт контейнера docker;
-  собственно lit тратит 1–25 ms (строки `[liteparse] total`). Для маленьких
-  документов docker overhead доминирует.
-- **OCR-вариант** (2.5–2.7 s) сработал для обоих invoice: у `invoice-text.pdf`
-  результат байт-в-байт тот же, что и без OCR (117 байт) — OCR был не нужен,
-  его спровоцировал ложный verdict `sparse-text`. У `invoice-scan.pdf` — только
-  `SCAN-9F31A1` (тёмная полоса без текста — корректно пусто).
-- **liteparse json** — для text-документов ~0.7 s, для scan — 2.5 s (OCR внутри).
+- **baseline** (pdftotext fast path) — 7–23 ms. `internal/ocr.PDFFile` never
+  reaches OCR on any sample: on `invoice-scan.pdf` the text run `SCAN-9F31A1`
+  makes the fast path succeed. Tesseract is not installed on the host — the
+  gs+tesseract branch never fired in this run (this is honest pipeline behaviour).
+- **liteparse md** — 644–699 ms, of which ~0.5–0.7 s is the docker container start;
+  lit itself spends 1–25 ms (the `[liteparse] total` lines). For small
+  documents the docker overhead dominates.
+- **OCR variant** (2.5–2.7 s) fired for both invoices: on `invoice-text.pdf` the
+  result is byte-for-byte the same as without OCR (117 bytes) — OCR was not needed,
+  it was provoked by a false `sparse-text` verdict. On `invoice-scan.pdf` — only
+  `SCAN-9F31A1` (a dark band without text — correctly empty).
+- **liteparse json** — for text documents ~0.7 s, for the scan — 2.5 s (OCR inside).
 
-## Качество markdown
+## Markdown quality
 
-| Проверка | invoice-text | liteparse-sample | baseline (pdftotext -layout) |
+| Check | invoice-text | liteparse-sample | baseline (pdftotext -layout) |
 |---|---|---|---|
-| Заголовок | `# INVOICE-7C2F9E` (level 1) | `# This is a simple PDF file.` (level 1) | строка текста |
-| Таблица | **не распознана** — размазана в 3 параграфа, колонки/порядок потеряны | нет таблиц | колонки сохранены (layout) |
-| Список / строки | `Client: Acme GmbH Item Widget A Widget B Total Note: net 14 days.` — всё в один параграф | — | строки разделены |
-| Порядок чтения | нарушен: `Qty Price` и `2 10.00 1 25.00 45.00` вынесены отдельными параграфами | норм; строка `Sample PDF` вынесена параграфом перед заголовком | сохранён |
+| Heading | `# INVOICE-7C2F9E` (level 1) | `# This is a simple PDF file.` (level 1) | a line of text |
+| Table | **not recognized** — smeared into 3 paragraphs, columns/order lost | no tables | columns preserved (layout) |
+| List / lines | `Client: Acme GmbH Item Widget A Widget B Total Note: net 14 days.` — all in one paragraph | — | lines separated |
+| Reading order | broken: `Qty Price` and `2 10.00 1 25.00 45.00` moved out as separate paragraphs | fine; the line `Sample PDF` is moved out as a paragraph before the heading | preserved |
 
-Вывод по md: для text-layer документов с таблицами **liteparse markdown хуже
-baseline** — таблица не детектируется (`kind: table` отсутствует в blocks) и
-размазывается в параграфы. Заголовки (уровень) liteparse определяет верно.
+Conclusion on md: for text-layer documents with tables **liteparse markdown is worse
+than the baseline** — the table is not detected (`kind: table` is absent from blocks) and
+is smeared into paragraphs. Headings (level) liteparse determines correctly.
 
 ## PDF→JSON→YAML
 
-`lit parse --format json --extract-blocks` даёт типизированную структуру:
+`lit parse --format json --extract-blocks` produces a typed structure:
 
 ```yaml
 pages:
@@ -100,7 +100,7 @@ pages:
       Item    Qty  Price
       Widget A  2       10.00
       ...
-    text_items:            # 14 шт: геометрия + шрифт + confidence
+    text_items:            # 14 items: geometry + font + confidence
       - text: INVOICE-7C2F9E
         x: 72
         y: 56.880005
@@ -108,7 +108,7 @@ pages:
         font_name: Helvetica
         font_size: 16
         confidence: 1
-    blocks:                # семантика
+    blocks:                # semantics
       - kind: heading
         text: INVOICE-7C2F9E
         level: 1
@@ -117,119 +117,119 @@ pages:
         text: "Client: Acme GmbH Item Widget A Widget B Total Note: net 14 days."
 ```
 
-Конвертер: `bin/research/ab.go` → `JSONToYAML` (типизированные `LitJSON/LitPage/
-LitItem/LitBlock`, `gopkg.in/yaml.v3`; yaml-теги явные, иначе yaml.v3 режет
-подчёркивания: `total_pages` → `totalpages`).
+Converter: `bin/research/ab.go` → `JSONToYAML` (typed `LitJSON/LitPage/
+LitItem/LitBlock`, `gopkg.in/yaml.v3`; yaml tags are explicit, otherwise yaml.v3 strips
+underscores: `total_pages` → `totalpages`).
 
-Что даёт структура программно:
+What the structure gives programmatically:
 
-- **`pages[].text`** — плоский текст в порядке чтения, колонки по позиции
-  сохранены (в отличие от md).
-- **`text_items[]`** — 14 позиционированных фрагментов с bbox и confidence.
-  Этого достаточно, чтобы восстановить таблицу: группировка по `y` → строки,
-  сортировка по `x` → ячейки (например, `Total` и `45.00` лежат в одном ряду).
-- **`blocks[]`** — только `heading`/`paragraph`; таблица как `kind: table` не
-  распознаётся ни на одном сэмпле.
-- **Извлечение полей счёта**: `INVOICE-7C2F9E` → первый block (`kind: heading`,
-  `level: 1`); `Client: Acme GmbH` → вторая строка `page.text` / `text_items[1]`;
-  сумма `45.00` → по y-бакетам `text_items`. Извлекается программно, но через
-  геометрию `text_items`, а не через семантику `blocks`.
+- **`pages[].text`** — flat text in reading order, columns preserved by position
+  (unlike md).
+- **`text_items[]`** — 14 positioned fragments with bbox and confidence.
+  This is enough to restore the table: group by `y` → rows,
+  sort by `x` → cells (for example, `Total` and `45.00` lie in the same row).
+- **`blocks[]`** — only `heading`/`paragraph`; a table as `kind: table` is not
+  recognized on any sample.
+- **Invoice field extraction**: `INVOICE-7C2F9E` → the first block (`kind: heading`,
+  `level: 1`); `Client: Acme GmbH` → the second line of `page.text` / `text_items[1]`;
+  the total `45.00` → via the y-buckets of `text_items`. It is extracted programmatically, but via
+  the geometry of `text_items`, not via the semantics of `blocks`.
 
-## Вывод
+## Conclusion
 
-- **Заменять `internal/ocr.PDFFile` / `pdfHandler` на liteparse не стоит.**
-  Для text-layer документов baseline быстрее на 1–2 порядка (7–23 ms против
-  640+ ms) и лучше сохраняет таблицы в тексте.
-- **Ценность liteparse — не md, а структурированный JSON** (bbox, шрифт,
-  confidence, порядок чтения). Это то, чего у pdftotext нет, и что полезно для
-  brain ingest (контент-адресация `#100` — координаты узлов) и OO Documents.
-- **Рекомендация — гибрид**: fast path pdftotext (текстовые PDF, <50 ms) +
-  liteparse JSON только для сложных/скан-документов. Порог выбора по
-  `lit is-complex` использовать с осторожностью: verdict `sparse-text` на
-  маленьком text-layer счёте — ложное срабатывание (лишние ~2.5 s OCR на
-  документ, где OCR не нужен).
-- **Docker overhead** (~0.5–0.7 s на `docker run`) убивает выигрыш на мелких
-  документах; в проде liteparse держать как демон/долгоживущий контейнер,
-  а не запускать контейнер на каждый документ.
-- **Таблицы из text-layer PDF** ни один метод не распознаёт как структуру:
-  pdftotext сохраняет колонки текстом, liteparse размазывает в параграфы.
-  Настоящее распознавание таблиц — post-processing по `text_items` (y/x-бакеты)
-  либо OCR-путь для сканов.
+- **Replacing `internal/ocr.PDFFile` / `pdfHandler` with liteparse is not worth it.**
+  For text-layer documents the baseline is 1–2 orders of magnitude faster (7–23 ms vs
+  640+ ms) and preserves tables in the text better.
+- **The value of liteparse is not md but structured JSON** (bbox, font,
+  confidence, reading order). This is what pdftotext lacks, and what is useful for
+  brain ingest (content addressing `#100` — node coordinates) and OO Documents.
+- **Recommendation — a hybrid**: pdftotext fast path (text PDFs, <50 ms) +
+  liteparse JSON only for complex/scan documents. Use the `lit is-complex` selection
+  threshold with care: the verdict `sparse-text` on
+  a small text-layer invoice is a false positive (an extra ~2.5 s of OCR on
+  a document that does not need OCR).
+- **Docker overhead** (~0.5–0.7 s per `docker run`) kills the gain on small
+  documents; in production keep liteparse as a daemon/long-lived container,
+  not starting a container per document.
+- **Tables from text-layer PDFs** are not recognized as a structure by either method:
+  pdftotext preserves columns as text, liteparse smears them into paragraphs.
+  Real table recognition is post-processing over `text_items` (y/x buckets)
+  or the OCR path for scans.
 
-Итог: **не замена, а дополнение** — гибрид «pdftotext fast path + liteparse
-JSON для сложных + геометрия `text_items` для структурного извлечения».
-Следующий шаг эпика #219 — PoC гибридного handler'а с `text_items`-реконструкцией
-таблиц на реальном корпусе.
+Bottom line: **not a replacement but an addition** — the hybrid "pdftotext fast path + liteparse
+JSON for complex ones + `text_items` geometry for structural extraction".
+The next step of epic #219 is a PoC of the hybrid handler with `text_items`-based table
+reconstruction on a real corpus.
 
 ---
 
-## Оптимизация: start-as-service + struct-data ETL (2026-08-30)
+## Optimization: start-as-service + struct-data ETL (2026-08-30)
 
-### Паттерн «демон-контейнер» подтверждён замерами
+### The "daemon container" pattern confirmed by measurements
 
-`docker run` на каждый документ платит 0.5–0.7s за lifecycle контейнера
-(overlay mount + bridge network + `--rm`). Решение — **start-as-service**:
-один долгоживущий контейнер, вызов через `docker compose exec`.
+`docker run` per document pays 0.5–0.7s for the container lifecycle
+(overlay mount + bridge network + `--rm`). The solution is **start-as-service**:
+one long-lived container, invoked via `docker compose exec`.
 
 ```bash
-docker compose up -d liteparse                 # warmup при старте (entrypoint)
+docker compose up -d liteparse                 # warmup at start (entrypoint)
 docker compose exec -T liteparse lit parse /v/<rel>.pdf --format json -o /data/work/<name>.json
 ```
 
-Warmup в `scripts/liteparse-entrypoint.sh` гоняет `lit --version` + один parse
-при старте — pdfium/tesseract попадают в page cache, первый холодный OCR не
-платит 2.5s.
+The warmup in `scripts/liteparse-entrypoint.sh` runs `lit --version` + one parse
+at startup — pdfium/tesseract land in the page cache, the first cold OCR does not
+pay 2.5s.
 
-**p95 (n=10, прогон 2026-08-30, docker 26.1.4):**
+**p95 (n=10, run 2026-08-30, docker 26.1.4):**
 
-| Паттерн | text md p95 | text json p95 | scan OCR p95 |
+| Pattern | text md p95 | text json p95 | scan OCR p95 |
 |---|---|---|---|
-| `docker run` на документ (старый A/B) | ~700 ms | ~700 ms | ~2.7 s |
-| **демон-контейнер `docker compose exec`** | **118 ms** | **113 ms** | **312 ms** |
+| `docker run` per document (the old A/B) | ~700 ms | ~700 ms | ~2.7 s |
+| **daemon container `docker compose exec`** | **118 ms** | **113 ms** | **312 ms** |
 
-Вывод: демон-паттерн ускоряет text-путь ~**6x**, OCR ~**8.7x**. OCR 312ms —
-это реальная работа tesseract (не overhead); 2.5s холодного OCR при первом
-запуске убирается warmup'ом.
+Conclusion: the daemon pattern speeds up the text path ~**6x**, OCR ~**8.7x**. The 312ms OCR
+is real tesseract work (not overhead); the 2.5s of cold OCR on the first
+launch is removed by the warmup.
 
-### struct-data ETL: документ → YAML по hash
+### struct-data ETL: document → YAML by hash
 
-`bin/research/convert.go` — любой документ (pdf/docx/xlsx/pptx/odf/image) →
-литерparse JSON (тёплый сервис) → YAML в `var/struct-data/<sha256>.yml`,
-**content-addressed** (hash исходника). Идемпотентно: существующий непустой
-YAML → skip, повторный запуск не пере-оцифровывает.
+`bin/research/convert.go` — any document (pdf/docx/xlsx/pptx/odf/image) →
+liteparse JSON (warm service) → YAML in `var/struct-data/<sha256>.yml`,
+**content-addressed** (hash of the source). Idempotent: an existing non-empty
+YAML → skip, a repeated run does not re-digitize.
 
 ```bash
 ./bin/research/convert.go <file-or-dir>...    # → var/struct-data/<hash>.yml
-./bin/research/convert.go --ocr <scan.pdf>    # OCR-путь
-./bin/research/convert.go --list              # список var/struct-data
+./bin/research/convert.go --ocr <scan.pdf>    # OCR path
+./bin/research/convert.go --list              # list var/struct-data
 ```
 
-Обёртка YAML (meta + document):
+YAML wrapper (meta + document):
 
 ```yaml
 meta:
-  hash: <sha256 исходника>
+  hash: <sha256 of the source>
   source_path: var/research/samples/invoice-text.pdf
   extension: pdf
   format: pdf
   size: 922
-  created_at: ...      # mtime файла
+  created_at: ...      # file mtime
   modified_at: ...
-  digitized_at: ...    # время оцифровки
+  digitized_at: ...    # digitization time
   engine: liteparse
   ocr: false
   blocks: true
   original_name: invoice-text.pdf
-document:              # литерparse структурированный JSON→YAML
+document:              # liteparse structured JSON→YAML
   total_pages: 1
   pages: [page, width, height, text, text_items[], blocks[]]
 ```
 
-Это и есть то, что нужно для CRM/факт-экстракции: metadata (даты, путь/URL,
-extension, формат, время оцифровки) + структура (`text_items` bbox, `blocks`).
-Следующий этап (вне данного исследования) — YAML association mapping в CRM /
-fact-audit: чтение `var/struct-data/*.yml` как источника фактов.
+This is exactly what is needed for CRM/fact extraction: metadata (dates, path/URL,
+extension, format, digitization time) + structure (`text_items` bbox, `blocks`).
+The next stage (outside this research) is YAML association mapping into CRM /
+fact-audit: reading `var/struct-data/*.yml` as a source of facts.
 
-Типы liteparse + демон-exec раннер вынесены в `internal/research` (single
-implementation): используются и `bin/research/ab.go`, и `convert.go`, и
-`bench.go`. Инструмент замеров: `bin/research/bench.go` (warmup + p50/p95).
+The liteparse types + the daemon-exec runner were moved into `internal/research` (single
+implementation): used by `bin/research/ab.go`, `convert.go` and
+`bench.go`. The measurement tool: `bin/research/bench.go` (warmup + p50/p95).

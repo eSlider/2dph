@@ -6,110 +6,110 @@ related:
   - PLAN.md
 ---
 
-# PoC: гибридный docpipe handler — pdftotext + liteparse JSON + таблицы по геометрии (issue #223)
+# PoC: hybrid docpipe handler — pdftotext + liteparse JSON + tables by geometry (issue #223)
 
-Подзадача эпика [#219](https://git.produktor.io/eSlider/2dph/issues/219)
-(структурная экстракция документов). Развивает вывод A/B из
-[docs/research-liteparse.md](docs/research-liteparse.md): **не замена, а
-гибрид** — pdftotext fast path для text-layer, liteparse JSON для
-сложных/сканов, реконструкция таблиц по `text_items` (геометрия), потому что
-ни один из базовых путей таблицу как структуру не распознаёт.
+Subtask of epic [#219](https://git.produktor.io/eSlider/2dph/issues/219)
+(structural document extraction). Develops the A/B conclusion from
+[docs/research-liteparse.md](docs/research-liteparse.md): **not a replacement but a
+hybrid** — the pdftotext fast path for the text layer, liteparse JSON for
+complex/scans, table reconstruction from `text_items` (geometry), because
+neither of the base paths recognizes a table as a structure.
 
-Пакет: `internal/docpipe/` (рядом с `internal/ocr`, тот не тронут). Прод-корпус
-`var/corpus` не затрагивался; всё — `var/research/` (gitignored) +
-`internal/docpipe/` + этот отчёт.
+Package: `internal/docpipe/` (next to `internal/ocr`, which is untouched). The production
+corpus `var/corpus` was not touched; everything is `var/research/` (gitignored) +
+`internal/docpipe/` + this report.
 
-## Как работает handler
+## How the handler works
 
 ```mermaid
 flowchart LR
-  A[PDF] --> B{pdftotext -layout<br/>text-layer?}
-  B -- "текст непустой<br/>(~7-10 ms)" --> C[Result method=fastpath]
-  B -- "пусто / ошибка /<br/>ForceLiteparse" --> D[liteparse JSON<br/>warm docker compose exec<br/>--format json --extract-blocks]
+  A[PDF] --> B{pdftotext -layout<br/>text layer?}
+  B -- "text non-empty<br/>(~7-10 ms)" --> C[Result method=fastpath]
+  B -- "empty / error /<br/>ForceLiteparse" --> D[liteparse JSON<br/>warm docker compose exec<br/>--format json --extract-blocks]
   D --> E[RawText + YAML<br/>research.LitJSON.MarshalYAML]
-  D --> F[реконструкция таблиц<br/>y-бакеты → строки, x → ячейки]
+  D --> F[table reconstruction<br/>y buckets → rows, x → cells]
   E --> G[Result method=liteparse]
   F --> G
 ```
 
 API (`internal/docpipe`):
 
-- `Handle(ctx, path, Opts) (*Result, error)` — гибридный прогон.
-- `ReconstructTables(pages, URLBase) []Table` — реконструкция по геометрии
-  (отдельно вызываемая, чистая функция).
-- `Opts{ForceLiteparse, OCR, Base, LitParser, PDFToText}` — хуки для тестов и
-  для принудительного структурного пути (сканы).
+- `Handle(ctx, path, Opts) (*Result, error)` — the hybrid run.
+- `ReconstructTables(pages, URLBase) []Table` — reconstruction by geometry
+  (a separately callable, pure function).
+- `Opts{ForceLiteparse, OCR, Base, LitParser, PDFToText}` — hooks for tests and
+  for forcing the structural path (scans).
 - `Result{Method, Text, JSON, YAML, Tables, FastPathMs, LiteparseMs}`.
 
-Правила гибрида:
+Hybrid rules:
 
-1. Сначала fast path (`pdftotext -layout`, как `internal/ocr.PDFFile`).
-   Непустой текст → результат, `method=fastpath`.
-2. Fast path пуст / ошибка / `ForceLiteparse` → вызов тёплого сервиса через
+1. First the fast path (`pdftotext -layout`, like `internal/ocr.PDFFile`).
+   Non-empty text → the result, `method=fastpath`.
+2. Fast path empty / error / `ForceLiteparse` → call the warm service via
    `internal/research.Runner` (`docker compose exec -T liteparse lit parse
    /v/<rel>.pdf --format json --extract-blocks --no-ocr [-o OCR]`). `--no-ocr`
-   по умолчанию; `Opts.OCR` включает tesseract (сканы).
+   by default; `Opts.OCR` enables tesseract (scans).
 3. JSON→YAML — `research.LitJSON.MarshalYAML` (single implementation, yaml.v3
-   с явными тегами; локального конвертера нет).
-4. Таблицы реконструируются только на liteparse-пути — у pdftotext нет
-   геометрии.
+   with explicit tags; there is no local converter).
+4. Tables are reconstructed only on the liteparse path — pdftotext has no
+   geometry.
 
-Зависимость от docker изолирована: `LitParser` — интерфейс (его
-удовлетворяет `*research.Runner`), `PDFToText` — функция. Офлайн-тесты
-подменяют оба; live-прогон — под build tag `research_docpipe`.
+The docker dependency is isolated: `LitParser` is an interface (satisfied by
+`*research.Runner`), `PDFToText` is a function. Offline tests
+substitute both; the live run is under the build tag `research_docpipe`.
 
-## Реконструкция таблиц (алгоритм)
+## Table reconstruction (algorithm)
 
-`text_items` — позиционированные фрагменты (bbox + шрифт). Таблица
-восстанавливается по геометрии:
+`text_items` are positioned fragments (bbox + font). A table is rebuilt by geometry:
 
-1. Порог y-бакета = **половина медианного font_size** страницы (floor 2pt).
-2. Сортировка items по y (затем x, затем текст — детерминизм). Items, чьё y
-   отличается от якоря бакета не больше порога, — одна визуальная строка.
-3. Внутри строки ячейки сортируются по x (слева направо).
-4. **Строка таблицы = ≥2 ячеек.** Таблица = максимальный подряд идущий run
-   многоячеечных строк (не менее 2 строк). Одноклеточные строки (заголовок
-   документа, примечание) в таблицу не попадают.
-5. Каждый узел получает URL в духе #100:
-   `docpipe://pdf/<sha256[:16]>/doc/page[0]/table[0]/tr[1]/td[2]` (построение —
+1. The y-bucket threshold = **half the median font_size** of the page (floor 2pt).
+2. Sort items by y (then x, then text — for determinism). Items whose y
+   differs from the bucket anchor by no more than the threshold are one
+   visual row.
+3. Inside a row cells are sorted by x (left to right).
+4. **A table row = ≥2 cells.** A table = the maximal consecutive run
+   of multi-cell rows (at least 2 rows). Single-cell rows (the document
+   heading, a note) do not get into the table.
+5. Every node gets a URL in the spirit of #100:
+   `docpipe://pdf/<sha256[:16]>/doc/page[0]/table[0]/tr[1]/td[2]` (built by
    `internal/address.New`).
 
-### bbox-скоуп (реальные счета) + склейка переносов
+### bbox scope (real invoices) + wrapping join
 
-Когда литерparse детектирует `kind: table` **с bbox** (таблицы с границами —
-реальные счета/контракты), каждая таблица реконструируется **только из
-text_items внутри её bbox**: это отделяет соседние таблицы друг от друга и не
-даёт перенесённым строкам протекать в чужие бакеты. Fallback — вся страница
-с делением на run'ы.
+When liteparse detects `kind: table` **with a bbox** (tables with borders —
+real invoices/contracts), each table is reconstructed **only from the
+text_items inside its bbox**: this separates neighbouring tables from each other and does not
+let wrapped lines leak into foreign buckets. The fallback is the whole page
+split into runs.
 
-Перенесённые строки внутри ячейки (LibreOffice/Pandoc, «Consulting» /
-«services») склеиваются: одноклеточная строка, чья первая ячейка попадает в
-x-интервал ячейки предыдущей строки, добавляется в эту ячейку.
+Wrapped lines inside a cell (LibreOffice/Pandoc, "Consulting" /
+"services") are joined: a single-cell row whose first cell falls into the
+x-interval of a cell of the previous row is added to that cell.
 
-### Результат на invoice-text (синтетический счёт, фикстура #220)
+### Result on invoice-text (synthetic invoice, fixture #220)
 
-`text_items` (14 шт) → 7 y-бакетов: `INVOICE-7C2F9E` · `Client: Acme GmbH` ·
+`text_items` (14 items) → 7 y-buckets: `INVOICE-7C2F9E` · `Client: Acme GmbH` ·
 `Item|Qty|Price` · `Widget A|2|10.00` · `Widget B|1|25.00` · `Total|45.00` ·
-`Note: net 14 days.`. Таблица = run из 4 строк:
+`Note: net 14 days.`. The table = a run of 4 rows:
 
-| tr | Ячейки |
+| tr | Cells |
 |----|--------|
 | 0 | Item · Qty · Price |
 | 1 | Widget A · 2 · 10.00 |
 | 2 | Widget B · 1 · 25.00 |
 | 3 | Total · 45.00 |
 
-Заголовок документа, строка клиента и примечание остались вне таблицы
-(одноклеточные). Ограничение PoC: ячейка = один `text_item` (склейка
-разорванных на несколько items ячеек — следующий шаг; в счётах это редкость).
+The document heading, the client line and the note stayed outside the table
+(single-cell). PoC limitation: a cell = one `text_item` (joining cells broken
+into several items is the next step; in invoices this is rare).
 
-### Результат на invoice-bill (реальный счёт с границами, 2026-08-30)
+### Result on invoice-bill (a real invoice with borders, 2026-08-30)
 
-Новый сэмпл `var/research/samples/invoice-bill.pdf` (счёт Acme GmbH,
-сгенерирован pandoc → docx → LibreOffice PDF) — **литерparse распознаёт
-2 таблицы как `kind: table`** (с bbox). Реконструкция по bbox:
+New sample `var/research/samples/invoice-bill.pdf` (an Acme GmbH invoice,
+generated pandoc → docx → LibreOffice PDF) — **liteparse recognizes
+2 tables as `kind: table`** (with bbox). Reconstruction by bbox:
 
-| Таблица | tr | Ячейки |
+| Table | tr | Cells |
 |---------|----|--------|
 | Items (t0) | 0 | `#` · `n` · `Qty` · `Unit Price` · `Amount` |
 | | 1 | `1` · `Consulting services` · `10` · `120.00` · `1200.00` |
@@ -120,88 +120,88 @@ x-интервал ячейки предыдущей строки, добавл�
 | | 2 | `VAT (19%)` · `456.00` |
 | | 3 | `Total Due` · `2856.00` |
 
-Переносы склеены (`Consulting services`, `Software license`); суммы извлекаются
-программно (`Total Due` → `2856.00`). Мелочь: заголовок колонки «Description»
-обрезается до `n` («Descriptio» лежит выше bbox таблицы) — данные не страдают.
+Wraps are joined (`Consulting services`, `Software license`); the totals are extracted
+programmatically (`Total Due` → `2856.00`). A detail: the column heading "Description"
+is truncated to `n` ("Descriptio" lies above the table bbox) — the data is not affected.
 
-## Тесты (TDD, офлайн)
+## Tests (TDD, offline)
 
-`internal/docpipe/docpipe_test.go` — без сети/docker/модели; фикстура
-text_items сгенерирована в тесте по значениям из
+`internal/docpipe/docpipe_test.go` — no network/docker/model; the text_items fixture
+is generated in the test from the values in
 `var/struct-data/<sha256(invoice-text.pdf)>.yml`:
 
-- таблица invoice-text распознаётся как структура (4 строки, точные ячейки,
-  одноклеточные строки не протекают);
-- URL-адресация: `page[0]/table[0]`, `tr[1]`, `tr[1]/td[2]`;
-- y-бакеты: 7 строк, gap 20pt > порога 5.5 → разные бакеты;
-- нет многоячеечных строк → нет таблиц;
-- fast path: реальный text-layer PDF (генерируется в тесте, корректный xref)
-  → `method=fastpath`, liteparse-хук не вызывается (skip, если pdftotext
-  отсутствует на PATH);
-- fallback: fast path пуст → liteparse-хук → таблицы + YAML;
-- `ForceLiteparse` минует fast path; оба пути падают → ошибка с обоими
-  причинами.
+- the invoice-text table is recognized as a structure (4 rows, exact cells,
+  single-cell rows do not leak);
+- URL addressing: `page[0]/table[0]`, `tr[1]`, `tr[1]/td[2]`;
+- y-buckets: 7 rows, gap 20pt > threshold 5.5 → different buckets;
+- no multi-cell rows → no tables;
+- fast path: a real text-layer PDF (generated in the test, correct xref)
+  → `method=fastpath`, the liteparse hook is not called (skipped if pdftotext
+  is missing from PATH);
+- fallback: fast path empty → liteparse hook → tables + YAML;
+- `ForceLiteparse` bypasses the fast path; both paths fail → an error with both
+  causes.
 
-`internal/research` JSON→YAML-конвертер уже покрыт своими тестами — не
-дублировали, handler только импортирует.
+The `internal/research` JSON→YAML converter is already covered by its own tests — we did not
+duplicate it, the handler only imports it.
 
-## Прогон на реальном сэмпле (тёплый сервис, 2026-08-30)
+## Run on a real sample (warm service, 2026-08-30)
 
 `go test -tags=research_docpipe -run TestLive -v ./internal/docpipe/ -count=5`
-— invoice-text.pdf через оба пути (docker compose exec, сервис `liteparse`
+— invoice-text.pdf through both paths (docker compose exec, the `liteparse` service
 healthy):
 
-| Путь | ms (5 прогонов) | p50 | p95 | Результат |
+| Path | ms (5 runs) | p50 | p95 | Result |
 |------|-----------------|-----|-----|-----------|
-| fast path (pdftotext -layout) | 6.4 / 8.6 / 7.7 / 8.4 / 6.4 | 7.7 | 10.1 | текст, колонки сохранены |
-| liteparse JSON (warm) + таблицы | 124.0 / 109.6 / 103.1 / 121.5 / 122.5 | 121.5 | 127.8 | 1 таблица, 4 строки, ячейки точные |
+| fast path (pdftotext -layout) | 6.4 / 8.6 / 7.7 / 8.4 / 6.4 | 7.7 | 10.1 | text, columns preserved |
+| liteparse JSON (warm) + tables | 124.0 / 109.6 / 103.1 / 121.5 / 122.5 | 121.5 | 127.8 | 1 table, 4 rows, cells exact |
 
-**Таблица распознана**: `Item|Qty|Price`, `Widget A|2|10.00`,
-`Widget B|1|25.00`, `Total|45.00` — структура с URL-адресами, а не размазанный
-текст. Сумма счёта извлекается программно (`table[0]/tr[3]/td[1]` = `45.00`).
+**The table is recognized**: `Item|Qty|Price`, `Widget A|2|10.00`,
+`Widget B|1|25.00`, `Total|45.00` — a structure with URLs, not smeared
+text. The invoice total is extracted programmatically (`table[0]/tr[3]/td[1]` = `45.00`).
 
-**Реальный счёт** `invoice-bill.pdf` (bbox-путь, тёплый сервис): liteparse
-~105 ms, **2 таблицы** (Items + Totals), переносы склеены, `Total Due` =
-`2856.00` (проверено live-тестом `TestLiveBillTables`).
+**The real invoice** `invoice-bill.pdf` (bbox path, warm service): liteparse
+~105 ms, **2 tables** (Items + Totals), wraps joined, `Total Due` =
+`2856.00` (verified by the live test `TestLiveBillTables`).
 
-Fast path на этом документе в ~15 раз быстрее liteparse; демон-паттерн
-(#226) держит liteparse в ~110-130 ms против ~700 ms старого `docker run`.
+The fast path on this document is ~15x faster than liteparse; the daemon pattern
+(#226) keeps liteparse at ~110-130 ms against ~700 ms for the old `docker run`.
 
-## Порог выбора (fast path vs liteparse)
+## Selection threshold (fast path vs liteparse)
 
-- **fast path выигрывает всегда, когда есть text-layer**: быстрее на порядок
-  и сохраняет колонки в тексте. `pdftotext` упал/пуст → liteparse.
-- **Liteparse нужен, когда нужна структура/геометрия** (таблицы, bbox,
-  извлечение полей счёта) или документ — скан/сложный:
-  - вердикт `lit is-complex` — с осторожностью: `sparse-text` на маленьком
-    text-layer счёте — ложное срабатывание (#221), поэтому PoC по умолчанию
-    не верит вердикту, а полагается на пустоту fast path;
-  - `invoice-scan.pdf` — pdftotext возвращает непустой мусорный run
-    (`SCAN-9F31A1`) → для сканов принудительно `ForceLiteparse + OCR`;
-  - структурные запросы (таблицы/поля) — `ForceLiteparse` осознанно.
+- **The fast path always wins when there is a text layer**: an order of magnitude faster
+  and it preserves columns in the text. `pdftotext` failed/empty → liteparse.
+- **Liteparse is needed when structure/geometry is needed** (tables, bbox,
+  invoice field extraction) or the document is a scan/complex:
+  - the verdict `lit is-complex` — with caution: `sparse-text` on a small
+    text-layer invoice is a false positive (#221), so the PoC by default
+    does not trust the verdict but relies on the fast path being empty;
+  - `invoice-scan.pdf` — pdftotext returns a non-empty garbage run
+    (`SCAN-9F31A1`) → for scans force `ForceLiteparse + OCR`;
+  - structural queries (tables/fields) — `ForceLiteparse` deliberately.
 
-## Интеграция в mailconv/etl (#96/#98)
+## Integration into mailconv/etl (#96/#98)
 
-- `internal/mailconv/handlers.go` — `pdfHandler` сейчас = `ocr.PDFFile`.
-  Гибрид встаёт рядом: `pdfHandler → docpipe.Handle` (fast path отдаёт тот же
-  pdftotext-текст, что и сегодня), liteparse-ветка — только по требованию
-  (скан/структура), чтобы не добавить 120 ms каждому PDF-вложению.
-- `internal/etl` Registry (`#96`) — handler по MIME; docpipe — кандидат на
-  обработчик `application/pdf`, где `Result` → typed `Meta` + `Text` +
-  lazy-`Children`, а `Tables` — гранулярные Item-узлы (#100): каждая ячейка —
-  узел с URL и `sha256` контента, ссылки между частями только по URL.
-- Разделение ответственности: `internal/ocr` (tesseract/gs-нормализация)
-  остаётся как fallback для экспорт-защищённых PDF; docpipe — структурный
-  путь. Решение о замене `ocr.PDFFile` — позже, за рамками PoC (#223).
+- `internal/mailconv/handlers.go` — `pdfHandler` is currently = `ocr.PDFFile`.
+  The hybrid takes its place: `pdfHandler → docpipe.Handle` (the fast path returns the same
+  pdftotext text as today), the liteparse branch only on demand
+  (scan/structure), so as not to add 120 ms to every PDF attachment.
+- `internal/etl` Registry (`#96`) — a handler per MIME; docpipe is a candidate for the
+  `application/pdf` handler, where `Result` → typed `Meta` + `Text` +
+  lazy `Children`, and `Tables` are granular Item nodes (#100): each cell is a
+  node with a URL and the content `sha256`, links between parts only by URL.
+- Separation of responsibility: `internal/ocr` (tesseract/gs normalization)
+  stays as the fallback for export-protected PDFs; docpipe is the structural
+  path. The decision on replacing `ocr.PDFFile` is later, outside the PoC scope (#223).
 
-## Вывод
+## Conclusion
 
-**Handler готов к интеграции** в mailconv/etl как опциональный структурный
-путь: офлайн-тесты зелёные (`go test -race ./internal/docpipe/...`), live-прогон
-распознаёт таблицу синтетического счёта через тёплый сервис, метрики в
-ожидаемых рамках (#221: ~7-10 ms fast, ~110-130 ms warm liteparse). Ограничения
-PoC: ячейка = один `text_item` (без склейки разорванных), порог — половина
-медианного font_size (без адаптации к многошрифтовым страницам), выбор пути
-не автоматизирован через вердикт (нужен аккуратный порог по #221-выводам).
-Следующие шаги эпика #219: склейка разорванных items, прогон по реальному
-корпусу, интеграция docpipe в etl registry.
+**The handler is ready for integration** into mailconv/etl as an optional structural
+path: offline tests are green (`go test -race ./internal/docpipe/...`), the live run
+recognizes the synthetic invoice table via the warm service, the metrics are within
+expectations (#221: ~7-10 ms fast, ~110-130 ms warm liteparse). PoC limitations:
+a cell = one `text_item` (no joining of broken ones), the threshold is half the
+median font_size (no adaptation to multi-font pages), the path choice
+is not automated via the verdict (an accurate threshold based on the #221 findings is needed).
+Next steps of epic #219: joining broken items, a run over the real
+corpus, integrating docpipe into the etl registry.

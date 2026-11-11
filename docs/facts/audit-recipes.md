@@ -23,7 +23,7 @@ bin/brain/get.go <id> --body                                        # full text 
 bin/facts/audit.go self                                             # repo lexicon (Go, no deps)
 bin/facts/audit.go db                                               # every root=facts leaf (two-source rule)
 bin/facts/audit.go contradict                                       # adjudicate stdin claim(s)
-bin/facts/audit.go formal                                           # L-9.3 URL-формальные проверки (stdin JSON)
+bin/facts/audit.go formal                                           # L-9.3 URL-formal checks (stdin JSON)
 bin/facts/audit-card.go --claim "…" --premises FACT-… --verdict …   # audit card → SoT audits[]
 ```
 
@@ -46,16 +46,16 @@ reach the SSH tunnel on `127.0.0.1:5433`. (#53)
 
 ## Audit cards (L-9.2 #231)
 
-Каждый вердикт любого рецепта ниже фиксируется карточкой Vinogradov в SoT
-`audits[]` (`var/audit/source-of-truth.yml`), а не «сам по себе»: рекомендация
-без card = нарушение. Карточка обязана опираться на FACT-/OPEN- premises.
+Every verdict of any recipe below is recorded as a Vinogradov card in the SoT
+`audits[]` (`var/audit/source-of-truth.yml`), not "on its own": a recommendation
+without a card = a violation. A card must rest on FACT-/OPEN- premises.
 
 ```bash
-# premises/gaps: флаг повторяемый или значения через запятую.
-# inference: deduction | induction | analogy | other; gaps опциональны.
-# counter: none или контр-аргумент; verdict: только accept | reject | weaken.
+# premises/gaps: the flag is repeatable or values are comma-separated.
+# inference: deduction | induction | analogy | other; gaps are optional.
+# counter: none or a counter-argument; verdict: only accept | reject | weaken.
 bin/facts/audit-card.go \
-  --claim "demo2 подтверждён вторым источником" \
+  --claim "demo2 is confirmed by a second source" \
   --premises FACT-9002,FACT-9001 \
   --inference deduction \
   --gaps OPEN-0001 \
@@ -63,115 +63,115 @@ bin/facts/audit-card.go \
   --verdict weaken
 ```
 
-CLI валидирует карточку (verdict/inference enum, claim/premises/counter
-обязательны), присваивает следующий `AUD-NNNN`, дописывает в `audits[]` и
-печатает карточку. Остальные секции SoT и комментарии не трогаются
-(правка на yaml-дереве). Формальная логика inference — L-9.3 (#232).
+The CLI validates the card (verdict/inference enum, claim/premises/counter are
+required), assigns the next `AUD-NNNN`, appends it to `audits[]` and
+prints the card. The remaining SoT sections and comments are not touched
+(editing the yaml tree). Formal inference logic — L-9.3 (#232).
 
-## Формальные проверки URL (L-9.3 #232)
+## Formal URL checks (L-9.3 #232)
 
-Машинные проверки законов Vinogradov на уровне URL — поверх эмпирики #56.
-Ядро — `internal/facts` (cgo-free, `CanonicalURL` + `CheckFormal`):
-суждение = факт о ресурсе URL: `{id, url, claim, attr, neg, conf, from, to}`,
-где `attr` — предикат, `neg` — знак (P/¬P), `conf` — подтверждение leaf'а.
-Правила:
+Machine checks of the Vinogradov laws at the URL level — on top of the empirics of #56.
+The core is `internal/facts` (cgo-free, `CanonicalURL` + `CheckFormal`):
+a judgement = a fact about a URL resource: `{id, url, claim, attr, neg, conf, from, to}`,
+where `attr` is the predicate, `neg` is the sign (P/¬P), `conf` is the leaf's confirmation.
+Rules:
 
-| Закон | Код-правило | Флаг |
+| Law | Code rule | Flag |
 |-------|-------------|------|
-| identity (тождество) | один канонический URL в разных написаниях → merge/flag | `weaken` |
-| contradiction (противоречие) | подтверждённые `P` и `¬P` об одном предикате одного URL с пересекающимися D24-интервалами | `reject` |
-| excluded middle (исключённого третьего) | hypothesis/partial или claim без предиката — не FACT, кандидат в `open_questions[]` | `weaken` |
-| sufficient reason (достаточного основания) | verdict `accept` только с FACT-/OPEN- premises; иначе — reject/weaken | `reject` |
+| identity | one canonical URL in different spellings → merge/flag | `weaken` |
+| contradiction | confirmed `P` and `¬P` about one predicate of one URL with overlapping D24 intervals | `reject` |
+| excluded middle | hypothesis/partial or a claim without a predicate — not a FACT, a candidate for `open_questions[]` | `weaken` |
+| sufficient reason | verdict `accept` only with FACT-/OPEN- premises; otherwise reject/weaken | `reject` |
 
-Пример — два факта на один URL с противоречивыми суждениями («вакансия
-активна» vs «вакансия closed»):
+Example — two facts on one URL with contradictory judgements ("the vacancy
+is active" vs "the vacancy is closed"):
 
 ```bash
 cat <<'EOF' | bin/facts/audit.go formal
 {"facts":[
-  {"id":"FACT-01","url":"https://jobs.example.com/vacancy/42","claim":"вакансия активна","attr":"вакансия открыта","neg":false,"conf":"confirmed"},
-  {"id":"FACT-02","url":"https://jobs.example.com/vacancy/42","claim":"вакансия closed","attr":"вакансия открыта","neg":true,"conf":"confirmed"}
+  {"id":"FACT-01","url":"https://jobs.example.com/vacancy/42","claim":"vacancy is active","attr":"vacancy is open","neg":false,"conf":"confirmed"},
+  {"id":"FACT-02","url":"https://jobs.example.com/vacancy/42","claim":"vacancy is closed","attr":"vacancy is open","neg":true,"conf":"confirmed"}
 ]}
 EOF
-# → contradiction verdict=reject; эквивалентная карточка пишется audit-card.go
+# → contradiction verdict=reject; the equivalent card is written by audit-card.go
 ```
 
-Канонизация URL — локальная реализация конвенции gator G-8.1
-(`facts.CanonicalURL`: lowercase scheme/host, default-port, utm_*/ref/gh_jid/
-token-query, сортировка query, без фрагмента/trailing slash); gator-модуль не
-импортируется. Проверка sufficient-reason по карточкам идёт тем же
-подкомандой: `echo '{"cards":[{…}]}' | bin/facts/audit.go formal` — accept без
-FACT-/OPEN- premises возвращается как нарушение (reject/weaken).
+URL canonicalization — a local implementation of the gator G-8.1 convention
+(`facts.CanonicalURL`: lowercase scheme/host, default port, utm_*/ref/gh_jid/
+token query params, query sorting, no fragment/trailing slash); the gator module is not
+imported. The sufficient-reason check over cards runs through the same
+subcommand: `echo '{"cards":[{…}]}' | bin/facts/audit.go formal` — accept without
+FACT-/OPEN- premises is returned as a violation (reject/weaken).
 
 ## Recipes
 
-### 0. Git-commits: «кто над чем работал, когда» (L-9.4 #233)
+### 0. Git commits: "who worked on what, when" (L-9.4 #233)
 
-Граф-слой Commit/Person/AUTHORED (пишет `bin/git/graph.go` из git-истории
-репо git.produktor.io, канон commit id = `repo:sha`) → дедуктивные факты
-`bin/git/facts.go` (read-only). Дедукция Vinogradov: посылка — commit-лист
-(`commit <sha> in <repo>`, `Author`, `Date`, subject/files) → вывод «<автор>
-работал над <repo> в <date>».
+The graph layer Commit/Person/AUTHORED (written by `bin/git/graph.go` from the git history
+of the git.produktor.io repos, commit id canon = `repo:sha`) → deductive facts
+`bin/git/facts.go` (read-only). Vinogradov deduction: the premise is a commit list
+(`commit <sha> in <repo>`, `Author`, `Date`, subject/files) → the conclusion "<author>
+worked on <repo> on <date>".
 
 ```bash
-bin/git/graph.go --repo /x/2dph --dry-run        # сколько коммитов/Person до записи
-bin/git/graph.go --repo /x/2dph --commit         # MERGE в kb.lbug (идемпотентно)
-bin/git/facts.go --repo 2dph --since 2026-01-01  # факт-карточки
-bin/git/facts.go --author a@b.c --commits --json # детально + audit cards
+bin/git/graph.go --repo /x/2dph --dry-run        # how many commits/Persons before writing
+bin/git/graph.go --repo /x/2dph --commit         # MERGE into kb.lbug (idempotent)
+bin/git/facts.go --repo 2dph --since 2026-01-01  # fact cards
+bin/git/facts.go --author a@b.c --commits --json # detail + audit cards
 ```
 
-**Шаблон audit card (commit-факт):** claim из repo+периода фактических дат
-коммитов; premises — commit id (`repo:sha`, первые 5 + счётчик остатка);
+**Audit card template (commit fact):** claim from repo+period of the actual commit
+dates; premises — commit ids (`repo:sha`, the first 5 + a counter of the remainder);
 inference = `deduction`; verdict:
 
-- `accept` — subject-ы содержательные («feat: mesh node», «fix: typo») → «что
-  сделал» как гипотеза из message/files;
-- `weaken` — весь subject-набор пустой/служебный («Update», WIP) → выводится
-  только «трогал файлы в <repo>», не «что именно»; gap `OPEN`;
-- частично слабый набор → `accept` + gap `OPEN` про число слабых коммитов.
+- `accept` — the subjects are substantive ("feat: mesh node", "fix: typo") → "what was
+  done" as a hypothesis from message/files;
+- `weaken` — the whole subject set is empty/service ("Update", WIP) → only
+  "touched files in <repo>" is derived, not "what exactly"; gap `OPEN`;
+- a partially weak set → `accept` + gap `OPEN` about the number of weak commits.
 
-**Границы (иначе fallacy):**
-- «что сделал» — гипотеза из message/files, НЕ факт о намерении;
-- авторство по `Author:` коммита, не обязательно единственный автор: merge-
-  коммиты в граф не пишутся (gitlog.Log пропускает), co-author в теле
-  сообщения невидим — OPEN;
-- 1 коммит ≠ «вся неделя на X»: период берётся от фактических дат коммитов,
-  поспешная индукция не строится;
-- Leaf-коммиты (premises, source=git) не раздуваются — граф пишется
-  отдельным слоем Commit/Person/AUTHORED.
+**Boundaries (otherwise a fallacy):**
+- "what was done" — a hypothesis from message/files, NOT a fact about intent;
+- authorship by the commit's `Author:`, not necessarily the sole author: merge
+  commits are not written to the graph (gitlog.Log skips them), a co-author in the
+  message body is invisible — OPEN;
+- 1 commit ≠ "the whole week on X": the period is taken from the actual commit dates,
+  no hasty induction is built;
+- Leaf commits (premises, source=git) are not bloated — the graph is written as a
+  separate layer Commit/Person/AUTHORED.
 
-### 0a. Сеть связей «кто с кем и через кого» (L-9.5 #234)
+### 0a. Relationship network "who knows whom through whom" (L-9.5 #234)
 
-Граф mail (Message/Person + SENT/TO/CC/BCC/REPLY_TO, D-1 #257) + git
-(Commit/Person/AUTHORED, L-9.4 #233) → связи Person↔Person с premises и
-verdict; read-only инструмент `bin/network/network.go`.
+The mail graph (Message/Person + SENT/TO/CC/BCC/REPLY_TO, D-1 #257) + git
+(Commit/Person/AUTHORED, L-9.4 #233) → Person↔Person links with premises and
+verdict; read-only tool `bin/network/network.go`.
 
 ```bash
-bin/network/network.go --person eslider@gmail.com                # топ связей
-bin/network/network.go --person eslider@gmail.com --json         # полный JSON
+bin/network/network.go --person eslider@gmail.com                # top links
+bin/network/network.go --person eslider@gmail.com --json         # full JSON
 bin/network/network.go --person alice@x --project demo --since 2026-01-01
-bin/network/network.go --person alice@x --accept-only            # CRM-экспорт (YAML)
+bin/network/network.go --person alice@x --accept-only            # CRM export (YAML)
 ```
 
-**Деривации** (только из существующих узлов/рёбер): письмо sender↔recipient
-(вес TO 1.0/CC 0.5/BCC 0.25), общий получатель, REPLY_TO-диалог, треды
-(thread_id), общий проект (AUTHORED Commit.repo). Premises — Message.id /
+**Derivations** (from existing nodes/edges only): mail sender↔recipient
+(weight TO 1.0/CC 0.5/BCC 0.25), shared recipient, REPLY_TO dialogue, threads
+(thread_id), shared project (AUTHORED Commit.repo). Premises — Message.id /
 Commit.id `repo:sha`.
 
-**Шаблон audit card (link-факт):** claim «Q связан(а) с target: N писем, M
-тредов, период D»; inference = `deduction`; verdict:
+**Audit card template (link fact):** claim "Q is connected to target: N mails, M
+threads, period D"; inference = `deduction`; verdict:
 
-- `accept` — ≥2 прямых писем, или ≥1 REPLY_TO-диалог, или общий проект
-  (обе стороны AUTHORED в repo) → экспорт в CRM (ADR-0012 п.4);
-- `weaken` — одиночный контакт (1 письмо без ответа и без проекта) или
-  только общий получатель → gap `OPEN`, в CRM-экспорт не идёт (ADR-0012
-  п.2 «1 письмо ≠ устойчивая связь»).
+- `accept` — ≥2 direct mails, or ≥1 REPLY_TO dialogue, or a shared project
+  (both sides AUTHORED in repo) → export to CRM (ADR-0012 item 4);
+- `weaken` — a single contact (1 mail without a reply and without a project) or
+  only a shared recipient → gap `OPEN`, not exported to CRM (ADR-0012
+  item 2 "1 mail ≠ a durable link").
 
-**Границы (иначе fallacy):** алиасы email не склеиваются (сопряжение строго
-по email); «что обсуждали» по телу письма не выводится (Paragraph не
-материализован); транзитивные цепочки «знакомые знакомых» — вне пилота
-(depth=1); mail↔repo привязка не выдумывается (в графе нет такого ребра).
-Дизайн: docs/brain/graph-network.md.
+**Boundaries (otherwise a fallacy):** email aliases are not merged (matching is strictly
+by email); "what was discussed" is not derived from the mail body (Paragraph is not
+materialized); transitive chains of "acquaintances of acquaintances" are outside the pilot
+(depth=1); the mail↔repo binding is not invented (there is no such edge in the graph).
+Design: docs/brain/graph-network.md.
 
 ### 1. Dossier URL dedupe
 
