@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/eSlider/2dph/internal/brain/ann"
+	"github.com/eSlider/2dph/internal/brain/rank"
 	"github.com/eSlider/2dph/internal/config"
 )
 
@@ -138,14 +139,25 @@ func WarmANN() {
 }
 
 // annQueryVector ranks the top-k vector hits through the ANN index and loads
-// their metadata from the graph. Returns (nil, nil) when the index is
-// unavailable or the query vector is degenerate — the caller falls back.
-func annQueryVector(emb []float64, limit int) ([]Hit, error) {
+// their metadata from the graph. The eligibility filter is applied inside the
+// index scan (SearchFiltered), so ineligible rows never take a slot of the
+// candidate window (issue #3: with facts at 0.09% of the corpus, filtering
+// limit*3 candidates afterwards dropped them ~99% of the time). Returns
+// (nil, nil) when the index is unavailable or the query vector is degenerate —
+// the caller falls back.
+func annQueryVector(emb []float64, limit int, f rank.Filter) ([]Hit, error) {
 	idx, err := annIndex()
 	if err != nil || idx == nil || idx.Len() == 0 {
 		return nil, nil
 	}
-	res := idx.Search64(emb, limit)
+	var res []ann.Result
+	if f.Empty() {
+		res = idx.Search64(emb, limit)
+	} else {
+		res = idx.SearchFiltered(emb, limit, func(r ann.Row) bool {
+			return f.Eligible(r.Root, r.Source, r.ValidFrom, r.ValidTo)
+		})
+	}
 	if len(res) == 0 {
 		return nil, nil
 	}
@@ -154,6 +166,11 @@ func annQueryVector(emb []float64, limit int) ([]Hit, error) {
 		h, err := leafHitByID(r.ID, float64(r.Score))
 		if err != nil {
 			// Leaf deleted between build and search: skip, not fatal.
+			continue
+		}
+		if !f.Eligible(h.Root, h.Source, h.ValidFrom, h.ValidTo) {
+			// The graph is the source of truth: a row whose metadata changed
+			// since the last index build must not leak through a filter.
 			continue
 		}
 		out = append(out, h)

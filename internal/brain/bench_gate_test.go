@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/eSlider/2dph/internal/brain/bench"
+	"github.com/eSlider/2dph/internal/brain/rank"
 )
 
 // benchFixtureLeafs returns synthetic leafs (Alice/Bob, no PII): each text
@@ -111,7 +112,7 @@ func TestBenchGateRecallOffline(t *testing.T) {
 type ftsBenchSearcher struct{}
 
 func (ftsBenchSearcher) Search(_ context.Context, q string, limit int) ([]bench.Hit, error) {
-	hits, err := queryFTS(q, limit)
+	hits, err := queryFTS(q, limit, rank.Filter{})
 	if err != nil {
 		return nil, err
 	}

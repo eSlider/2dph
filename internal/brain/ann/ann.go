@@ -3,6 +3,7 @@ package ann
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -15,9 +16,21 @@ import (
 )
 
 // Row is one leaf vector to index, keyed by the brain leaf id (string).
+//
+// Since issue #3 a row also carries the leaf metadata that search filters on
+// (root, source, D24 validity interval) so retrieval can skip ineligible rows
+// before the top-k cut. A rare root (facts = 0.09% of the live corpus) would
+// otherwise never survive a limit*3 candidate window. The fields are optional
+// for backward compatibility with WAL lines written before v2: empty Root
+// matches no root filter, and empty intervals mean "legacy leaf, always
+// active", exactly like rank.Filter.
 type Row struct {
-	ID  string
-	Vec []float32
+	ID        string
+	Vec       []float32
+	Root      string
+	Source    string
+	ValidFrom string
+	ValidTo   string
 }
 
 // Result is one nearest-neighbor hit with a cosine similarity in [0,1]
@@ -376,7 +389,7 @@ func (ix *Index) applyDelLocked(id string) bool {
 // query. A zero query vector or an empty index yields no hits (the caller
 // falls back to a linear scan / FTS-only ranking).
 func (ix *Index) Search(vec []float32, k int) []Result {
-	return ix.search(float64Vec(vec), k)
+	return ix.search(float64Vec(vec), k, nil)
 }
 
 // Search64 is Search for the float64 query vector the embedding daemon
@@ -386,10 +399,24 @@ func (ix *Index) Search(vec []float32, k int) []Result {
 // the true neighbors (probe #204: float32 query rounding reordered dense
 // top-30 and broke recall@5 vs baseline).
 func (ix *Index) Search64(q []float64, k int) []Result {
-	return ix.search(q, k)
+	return ix.search(q, k, nil)
 }
 
-func (ix *Index) search(q []float64, k int) []Result {
+// SearchFiltered is Search64 restricted to the rows pred accepts (nil pred =
+// every row). The filter is applied *inside* the cell scan, so ineligible rows
+// never consume a top-k slot (issue #3).
+//
+// Eligibility is sparse by nature (facts are 0.09% of the corpus), so when the
+// configured NProbe cells do not yield k eligible rows the probe set doubles
+// until it does or the whole index has been scanned. Filtered retrieval is
+// therefore an exact filtered pass in the worst case instead of a silently
+// empty answer — and with a rare filter that worst case is the normal case.
+// pred receives a copy of the row and must not retain it.
+func (ix *Index) SearchFiltered(q []float64, k int, pred func(Row) bool) []Result {
+	return ix.search(q, k, pred)
+}
+
+func (ix *Index) search(q []float64, k int, pred func(Row) bool) []Result {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
 	if k <= 0 || len(ix.centroids) == 0 || zeroNorm64(q) {
@@ -405,22 +432,41 @@ func (ix *Index) search(q []float64, k int) []Result {
 		cells[i] = cs{idx: i, sim: cosine64(q, c)}
 	}
 	sort.Slice(cells, func(i, j int) bool { return cells[i].sim > cells[j].sim })
-	nprobe := ix.params.NProbe
-	if nprobe > len(cells) {
-		nprobe = len(cells)
-	}
 	// Collect candidates from the probed cells and rank by exact cosine.
 	type cand struct {
 		r   Row
 		sim float64
 	}
 	var out []cand
-	for p := 0; p < nprobe; p++ {
-		for _, r := range ix.lists[cells[p].idx] {
-			if _, dead := ix.tombstones[r.ID]; dead {
-				continue // deleted leaf: must not occupy a top-k slot (#4)
+	probe := ix.params.NProbe
+	if probe > len(cells) {
+		probe = len(cells)
+	}
+	if probe < 1 {
+		probe = 1
+	}
+	scanned := 0
+	for {
+		for ; scanned < probe; scanned++ {
+			for _, r := range ix.lists[cells[scanned].idx] {
+				if _, dead := ix.tombstones[r.ID]; dead {
+					continue // deleted leaf: must not occupy a top-k slot (#4)
+				}
+				if pred != nil && !pred(r) {
+					continue
+				}
+				out = append(out, cand{r: r, sim: cosine64(q, r.Vec)})
 			}
-			out = append(out, cand{r: r, sim: cosine64(q, r.Vec)})
+		}
+		// Unfiltered search keeps the fixed NProbe budget (#204 recall gate);
+		// a filter widens the probe set until it has k eligible rows or the
+		// whole index is covered.
+		if pred == nil || len(out) >= k || probe >= len(cells) {
+			break
+		}
+		probe *= 2
+		if probe > len(cells) {
+			probe = len(cells)
 		}
 	}
 	// Deterministic ranking: descending similarity, ties broken by id —
@@ -565,11 +611,29 @@ func (ix *Index) SaveTo(path string) error {
 
 // snapshot format (little-endian, fixed layout so 320MB loads fast):
 //
-//	magic "2DPHANN1" (8 bytes)
+//	magic "2DPHANN2" (8 bytes)
 //	dim int32, nlist int32, nprobe int32
 //	centroids: nlist * (dim * float32)
-//	cells: nlist * { count int32, count * (idLen int32, id, dim * float32) }
-const snapshotMagic = "2DPHANN1"
+//	cells: nlist * { count int32, count * row }
+//	row:   idLen int32, id, root, source, validFrom, validTo (each len int32 + bytes),
+//	       dim * float32
+//
+// v2 (issue #3) added the four metadata strings per row: filter-aware retrieval
+// (root/repo/as-of) reads them without a graph point lookup. A v1 snapshot
+// ("2DPHANN1") carries no metadata and is refused with ErrStaleFormat — the
+// caller falls back to the linear scan and the wave's ann-build rebuilds it;
+// reading v1 as v2 would mis-place every row boundary and drop all filters.
+const (
+	snapshotMagic   = "2DPHANN2"
+	snapshotMagicV1 = "2DPHANN1"
+	// FormatVersion is the current snapshot format; surfaced by
+	// bin/brain/ann.go stats so a rollout can see whether a rebuild happened.
+	FormatVersion = 2
+)
+
+// ErrStaleFormat means the snapshot was written by an older index version and
+// must be rebuilt: callers fall back to the linear scan until then.
+var ErrStaleFormat = errors.New("ann snapshot: stale format")
 
 func (ix *Index) saveSnapshot() error {
 	if err := os.MkdirAll(filepath.Dir(ix.path), 0o755); err != nil {
@@ -635,11 +699,13 @@ func (ix *Index) writeSnapshot(w io.Writer) error {
 			if _, dead := ix.tombstones[r.ID]; dead {
 				continue
 			}
-			if err := binary.Write(w, binary.LittleEndian, int32(len(r.ID))); err != nil {
+			if err := writeString(w, r.ID); err != nil {
 				return err
 			}
-			if _, err := w.Write([]byte(r.ID)); err != nil {
-				return err
+			for _, s := range []string{r.Root, r.Source, r.ValidFrom, r.ValidTo} {
+				if err := writeString(w, s); err != nil {
+					return err
+				}
 			}
 			for _, v := range r.Vec {
 				if err := binary.Write(w, binary.LittleEndian, v); err != nil {
@@ -649,6 +715,33 @@ func (ix *Index) writeSnapshot(w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// metaStringMax bounds one metadata string read from a snapshot (root/source
+// names and ISO days are short; anything bigger is a corrupt offset).
+const metaStringMax = 4096
+
+func writeString(w io.Writer, s string) error {
+	if err := binary.Write(w, binary.LittleEndian, int32(len(s))); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, s)
+	return err
+}
+
+func readString(r io.Reader, max int) (string, error) {
+	var n int32
+	if err := binary.Read(r, binary.LittleEndian, &n); err != nil {
+		return "", err
+	}
+	if n < 0 || n > int32(max) {
+		return "", fmt.Errorf("ann snapshot: bad string len %d", n)
+	}
+	b := make([]byte, n)
+	if _, err := io.ReadFull(r, b); err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // compactLocked drops tombstoned rows from the cells, rebuilds idCell and
@@ -703,7 +796,11 @@ func (ix *Index) readSnapshot(r io.Reader) error {
 	if _, err := io.ReadFull(r, magic); err != nil {
 		return fmt.Errorf("ann snapshot: %w", err)
 	}
-	if string(magic) != snapshotMagic {
+	switch string(magic) {
+	case snapshotMagic:
+	case snapshotMagicV1:
+		return fmt.Errorf("%w: v1 snapshot carries no filter metadata (current v%d) — rebuild the index", ErrStaleFormat, FormatVersion)
+	default:
 		return fmt.Errorf("ann snapshot: bad magic %q", magic)
 	}
 	var hdr [3]int32
@@ -739,23 +836,25 @@ func (ix *Index) readSnapshot(r io.Reader) error {
 		}
 		cell := make([]Row, 0, cnt)
 		for j := 0; j < int(cnt); j++ {
-			var idLen int32
-			if err := binary.Read(r, binary.LittleEndian, &idLen); err != nil {
+			id, err := readString(r, 1<<16)
+			if err != nil {
 				return err
 			}
-			if idLen < 0 || idLen > 1<<16 {
-				return fmt.Errorf("ann snapshot: bad id len %d", idLen)
-			}
-			id := make([]byte, idLen)
-			if _, err := io.ReadFull(r, id); err != nil {
-				return err
+			var meta [4]string
+			for k := range meta {
+				if meta[k], err = readString(r, metaStringMax); err != nil {
+					return err
+				}
 			}
 			vec := make([]float32, dim)
 			if err := binary.Read(r, binary.LittleEndian, vec); err != nil {
 				return err
 			}
-			cell = append(cell, Row{ID: string(id), Vec: vec})
-			ix.idCell[string(id)] = c
+			cell = append(cell, Row{
+				ID: id, Vec: vec,
+				Root: meta[0], Source: meta[1], ValidFrom: meta[2], ValidTo: meta[3],
+			})
+			ix.idCell[id] = c
 		}
 		ix.lists[c] = cell
 	}

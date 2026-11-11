@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/eSlider/2dph/internal/brain/ann"
+	"github.com/eSlider/2dph/internal/brain/rank"
 	"github.com/eSlider/2dph/pkg/cli"
 )
 
@@ -495,7 +496,7 @@ func TestAnnWarmStartMissingFallsBack(t *testing.T) {
 		t.Fatalf("warm start len = %d, want 0 (empty index)", st.Len)
 	}
 	leafs := annFixtureLeafs(150, 6)
-	hits, err := queryVector(leafs[2].Embedding, 5)
+	hits, err := queryVector(leafs[2].Embedding, 5, rank.Filter{})
 	if err != nil {
 		t.Fatalf("queryVector fallback: %v", err)
 	}
@@ -525,7 +526,7 @@ func TestAnnWarmStartCorruptFallsBack(t *testing.T) {
 		t.Fatal("corrupt warm start must record the error")
 	}
 	leafs := annFixtureLeafs(150, 6)
-	hits, err := queryVector(leafs[2].Embedding, 5)
+	hits, err := queryVector(leafs[2].Embedding, 5, rank.Filter{})
 	if err != nil {
 		t.Fatalf("queryVector: %v", err)
 	}

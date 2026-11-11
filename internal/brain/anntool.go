@@ -84,7 +84,8 @@ func extractRows(limit int) ([]ann.Row, error) {
 	if conn == nil {
 		return nil, fmt.Errorf("brain not open")
 	}
-	stmt, err := conn.Prepare("MATCH (l:Leaf) RETURN l.id, l.embedding, l.text")
+	stmt, err := conn.Prepare("MATCH (l:Leaf) RETURN l.id, l.embedding, l.text, " +
+		"l.root, l.source, l.valid_from, l.valid_to")
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +103,19 @@ func extractRows(limit int) ([]ann.Row, error) {
 			return nil, err
 		}
 		vals, err := row.GetAsSlice()
-		if err != nil || len(vals) < 3 {
+		if err != nil || len(vals) < 7 {
 			continue
 		}
 		id := fmt.Sprint(vals[0])
+		// Filter metadata (issue #3) travels with the vector so search can
+		// skip ineligible rows without a graph point lookup.
+		meta := ann.Row{
+			ID: id, Root: nullStr(vals[3]), Source: nullStr(vals[4]),
+			ValidFrom: nullStr(vals[5]), ValidTo: nullStr(vals[6]),
+		}
 		if e, ok := vals[1].([]any); ok && len(e) > 0 {
-			rows = append(rows, ann.Row{ID: id, Vec: anyToFloat32(e)})
+			meta.Vec = anyToFloat32(e)
+			rows = append(rows, meta)
 		} else {
 			text := fmt.Sprint(vals[2])
 			if text == "" || text == "<nil>" {
@@ -117,7 +125,8 @@ func extractRows(limit int) ([]ann.Row, error) {
 			if err != nil {
 				return nil, fmt.Errorf("embed %s: %w", id, err)
 			}
-			rows = append(rows, ann.Row{ID: id, Vec: toFloat32(emb, dim)})
+			meta.Vec = toFloat32(emb, dim)
+			rows = append(rows, meta)
 		}
 		if limit > 0 && len(rows) >= limit {
 			break
@@ -529,12 +538,13 @@ func runAnnStats(args []string) int {
 	if f.jsonOut {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"index": path, "len": idx.Len(), "dirty_wal": idx.Dirty(),
-			"skipped":    idx.Skipped(),
+			"skipped": idx.Skipped(), "format": ann.FormatVersion,
 			"tombstones": idx.Tombstones(), "tombstone_ratio": idx.TombstoneRatio(),
 		})
 	} else {
-		fmt.Printf("index %s: %d vectors, %d tombstones (%.1f%%), WAL %d, skipped %d\n",
-			path, idx.Len(), idx.Tombstones(), idx.TombstoneRatio()*100, idx.Dirty(), idx.Skipped())
+		fmt.Printf("index %s: %d vectors, %d tombstones (%.1f%%), WAL %d, skipped %d, format v%d\n",
+			path, idx.Len(), idx.Tombstones(), idx.TombstoneRatio()*100,
+			idx.Dirty(), idx.Skipped(), ann.FormatVersion)
 	}
 	return 0
 }

@@ -112,20 +112,55 @@ func runSearch(args []string) int {
 	return 0
 }
 
+// searchHits is the deduction retrieval: FTS + vector candidates, both
+// restricted to the rows eligible for root/repo/asOf *before* the top-k cut
+// (issue #3). Filtering after the cut dropped a rare root (facts = 0.09% of
+// the live corpus) out of the limit*3 window and answered a false
+// "(not confirmed)" while the fact existed.
 func searchHits(query, root, repo string, limit int, asOf string, sortDate, sortDesc bool) ([]Hit, error) {
 	emb, err := embedQueryFn(query)
 	if err != nil {
 		return nil, fmt.Errorf("embed: %w", err)
 	}
-	fts, err := queryFTS(query, limit*3)
+	return searchHitsEmb(query, emb, rank.Filter{Root: root, Repo: repo, AsOf: asOf}, limit, sortDate, sortDesc)
+}
+
+// searchHitsEmb is searchHits with the query vector supplied. A nil emb skips
+// the vector candidates: the FTS side is then the whole deduction path (used by
+// the filtered eval gate where no model is available).
+func searchHitsEmb(query string, emb []float64, f rank.Filter, limit int, sortDate, sortDesc bool) ([]Hit, error) {
+	fts, err := escalatedFTS(query, limit, f)
 	if err != nil {
 		return nil, fmt.Errorf("fts: %w", err)
 	}
 	var vec []Hit
-	if vec, err = queryVector(emb, limit*3); err != nil {
-		fmt.Fprintf(os.Stderr, "vec: %v\n", err)
+	if len(emb) > 0 {
+		if vec, err = queryVector(emb, limit, f); err != nil {
+			fmt.Fprintf(os.Stderr, "vec: %v\n", err)
+		}
 	}
-	return rank.RankAndFilterSort(fts, vec, root, repo, asOf, limit, sortDate, sortDesc), nil
+	return rank.RankAndFilterSort(fts, vec, f.Root, f.Repo, f.AsOf, limit, sortDate, sortDesc), nil
+}
+
+// escalatedFTS fetches FTS candidates with the root/repo pre-filter pushed into
+// the query and --as-of applied to the returned metadata, on the shared
+// candidate ladder (limit*3, doubling up to rank.CandidateCap). Expired leafs
+// therefore cannot occupy the top-k slots of an eligible one.
+func escalatedFTS(text string, limit int, f rank.Filter) ([]Hit, error) {
+	return rank.EscalateCandidates(limit, func(n int) ([]Hit, bool, error) {
+		raw, err := queryFTS(text, n, f)
+		if err != nil {
+			return nil, false, err
+		}
+		got := rank.FilterHits(raw, f)
+		if f.AsOf != "" && len(got) < limit && n >= rank.CandidateCap {
+			// Honest, loud degradation: the as-of filter is metadata-only, so a
+			// cap hit cannot prove absence — say so instead of an empty answer.
+			fmt.Fprintf(os.Stderr, "fts: as-of candidate cap %d reached (%d eligible of %d)\n",
+				rank.CandidateCap, len(got), n)
+		}
+		return got, len(raw) == n, nil
+	})
 }
 
 func attachHops(hits []Hit, n int) error {
@@ -177,15 +212,25 @@ func b2i(err error) int {
 	return 0
 }
 
-func queryFTS(text string, limit int) ([]Hit, error) {
+// queryFTS returns up to limit FTS hits for text. A non-empty root/repo filter
+// is pushed into the FTS query (rank.FTSStmtFiltered) so the n candidates are
+// already eligible; as-of is applied by the caller (it needs D24 interval
+// semantics). Unfiltered queries keep the plain statement byte for byte.
+func queryFTS(text string, limit int, f rank.Filter) ([]Hit, error) {
 	brainMu.RLock()
 	defer brainMu.RUnlock()
-	stmt, err := conn.Prepare(rank.FTSStmt)
+	stmtText := rank.FTSStmt
+	params := map[string]any{"q": text, "n": limit}
+	if f.Root != "" || f.Repo != "" {
+		stmtText = rank.FTSStmtFiltered
+		params["root"], params["repo"] = f.Root, f.Repo
+	}
+	stmt, err := conn.Prepare(stmtText)
 	if err != nil {
 		return nil, err
 	}
 	defer stmt.Close()
-	res, err := conn.Execute(stmt, map[string]any{"q": text, "n": limit})
+	res, err := conn.Execute(stmt, params)
 	if err != nil {
 		return nil, err
 	}
@@ -193,18 +238,40 @@ func queryFTS(text string, limit int) ([]Hit, error) {
 	return rowsToHits(res)
 }
 
-func queryVector(emb []float64, limit int) ([]Hit, error) {
-	// ANN path (issue #204): top-k from the incremental IVF index, then
-	// metadata via point lookups. Falls back to the brute-force scan when
-	// the index is absent/corrupt/disabled — search never fails because of
-	// ANN.
-	if annEnabled() {
-		if hits, err := annQueryVector(emb, limit); err != nil {
-			fmt.Fprintf(os.Stderr, "ann: %v\n", err)
-		} else if len(hits) > 0 {
-			return hits, nil
+// queryVector returns eligible vector candidates for the ranker. The filter is
+// applied by the retriever *before* its top-k cut, so ineligible rows never
+// take a candidate slot (issue #3). The window starts at limit*3 (the breadth
+// the unfiltered fusion always used) and escalates when a filtered window is
+// short.
+//
+// The ANN index is the fast path (issue #204); when it is disabled, missing,
+// empty or holds no eligible row — e.g. stale after a bulk import — the exact
+// scan answers instead. A stale index must never fabricate an empty result for
+// a leaf that exists in the graph.
+func queryVector(emb []float64, limit int, f rank.Filter) ([]Hit, error) {
+	return rank.EscalateCandidates(limit, func(n int) ([]Hit, bool, error) {
+		if annEnabled() {
+			got, err := annQueryVector(emb, n, f)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ann: %v\n", err)
+			} else if len(got) > 0 {
+				return got, len(got) == n, nil
+			}
 		}
-	}
+		got, err := scanVector(emb, n, f)
+		if err != nil {
+			return nil, false, err
+		}
+		return got, len(got) == n, nil
+	})
+}
+
+// scanVector is the exact brute-force cosine ranking. Eligible rows are
+// selected before the top-k cut, so a rare root is found here even when the
+// ANN candidate window missed it (issue #3). Rows without an embedding column
+// (a corpus rebuilt with ANN on, #248 B3) cannot be scanned — the ANN index is
+// then the only vector source.
+func scanVector(emb []float64, limit int, f rank.Filter) ([]Hit, error) {
 	brainMu.RLock()
 	defer brainMu.RUnlock()
 	stmt, err := conn.Prepare(vecScanStmt)
@@ -232,6 +299,11 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 		if err != nil || len(vals) < 8 {
 			continue
 		}
+		root, source := fmt.Sprint(vals[2]), fmt.Sprint(vals[3])
+		vf, vt := nullStr(vals[5]), nullStr(vals[6])
+		if !f.Eligible(root, source, vf, vt) {
+			continue
+		}
 		e, ok := vals[7].([]any)
 		if !ok || len(e) == 0 {
 			continue
@@ -239,9 +311,9 @@ func queryVector(emb []float64, limit int) ([]Hit, error) {
 		sim := cosineToQuery(emb, e)
 		all = append(all, scored{hit: Hit{
 			ID: fmt.Sprint(vals[0]), Text: fmt.Sprint(vals[1]),
-			Root: fmt.Sprint(vals[2]), Source: fmt.Sprint(vals[3]),
-			Confidence: fmt.Sprint(vals[4]), ValidFrom: nullStr(vals[5]),
-			ValidTo: nullStr(vals[6]), Score: sim,
+			Root: root, Source: source,
+			Confidence: fmt.Sprint(vals[4]), ValidFrom: vf,
+			ValidTo: vt, Score: sim,
 		}, sim: sim})
 	}
 	// Deterministic ranking: descending similarity, ties broken by id so the
