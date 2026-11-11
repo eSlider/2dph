@@ -272,22 +272,60 @@ func runAnnUpsert(args []string) int {
 // tests can lower it without building a 90k-row fixture.
 var walCompactThreshold = 10000
 
+// tombstoneRebuildPct: share of dead rows above which the index lost too much
+// of its top-k budget to deleted leafs and the wave rebuilds instead of
+// upserting (#4). Dead rows never rank, but they shrink the effective recall
+// until a compaction, and the DB leaf count no longer reveals them.
+const tombstoneRebuildPct = 10
+
 // annEnsurePlan decides what the wave's ann-build step must do: a full build
-// when there is no index or it is stale (missing >10% of the DB vectors —
-// e.g. built from a partial export or before a bulk import), otherwise the
-// incremental WAL-upsert. Steady-state growth (a few hundred new leafs on
-// 313k) stays incremental — the wave never rebuilds per wave.
-func annEnsurePlan(idxLen, rowsLen int) (build bool, reason string) {
+// when there is no index, when it is stale (missing >10% of the DB vectors —
+// e.g. built from a partial export or before a bulk import), or when >10% of
+// its rows are tombstones (deleted leafs), otherwise the incremental
+// WAL-upsert. Steady-state growth (a few hundred new leafs on 313k) stays
+// incremental — the wave never rebuilds per wave.
+func annEnsurePlan(live, rowsLen, tombstones int) (build bool, reason string) {
 	if rowsLen <= 0 {
 		return false, "nothing to index"
 	}
-	if idxLen <= 0 {
+	if live <= 0 {
 		return true, "no index"
 	}
-	if idxLen*10 < rowsLen*9 {
-		return true, fmt.Sprintf("index stale (%d vectors vs %d in DB)", idxLen, rowsLen)
+	if tombstones > 0 && tombstones*100 > tombstoneRebuildPct*(live+tombstones) {
+		return true, fmt.Sprintf("tombstone ratio %d%% (%d dead vs %d live)",
+			tombstones*100/(live+tombstones), tombstones, live)
+	}
+	if live*10 < rowsLen*9 {
+		return true, fmt.Sprintf("index stale (%d vectors vs %d in DB)", live, rowsLen)
 	}
 	return false, "incremental"
+}
+
+// reconcileIndex tombstones index ids whose leaf no longer exists in the DB.
+// The write path has no leaf delete (UpsertLeaf MERGEs only) and serve must
+// not mutate the index (single-writer rule, #204), so ensure is the one place
+// that can compare the two sets. rows is the full extract already in memory:
+// the live set is one map, no extra DB round-trip, O(|index|) lookups — the
+// bounded reconcile of #4. Callers must skip it for a --limit (partial)
+// extract, which would otherwise delete every leaf past the limit.
+func reconcileIndex(idx *ann.Index, rows []ann.Row) (int, error) {
+	if idx.Len() == 0 || len(rows) == 0 {
+		return 0, nil
+	}
+	live := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		live[r.ID] = struct{}{}
+	}
+	var stale []string
+	for _, id := range idx.IDs() {
+		if _, ok := live[id]; !ok {
+			stale = append(stale, id)
+		}
+	}
+	if len(stale) == 0 {
+		return 0, nil
+	}
+	return idx.Delete(stale...)
 }
 
 // runAnnEnsure is the wave's ann-build step (issue #206): maintain the ANN
@@ -349,7 +387,25 @@ func runAnnEnsure(args []string) int {
 		return 0
 	}
 
-	build, reason := annEnsurePlan(idx.Len(), len(rows))
+	// Reconcile deleted leafs before the plan: ids whose leaf is gone become
+	// tombstones, so the plan sees the real live/tombstone split and a
+	// Search never ranks them (#4). --limit is a partial extract — a
+	// reconcile over it would tombstone every leaf past the limit.
+	var reconciled int
+	if f.limit <= 0 {
+		n, err := reconcileIndex(idx, rows)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "brain/ann ensure: reconcile: %v\n", err)
+			return 1
+		}
+		reconciled = n
+		if n > 0 {
+			fmt.Fprintf(os.Stderr, "brain/ann ensure: reconciled %d deleted leafs (tombstones %d/%d, %.1f%%)\n",
+				n, idx.Tombstones(), idx.Len()+idx.Tombstones(), idx.TombstoneRatio()*100)
+		}
+	}
+
+	build, reason := annEnsurePlan(idx.Len(), len(rows), idx.Tombstones())
 	if build {
 		t1 := time.Now()
 		if err := idx.Build(rows); err != nil {
@@ -364,7 +420,9 @@ func runAnnEnsure(args []string) int {
 		if f.jsonOut {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 				"action": "build", "reason": reason, "indexed": idx.Len(),
-				"skipped": idx.Skipped(), "rebuild": true, "index": path,
+				"skipped": idx.Skipped(), "reconciled": reconciled,
+				"tombstones": idx.Tombstones(), "tombstone_ratio": idx.TombstoneRatio(),
+				"rebuild": true, "index": path,
 				"extract_s": extractDur.Seconds(), "build_s": buildDur.Seconds(),
 			})
 		} else {
@@ -386,7 +444,9 @@ func runAnnEnsure(args []string) int {
 		if f.jsonOut {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 				"action": "uptodate", "reason": reason, "indexed": idx.Len(),
-				"added": 0, "rebuild": false, "index": path,
+				"added": 0, "reconciled": reconciled,
+				"tombstones": idx.Tombstones(), "tombstone_ratio": idx.TombstoneRatio(),
+				"rebuild": false, "index": path,
 			})
 		} else {
 			fmt.Printf("brain/ann: ensure index up to date (%d vectors)\n", idx.Len())
@@ -407,7 +467,9 @@ func runAnnEnsure(args []string) int {
 		if f.jsonOut {
 			_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 				"action": "uptodate", "reason": reason, "indexed": idx.Len(),
-				"added": 0, "skipped": idx.Skipped(), "rebuild": false, "index": path,
+				"added": 0, "skipped": idx.Skipped(), "reconciled": reconciled,
+				"tombstones": idx.Tombstones(), "tombstone_ratio": idx.TombstoneRatio(),
+				"rebuild": false, "index": path,
 			})
 		} else {
 			fmt.Printf("brain/ann: ensure index up to date (%d vectors, %d degenerate skipped)\n",
@@ -432,6 +494,8 @@ func runAnnEnsure(args []string) int {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"action": "upsert", "reason": reason, "indexed": idx.Len(),
 			"added": added, "skipped": idx.Skipped(), "dirty_wal": idx.Dirty(),
+			"reconciled": reconciled,
+			"tombstones": idx.Tombstones(), "tombstone_ratio": idx.TombstoneRatio(),
 			"rebuild": false, "compacted": compacted, "index": path,
 			"extract_s": extractDur.Seconds(), "upsert_s": upsertDur.Seconds(),
 			"save_s": saveDur.Seconds(),
@@ -465,10 +529,12 @@ func runAnnStats(args []string) int {
 	if f.jsonOut {
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{
 			"index": path, "len": idx.Len(), "dirty_wal": idx.Dirty(),
-			"skipped": idx.Skipped(),
+			"skipped":    idx.Skipped(),
+			"tombstones": idx.Tombstones(), "tombstone_ratio": idx.TombstoneRatio(),
 		})
 	} else {
-		fmt.Printf("index %s: %d vectors, WAL %d, skipped %d\n", path, idx.Len(), idx.Dirty(), idx.Skipped())
+		fmt.Printf("index %s: %d vectors, %d tombstones (%.1f%%), WAL %d, skipped %d\n",
+			path, idx.Len(), idx.Tombstones(), idx.TombstoneRatio()*100, idx.Dirty(), idx.Skipped())
 	}
 	return 0
 }

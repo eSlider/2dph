@@ -11,6 +11,16 @@ import (
 // object per line. JSONL (not gob) so a torn tail from a crash mid-append
 // never poisons the replay: the decoder stops at the first bad line and the
 // valid prefix sticks.
+//
+// A line is either an upserted row ({"ID":..,"Vec":[..]}) or, since #4, a
+// tombstone written by Delete ({"ID":..,"del":true}). The embedded Row keeps
+// the legacy shape, so a WAL written before tombstones replays unchanged.
+
+// WALRecord is one WAL line: a row, or a delete marker when Del is set.
+type WALRecord struct {
+	Row
+	Del bool `json:"del,omitempty"`
+}
 
 // WALEncoder appends rows to a WAL writer.
 type WALEncoder struct {
@@ -23,8 +33,16 @@ func newWALEncoder(f *os.File) *WALEncoder {
 
 // Append writes one row as a JSON line and flushes (durable enough between
 // waves; the snapshot is the recovery point).
-func (e *WALEncoder) Append(r Row) error {
-	line, err := json.Marshal(r)
+func (e *WALEncoder) Append(r Row) error { return e.write(WALRecord{Row: r}) }
+
+// AppendDel writes a tombstone for id, so a restart between Delete and the
+// next Save keeps the id dead (a compaction would drop it anyway).
+func (e *WALEncoder) AppendDel(id string) error {
+	return e.write(WALRecord{Row: Row{ID: id}, Del: true})
+}
+
+func (e *WALEncoder) write(rec WALRecord) error {
+	line, err := json.Marshal(rec)
 	if err != nil {
 		return err
 	}
@@ -46,13 +64,13 @@ func newWALDecoder(r io.Reader) *WALDecoder {
 	return &WALDecoder{sc: sc}
 }
 
-func (d *WALDecoder) Next() (Row, error) {
+func (d *WALDecoder) Next() (WALRecord, error) {
 	if !d.sc.Scan() {
-		return Row{}, io.EOF
+		return WALRecord{}, io.EOF
 	}
-	var r Row
+	var r WALRecord
 	if err := json.Unmarshal(d.sc.Bytes(), &r); err != nil {
-		return Row{}, io.EOF // torn line: treat as end of valid prefix
+		return WALRecord{}, io.EOF // torn line: treat as end of valid prefix
 	}
 	return r, nil
 }

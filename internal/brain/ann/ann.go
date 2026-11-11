@@ -79,23 +79,32 @@ func zeroNorm(v []float32) bool {
 // of upserts since the snapshot. Load replays the WAL; Upsert appends to it
 // and mutates the lists; Save writes a fresh snapshot and resets the WAL.
 //
+// Deleted leafs are tombstoned (Delete): the id leaves idCell immediately and
+// Search never ranks it, but the vector row stays in its cell until the next
+// Save compacts it away. Without that, a deleted leaf keeps burning top-k
+// slots while the caller's leafHitByID silently drops it — recall decays with
+// no metric (#4). Tombstones also reach the WAL, so a restart keeps them.
+//
 // The index lives entirely outside liblbug (#204): building and searching it
 // never touches kb.lbug, so a liblbug crash cannot take the index down.
 // Search is exact-cosine within the NProbe probed cells — the k-means cells
 // only restrict the candidate set, never re-rank it.
 //
-// Searches are safe for concurrent readers; Upsert/Build/Save take the write
-// lock (single-writer, same rule as the brain DB).
+// Searches are safe for concurrent readers; Upsert/Build/Delete/Save take the
+// write lock (single-writer, same rule as the brain DB).
 type Index struct {
 	params Params
 
 	centroids [][]float32 // NList x Dim, L2-normalized k-means means
 	lists     [][]Row     // vectors per cell
 	idCell    map[string]int
+	// tombstones maps a deleted id to the cell its (still stored) row lives
+	// in. Search skips these ids; Save drops the rows and clears the map.
+	tombstones map[string]int
 
-	path  string
-	wal   string
-	mu    sync.RWMutex
+	path string
+	wal  string
+	mu   sync.RWMutex
 
 	walFile *os.File
 	dirty   int // WAL entries since the last snapshot
@@ -146,6 +155,7 @@ func (ix *Index) Build(rows []Row) error {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
 	ix.centroids, ix.lists, ix.idCell = nil, nil, map[string]int{}
+	ix.tombstones = nil
 	ix.skipped = 0
 
 	eligible := make([]Row, 0, len(rows))
@@ -269,25 +279,14 @@ func (ix *Index) upsertLocked(rows []Row) error {
 		}
 		enc = newWALEncoder(ix.walFile)
 	}
-	added := 0
 	for _, r := range rows {
 		if !ix.rowEligible(r) {
 			ix.skipped++
 			continue
 		}
-		if _, exists := ix.idCell[r.ID]; exists {
-			continue // idempotent: already indexed
+		if !ix.insertLocked(r) {
+			continue // idempotent: already live
 		}
-		if len(ix.centroids) == 0 {
-			// Index built empty (no eligible rows): bootstrap a single cell.
-			ix.centroids = [][]float32{r.Vec}
-			ix.lists = make([][]Row, 1)
-		}
-		c := nearestCell(r.Vec, ix.centroids)
-		ix.lists[c] = append(ix.lists[c], r)
-		ix.idCell[r.ID] = c
-		ix.dirty++
-		added++
 		if enc != nil {
 			if err := enc.Append(r); err != nil {
 				return err
@@ -295,6 +294,81 @@ func (ix *Index) upsertLocked(rows []Row) error {
 		}
 	}
 	return nil
+}
+
+// insertLocked adds r unless its id is already live. A tombstoned id is
+// revived in place: the id is the content hash (text|source|external_id|kind),
+// so the stored vector equals the new one and the row can stay where it is.
+func (ix *Index) insertLocked(r Row) bool {
+	if c, dead := ix.tombstones[r.ID]; dead {
+		delete(ix.tombstones, r.ID)
+		ix.idCell[r.ID] = c
+		ix.dirty++
+		return true
+	}
+	if _, live := ix.idCell[r.ID]; live {
+		return false
+	}
+	if len(ix.centroids) == 0 {
+		// Index built empty (no eligible rows): bootstrap a single cell.
+		ix.centroids = [][]float32{r.Vec}
+		ix.lists = make([][]Row, 1)
+	}
+	c := nearestCell(r.Vec, ix.centroids)
+	ix.lists[c] = append(ix.lists[c], r)
+	ix.idCell[r.ID] = c
+	ix.dirty++
+	return true
+}
+
+// Delete tombstones ids: they leave Len and Search immediately, but their
+// vector rows stay in the cells until the next Save compacts them away.
+// Unknown or already-dead ids are ignored, so a reconcile pass can hand over
+// every obsolete id without bookkeeping. The deletes are appended to the WAL
+// so a restart between Delete and Save keeps them dead. Returns how many ids
+// actually changed state.
+func (ix *Index) Delete(ids ...string) (int, error) {
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	var enc *WALEncoder
+	if ix.path != "" {
+		if err := ix.ensureWAL(); err != nil {
+			return 0, err
+		}
+		enc = newWALEncoder(ix.walFile)
+	}
+	n := 0
+	for _, id := range ids {
+		if !ix.applyDelLocked(id) {
+			continue
+		}
+		n++
+		if enc != nil {
+			if err := enc.AppendDel(id); err != nil {
+				return n, err
+			}
+		}
+	}
+	return n, nil
+}
+
+// applyDelLocked tombstones one live id (no WAL write); reports whether the
+// id was live.
+func (ix *Index) applyDelLocked(id string) bool {
+	c, live := ix.idCell[id]
+	if !live {
+		return false
+	}
+	delete(ix.idCell, id)
+	if ix.tombstones == nil {
+		ix.tombstones = map[string]int{}
+	}
+	ix.tombstones[id] = c
+	ix.dirty++
+	return true
 }
 
 // Search returns the k nearest cosine neighbors (descending similarity)
@@ -343,6 +417,9 @@ func (ix *Index) search(q []float64, k int) []Result {
 	var out []cand
 	for p := 0; p < nprobe; p++ {
 		for _, r := range ix.lists[cells[p].idx] {
+			if _, dead := ix.tombstones[r.ID]; dead {
+				continue // deleted leaf: must not occupy a top-k slot (#4)
+			}
 			out = append(out, cand{r: r, sim: cosine64(q, r.Vec)})
 		}
 	}
@@ -365,7 +442,8 @@ func (ix *Index) search(q []float64, k int) []Result {
 	return res
 }
 
-// Lookup reports whether id is already indexed (used for idempotent upsert).
+// Lookup reports whether id is live in the index (used for idempotent
+// upsert; tombstoned ids report false — they are no longer searchable).
 func (ix *Index) Lookup(id string) bool {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
@@ -373,14 +451,73 @@ func (ix *Index) Lookup(id string) bool {
 	return ok
 }
 
-// Len is the number of indexed vectors.
+// Len is the number of live indexed vectors (tombstoned ids excluded).
 func (ix *Index) Len() int {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
 	return len(ix.idCell)
 }
 
-// Dirty is the number of WAL entries since the last snapshot.
+// IDs returns the live ids. The reconcile pass in ensure diffs them against
+// the DB leaf set to tombstone ids whose leaf no longer exists (#4).
+func (ix *Index) IDs() []string {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	out := make([]string, 0, len(ix.idCell))
+	for id := range ix.idCell {
+		out = append(out, id)
+	}
+	return out
+}
+
+// Tombstones is the number of deleted ids whose rows are still stored
+// (dropped by the next Save compaction).
+func (ix *Index) Tombstones() int {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	return len(ix.tombstones)
+}
+
+// Stats is a point-in-time index report. Ratio is the tombstone fraction of
+// all stored rows — the silent-recall-loss metric of #4: dead rows still
+// compete for top-k slots until a compaction, and ensure rebuilds the index
+// once it crosses the 10% threshold.
+type Stats struct {
+	Live       int     `json:"live"`
+	Tombstones int     `json:"tombstones"`
+	Ratio      float64 `json:"tombstone_ratio"`
+	Dirty      int     `json:"dirty_wal"`
+	Skipped    int     `json:"skipped"`
+	Cells      int     `json:"cells"`
+}
+
+// Stats returns a consistent snapshot of the counters.
+func (ix *Index) Stats() Stats {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	live, tombstones := len(ix.idCell), len(ix.tombstones)
+	return Stats{
+		Live: live, Tombstones: tombstones, Ratio: tombstoneRatio(tombstones, live+tombstones),
+		Dirty: ix.dirty, Skipped: ix.skipped, Cells: len(ix.centroids),
+	}
+}
+
+// TombstoneRatio is the fraction of stored rows that are dead (0 when empty).
+func (ix *Index) TombstoneRatio() float64 {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	return tombstoneRatio(len(ix.tombstones), len(ix.idCell)+len(ix.tombstones))
+}
+
+func tombstoneRatio(tombstones, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	return float64(tombstones) / float64(total)
+}
+
+// Dirty is the number of WAL entries (upserts + tombstones) since the last
+// snapshot.
 func (ix *Index) Dirty() int {
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
@@ -395,7 +532,9 @@ func (ix *Index) Skipped() int {
 }
 
 // Save writes the current index as the new snapshot and truncates the WAL
-// (compaction). No-op for in-memory indexes.
+// (compaction). Tombstoned rows are dropped from the snapshot and from the
+// in-memory cells, so a save is also the delete compaction. No-op for
+// in-memory indexes.
 func (ix *Index) Save() error {
 	ix.mu.Lock()
 	defer ix.mu.Unlock()
@@ -405,6 +544,7 @@ func (ix *Index) Save() error {
 	if err := ix.saveSnapshot(); err != nil {
 		return err
 	}
+	ix.compactLocked()
 	return ix.resetWAL()
 }
 
@@ -419,6 +559,7 @@ func (ix *Index) SaveTo(path string) error {
 	if err := ix.saveSnapshot(); err != nil {
 		return err
 	}
+	ix.compactLocked()
 	return ix.resetWAL()
 }
 
@@ -479,10 +620,21 @@ func (ix *Index) writeSnapshot(w io.Writer) error {
 		}
 	}
 	for _, cell := range ix.lists {
-		if err := binary.Write(w, binary.LittleEndian, int32(len(cell))); err != nil {
+		// Live count first: tombstoned rows are not written at all (#4), so
+		// the snapshot never carries dead vectors after a compaction.
+		var live int32
+		for _, r := range cell {
+			if _, dead := ix.tombstones[r.ID]; !dead {
+				live++
+			}
+		}
+		if err := binary.Write(w, binary.LittleEndian, live); err != nil {
 			return err
 		}
 		for _, r := range cell {
+			if _, dead := ix.tombstones[r.ID]; dead {
+				continue
+			}
 			if err := binary.Write(w, binary.LittleEndian, int32(len(r.ID))); err != nil {
 				return err
 			}
@@ -497,6 +649,39 @@ func (ix *Index) writeSnapshot(w io.Writer) error {
 		}
 	}
 	return nil
+}
+
+// compactLocked drops tombstoned rows from the cells, rebuilds idCell and
+// clears the tombstone set. It runs after the snapshot landed, so a failure
+// mid-save leaves the WAL + tombstones intact for the next attempt. One
+// O(rows) pass without k-means — bounded by the snapshot write it follows.
+func (ix *Index) compactLocked() {
+	if len(ix.tombstones) == 0 {
+		return
+	}
+	for c, cell := range ix.lists {
+		if len(cell) == 0 {
+			continue
+		}
+		kept := cell[:0]
+		for _, r := range cell {
+			if _, dead := ix.tombstones[r.ID]; dead {
+				continue
+			}
+			kept = append(kept, r)
+		}
+		for i := len(kept); i < len(cell); i++ {
+			cell[i] = Row{} // drop the dead rows' vector references
+		}
+		ix.lists[c] = kept
+	}
+	ix.idCell = make(map[string]int, len(ix.idCell))
+	for c, cell := range ix.lists {
+		for _, r := range cell {
+			ix.idCell[r.ID] = c
+		}
+	}
+	ix.tombstones = nil
 }
 
 // loadSnapshot imports the index from path (empty index when absent).
@@ -543,6 +728,7 @@ func (ix *Index) readSnapshot(r io.Reader) error {
 	ix.centroids = centroids
 	ix.lists = make([][]Row, nlist)
 	ix.idCell = make(map[string]int, 1<<20)
+	ix.tombstones = nil // a snapshot is compacted by construction
 	var cnt int32
 	for c := 0; c < nlist; c++ {
 		if err := binary.Read(r, binary.LittleEndian, &cnt); err != nil {
@@ -576,8 +762,9 @@ func (ix *Index) readSnapshot(r io.Reader) error {
 	return nil
 }
 
-// replayWAL appends every WAL entry to the in-memory index. A torn tail
-// (crash mid-append) is tolerated: entries up to the first bad line stick.
+// replayWAL applies every WAL entry (upsert row or tombstone) to the
+// in-memory index. A torn tail (crash mid-append) is tolerated: entries up to
+// the first bad line stick.
 func (ix *Index) replayWAL() error {
 	f, err := os.Open(ix.wal)
 	if err != nil {
@@ -589,25 +776,19 @@ func (ix *Index) replayWAL() error {
 	defer f.Close()
 	dec := newWALDecoder(f)
 	for {
-		row, err := dec.Next()
+		rec, err := dec.Next()
 		if err != nil {
 			return nil // EOF or torn tail: keep the valid prefix
 		}
-		if ix.rowEligible(row) {
-			if _, exists := ix.idCell[row.ID]; exists {
-				continue
-			}
-			if len(ix.centroids) == 0 {
-				ix.centroids = [][]float32{row.Vec}
-				ix.lists = make([][]Row, 1)
-			}
-			c := nearestCell(row.Vec, ix.centroids)
-			ix.lists[c] = append(ix.lists[c], row)
-			ix.idCell[row.ID] = c
-			ix.dirty++
-		} else {
-			ix.skipped++
+		if rec.Del {
+			ix.applyDelLocked(rec.ID)
+			continue
 		}
+		if !ix.rowEligible(rec.Row) {
+			ix.skipped++
+			continue
+		}
+		ix.insertLocked(rec.Row)
 	}
 }
 
