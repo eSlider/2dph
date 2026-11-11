@@ -40,52 +40,52 @@ Schema of a written leaf (source/external_id/observed_at/kind, dedup by
 ContentHash, versioning): see `docs/brain/contract.md` (P-9.2/P-9.3); audit
 compliance with `bin/brain/audit-contract.go`.
 
-## Read через контракт (клиент, P-9.5)
+## Read through the contract (client, P-9.5)
 
-`bin/brain/*.go` выше читают kb.lbug напрямую (нужна локальная БД + cgo).
-Для агентов/скриптов/gator/cv на любой машине с brain-сервисом (HTTP :8630,
-`bin/brain/serve.go`) есть сервисный клиент read-контракта — **тот же JSON,
-без kb.lbug и без cgo**:
+`bin/brain/*.go` above read kb.lbug directly (needs a local DB + cgo).
+For agents/scripts/gator/cv on any machine with the brain service (HTTP :8630,
+`bin/brain/serve.go`) there is a service client for the read contract — **the same JSON,
+no kb.lbug and no cgo**:
 
 ```bash
-bin/brain/client.go search "onlyoffice postgres" --root facts --json  # факты: гейт facts
-bin/brain/client.go search "onlyoffice postgres"                      # facts → info, info помечены (not confirmed)
-bin/brain/client.go get <id> --body                                   # полный текст + source (доказательства)
+bin/brain/client.go search "onlyoffice postgres" --root facts --json  # facts: facts gate
+bin/brain/client.go search "onlyoffice postgres"                      # facts → info, info marked (not confirmed)
+bin/brain/client.go get <id> --body                                   # full text + source (evidence)
 bin/brain/client.go stats --json
-bin/brain/client.go audit                                             # гигиена facts-корня (exit 1 при hypothesis/partial)
-bin/brain/client.go search "q" --root facts --as-of 2025-01-01        # D24 валидность
+bin/brain/client.go audit                                             # facts-root hygiene (exit 1 on hypothesis/partial)
+bin/brain/client.go search "q" --root facts --as-of 2025-01-01        # D24 validity
 ```
 
 - SDK: `pkg/brainclient` (typed `Search`/`Get`/`Stats`/`Audit`/`Facts`,
-  валидация ответов контрактом). CLI: `pkg/brainclient/cli` + shebang
-  `bin/brain/client.go`. Форматы и гейт — `docs/brain/read-contract.md`
-  (раздел «Клиентский слой (P-9.5)»).
-- **Гейт facts**: `--root facts` / `Client.Facts` возвращают только
-  `confidence=confirmed` (root=facts); всё остальное — `not_confirmed[]` с
-  пометкой `(not confirmed)`. 2v2-противоречия (hypothesis, D16) никогда не
-  выдаются как подтверждённые. `audit` с `not_confirmed_facts > 0` — код 1:
-  разбор через `bin/facts/audit.go contradict` / `audit-card` (L-9).
-- Не открывай kb.lbug из клиентского кода: read-контракт (форматы выше) —
-  единственный путь чтения для потребителей.
+  response validation by the contract). CLI: `pkg/brainclient/cli` + shebang
+  `bin/brain/client.go`. Formats and the gate — `docs/brain/read-contract.md`
+  (section "Client layer (P-9.5)").
+- **Facts gate**: `--root facts` / `Client.Facts` return only
+  `confidence=confirmed` (root=facts); everything else goes to `not_confirmed[]` with
+  the mark `(not confirmed)`. 2v2 contradictions (hypothesis, D16) are never
+  served as confirmed. `audit` with `not_confirmed_facts > 0` — exit code 1:
+  analyse via `bin/facts/audit.go contradict` / `audit-card` (L-9).
+- Do not open kb.lbug from client code: the read contract (formats above) is
+  the only read path for consumers.
 
 ## Corpus — what lives in the brain (#198/#199)
 
 `info` holds the WHOLE corpus, never just one root. Current composition
-(после полного rebuild 2026-09-02, P-9.3 content-address dedup:
-307,431 стримнутых mail-листов схлопнулись в 105,027 уникальных, #248;
-всего в БД 105,220 leafs — см. docs/brain/memory-adr.md §4.4):
+(after the full rebuild 2026-09-02, P-9.3 content-address dedup:
+307,431 streamed mail items collapsed into 105,027 unique, #248;
+105,220 leafs in total in the DB — see docs/brain/memory-adr.md §4.4):
 
 - **mail** — BOTH corpora index into the brain: live `var/corpus/mail`
   (inbox 50 + PST) AND legacy `var/mail` (215k message.md: tb-andriy-profile,
   tb-backup-128g, tb-2010-zip, contacts_eml, defacto, gmail_*, inbox).
-  `bin/brain/index.go --with-mail` включает mail-адаптер
-  (`corpus.Mail`, `corpus.MailRoots`); dedup между корпусами — по ContentHash
-  (external_id = content-address текста, P-9.3). Mail is only in the brain if
+  `bin/brain/index.go --with-mail` enables the mail adapter
+  (`corpus.Mail`, `corpus.MailRoots`); dedup between corpora — by ContentHash
+  (external_id = content address of the text, P-9.3). Mail is only in the brain if
   the index ran with `--with-mail`.
-- **git history** — `bin/brain/import-git.go --root <dir>` (git-адаптер, go-git).
+- **git history** — `bin/brain/import-git.go --root <dir>` (git adapter, go-git).
 - **chats** — telegram/linkedin/whatsapp messages.md (`--with-chats`,
   `var/corpus/chats/md`).
-- **docs** — README/PLAN/AGENTS/docs/skills (default) + `--corpus` пути.
+- **docs** — README/PLAN/AGENTS/docs/skills (default) + `--corpus` paths.
 
 If a search misses mail that exists on disk: the brain was rebuilt WITHOUT
 `--with-mail`, or `var/mail` was never indexed. Fix:
@@ -93,44 +93,44 @@ If a search misses mail that exists on disk: the brain was rebuilt WITHOUT
 `bin/brain/index.go --skip --with-mail` (resume/append, de-duped, idempotent).
 `bin/brain/stats.go` on the ops host must show the post-rebuild baseline:
 **total 105,220 = info 105,199 (mail 105,027 + docs 172) + facts 21**
-(ANN 105,220; после полного rebuild 2026-09-02). Anything much less means a
-corpus is missing. The old rule «info ≥ ~200k» (и ориентир ~313k) сняты —
-P-9.3 dedup схлопнул дубликаты mail, актуальная модель — docs/brain/memory-adr.md.
+(ANN 105,220; after the full rebuild 2026-09-02). Anything much less means a
+corpus is missing. The old rule "info ≥ ~200k" (and the ~313k reference point) is retired —
+P-9.3 dedup collapsed the mail duplicates, the current model is docs/brain/memory-adr.md.
 
-## Corpus sources (P-9.3) — каждый корпус = адаптер
+## Corpus sources (P-9.3) — every corpus is an adapter
 
 `info` holds the whole corpus via four adapters (`internal/corpus`, cgo-free),
 each implementing `contract.Source` (`Name()` + `Stream(ctx, emit(Leaf))`):
 
-| Корпус | Адаптер | Что индексирует | source / external_id |
+| Corpus | Adapter | What it indexes | source / external_id |
 |--------|---------|-----------------|----------------------|
-| docs | `corpus.Docs` | README/PLAN/AGENTS/docs/skills + `--corpus` пути (md + yaml) | `docs` / rel-путь |
-| mail | `corpus.Mail` | live `var/corpus/mail` + legacy `var/mail` (`<id>/message.md`) | `mail` / content-address `sha256(text)[:16]` |
+| docs | `corpus.Docs` | README/PLAN/AGENTS/docs/skills + `--corpus` paths (md + yaml) | `docs` / rel path |
+| mail | `corpus.Mail` | live `var/corpus/mail` + legacy `var/mail` (`<id>/message.md`) | `mail` / content address `sha256(text)[:16]` |
 | chats | `corpus.Chats` | `var/corpus/chats/md/<platform>/<chat>/messages.md` | `chats` / frontmatter `id` |
-| git | `corpus.Git` | история коммитов (go-git) | `git` / полный commit sha |
+| git | `corpus.Git` | commit history (go-git) | `git` / full commit sha |
 
-`bin/brain/index.go` — драйвер: `corpus.StreamAll` → `brain.WriteCorpus`
-(единый writer, id = `contract.ContentHash()`[:32]). Флаги включают адаптеры:
-`--with-mail`, `--with-chats [DIR]`, `--corpus DIR` (повторяемый), `--git-root DIR`.
-`bin/brain/import-git.go --root DIR` — тонкая обёртка над git-адаптером
-(волна `stack/sync.go`, шаг git-brain).
+`bin/brain/index.go` — the driver: `corpus.StreamAll` → `brain.WriteCorpus`
+(single writer, id = `contract.ContentHash()`[:32]). Flags enable adapters:
+`--with-mail`, `--with-chats [DIR]`, `--corpus DIR` (repeatable), `--git-root DIR`.
+`bin/brain/import-git.go --root DIR` — a thin wrapper over the git adapter
+(wave `stack/sync.go`, step git-brain).
 
-**Как добавить новый источник корпуса** (например `calendar`):
-1. Новый файл адаптера в `internal/corpus/<name>.go`: struct с `Name() string`
-   (имя корпуса — оно же `source` в лифах) и
-   `Stream(ctx, emit func(contract.Leaf) error) error`; каждый emit должен
-   проходить `Leaf.Validate()` (source/external_id/kind/text), текст —
+**How to add a new corpus source** (for example `calendar`):
+1. A new adapter file in `internal/corpus/<name>.go`: a struct with `Name() string`
+   (the corpus name — it is also the `source` in the leafs) and
+   `Stream(ctx, emit func(contract.Leaf) error) error`; every emit must
+   pass `Leaf.Validate()` (source/external_id/kind/text), the text is
    `Heading + "\n\n" + body`.
-2. Юнит-тест рядом (`<name>_test.go`, фикстуры в t.TempDir, без lbug): форма
-   лифа, external_id, дедуп по ContentHash.
-3. Зарегистрировать адаптер в `sources()` драйвера `bin/brain/index.go`
-   (+ флаг-переключатель при необходимости).
-4. Пересборка: `bin/brain/index.go --rebuild <флаги>` — детерминированные id
-   (ContentHash) → добавление/удаление корпуса без ручной магии.
-5. `skill-sync push` + PR на обновлённый SKILL.md (см. skill-sync).
+2. A unit test next to it (`<name>_test.go`, fixtures in t.TempDir, no lbug): leaf shape,
+   external_id, dedup by ContentHash.
+3. Register the adapter in `sources()` of the driver `bin/brain/index.go`
+   (+ a flag switch if needed).
+4. Rebuild: `bin/brain/index.go --rebuild <flags>` — deterministic ids
+   (ContentHash) → adding/removing a corpus without manual magic.
+5. `skill-sync push` + a PR on the updated SKILL.md (see skill-sync).
 
-Дубль git устранён: git-история пишется только git-адаптером;
-`var/corpus/git/*.md` и `2dph__corpus__git__*` docs-адаптером исключаются.
+The git duplicate is eliminated: git history is written only by the git adapter;
+`var/corpus/git/*.md` and `2dph__corpus__git__*` are excluded by the docs adapter.
 
 ## Rules
 

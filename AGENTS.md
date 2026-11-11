@@ -25,7 +25,7 @@ Standards epic: [#88](https://git.produktor.io/eSlider/2dph/issues/88).
   still point `origin` at the SSH `:222` key, which is broken on write — reset
   `origin` to the HTTPS+token URL or push via tea. Never embed a token in a
   remote URL — credentials live in `~/.tea/tea.yml` / credential helpers.
-- Every task starts as a Gitea issue **на русском**. Epics group child issues;
+- Every task starts as a Gitea issue **in Russian**. Epics group child issues;
   milestones are sprints. Agents report progress as issue comments like senior
   engineers and close issues via commit refs (`(#id)`).
 - Roles: PO owns priorities, acceptance and dispatch; SE sub-agents implement
@@ -56,7 +56,7 @@ replies (`skills/picoclaw/SKILL.md`). `throttled` ≠ absence.
    (docker group, uid 1000 on host = 1000 inside unless remapped).
 3. **PII**: client data never read or quoted; test data synthetic
    (Alice/Bob/example.com).
-4. **TDD — нет теста → не работает → задача открыта.** Failing test before
+4. **TDD — no test → it does not work → the task stays open.** Failing test before
    tool code; tests run offline vs fixtures; network/db calls wrapped.
    A task is NOT done until a test proves it (and is green). For mail
    send/receive specifically: an end-to-end test (send → receipt) is MANDATORY
@@ -66,7 +66,7 @@ replies (`skills/picoclaw/SKILL.md`). `throttled` ≠ absence.
 6. **No hardcoded absolute paths or host URLs anywhere** (code, comments,
    tests, scripts). External values load from config; missing key after the
    full stack = explicit error pointing at `etc/brain/config.yml`.
-7. **Gitea-задачи — на русском** (код и команды как есть).
+7. **Gitea tasks are in Russian** (code and commands as-is).
 
 ## Code standards (Go) — mandatory for every implementation phase/issue
 
